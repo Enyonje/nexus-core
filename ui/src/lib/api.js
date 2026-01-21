@@ -1,5 +1,8 @@
 const API_BASE =
-  import.meta.env.VITE_API_URL || "http://localhost:3000";
+  import.meta.env.VITE_API_URL ||
+  (window.location.hostname === "nexus-core-kappa.vercel.app"
+    ? "https://nexus-core-a0px.onrender.com"
+    : "http://localhost:3000");
 
 /**
  * Low-level authenticated fetch wrapper
