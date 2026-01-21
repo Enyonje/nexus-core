@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import Stripe from "stripe";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import { requireRole } from "../security/authorize.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2022-11-15" });
