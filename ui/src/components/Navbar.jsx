@@ -1,8 +1,11 @@
 // src/components/Navbar.jsx
 import React from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthProvider";
 
 export default function Navbar({ onToggleTheme, isDark, theme }) {
+  const { user, logout } = useAuth();
+
   const styles = {
     wrapper: {
       display: "flex",
@@ -38,9 +41,21 @@ export default function Navbar({ onToggleTheme, isDark, theme }) {
     <nav style={styles.wrapper}>
       <div style={styles.brand}>Nexus Core</div>
       <div style={styles.actions}>
-        <Link to="/login" style={styles.button}>Login</Link>
-        <Link to="/register" style={styles.button}>Register</Link>
-        <Link to="/subscription" style={styles.button}>Subscription</Link>
+        {user ? (
+          <>
+            <Link to="/" style={styles.button}>Dashboard</Link>
+            <Link to="/executions" style={styles.button}>Executions</Link>
+            <button style={styles.button} onClick={logout}>
+              Logout
+            </button>
+          </>
+        ) : (
+          <>
+            <Link to="/login" style={styles.button}>Login</Link>
+            <Link to="/register" style={styles.button}>Register</Link>
+            <Link to="/subscription" style={styles.button}>Subscription</Link>
+          </>
+        )}
         <button style={styles.button} onClick={onToggleTheme}>
           {isDark ? "Light Mode" : "Dark Mode"}
         </button>
