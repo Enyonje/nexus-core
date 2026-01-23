@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "tailwind:init": "tailwindcss init -p",
     "preview": "vite preview",
-    "start": "vite preview"
+    "start": "vite preview",
+    "tailwind:init": "tailwindcss init -p"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
