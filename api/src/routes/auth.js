@@ -27,8 +27,8 @@ function requireAuth(req, reply, done) {
 }
 
 export async function authRoutes(server) {
-  // Register
-  server.post("/auth/register", async (req, reply) => {
+  // Register (prefix will be /auth/register because server.js registers with { prefix: "/auth" })
+  server.post("/register", async (req, reply) => {
     const { email, password, role } = req.body;
     if (!email || !password) {
       return reply.code(400).send({ error: "Missing email or password" });
@@ -59,7 +59,7 @@ export async function authRoutes(server) {
   });
 
   // Login
-  server.post("/auth/login", async (req, reply) => {
+  server.post("/login", async (req, reply) => {
     const { email, password } = req.body;
     if (!email || !password) {
       return reply.code(400).send({ error: "Missing email or password" });
@@ -79,7 +79,15 @@ export async function authRoutes(server) {
         JWT_SECRET,
         { expiresIn: "7d" }
       );
-      return { token, user: { id: user.id, email: user.email, role: user.role, subscription: user.subscription } };
+      return {
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          subscription: user.subscription,
+        },
+      };
     } catch (err) {
       console.error("Login error:", err);
       return reply.code(500).send({ error: "Internal server error" });
@@ -87,7 +95,7 @@ export async function authRoutes(server) {
   });
 
   // Subscription status
-  server.get("/auth/subscription", { preHandler: requireAuth }, async (req, reply) => {
+  server.get("/subscription", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const res = await db.query("SELECT subscription FROM users WHERE id = $1", [req.identity.sub]);
       if (!res.rowCount) {
@@ -101,7 +109,7 @@ export async function authRoutes(server) {
   });
 
   // Stripe checkout
-  server.post("/auth/stripe/checkout", { preHandler: requireAuth }, async (req, reply) => {
+  server.post("/stripe/checkout", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const { tier } = req.body; // "pro" or "enterprise"
       if (!tier) {
@@ -119,6 +127,7 @@ export async function authRoutes(server) {
         success_url: `${process.env.FRONTEND_URL}/subscription-success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${process.env.FRONTEND_URL}/subscription-cancel`,
         customer_email: req.identity.email,
+        metadata: { tier },
       });
 
       return { sessionId: session.id };
@@ -128,8 +137,8 @@ export async function authRoutes(server) {
     }
   });
 
-  // Stripe webhook (to update subscription in DB)
-  server.post("/auth/stripe/webhook", async (req, reply) => {
+  // Stripe webhook
+  server.post("/stripe/webhook", async (req, reply) => {
     const sig = req.headers["stripe-signature"];
     try {
       const event = stripe.webhooks.constructEvent(req.rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET);
@@ -137,7 +146,7 @@ export async function authRoutes(server) {
       if (event.type === "checkout.session.completed") {
         const session = event.data.object;
         const email = session.customer_email;
-        const tier = session.metadata?.tier || "pro"; // fallback
+        const tier = session.metadata?.tier || "pro";
 
         await db.query("UPDATE users SET subscription = $1 WHERE email = $2", [tier, email]);
       }
@@ -148,4 +157,3 @@ export async function authRoutes(server) {
       reply.code(400).send({ error: "Webhook error" });
     }
   });
-}
