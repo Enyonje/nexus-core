@@ -15,23 +15,25 @@ const SYSTEM_IDENTITY = {
   role: "service",
 };
 
-const server = Fastify({ logger: true });
+const app = Fastify({ logger: true });
 
-await server.register(cors, {
+// Register CORS
+await app.register(cors, {
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 });
 
-await server.register(websocket);
+// Register WebSocket
+await app.register(websocket);
 
 // Health check
-server.get("/health", async () => {
+app.get("/health", async () => {
   const result = await db.query("SELECT 1");
   return { status: "ok", db: result.rowCount === 1 };
 });
 
 // Inline goal creation (optional, can remove if duplicating with goalsRoutes)
-server.post("/goals", async (req) => {
+app.post("/goals", async (req) => {
   const { org_id, user_id, goal_type, goal_payload } = req.body;
 
   const result = await db.query(
@@ -47,12 +49,12 @@ server.post("/goals", async (req) => {
   return { goalId };
 });
 
-// ✅ Register routes
-server.register(executionsRoutes, { prefix: "/executions" });
-server.register(auditRoutes);
-server.register(streamRoutes);
-await server.register(authRoutes, { prefix: "/auth" }); // ensure prefix is applied
-await server.register(goalsRoutes);
+// ✅ Register all routes with proper prefixes
+app.register(executionsRoutes, { prefix: "/executions" });
+app.register(auditRoutes);
+app.register(streamRoutes);
+await app.register(authRoutes, { prefix: "/auth" }); // important for /auth/subscription
+await app.register(goalsRoutes);
 
-const PORT = process.env.PORT || 3000;
-server.listen({ port: PORT, host: "0.0.0.0" });
+const PORT = process.env.PORT || 3001;
+app.listen({ port: PORT, host: "0.0.0.0" });

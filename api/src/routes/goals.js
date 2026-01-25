@@ -1,11 +1,12 @@
-import { requireAuth } from "../security/authorize.js";
-
-export async function goalsRoutes(app: any) {
+export async function goalsRoutes(app) {
   // Create a new goal
-  app.post("/goals", { preHandler: requireAuth }, async (req: any, reply: any) => {
+  app.post("/goals", async (req, reply) => {
     const userId = req.identity?.sub;
     const { title, description } = req.body;
 
+    if (!userId) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
     if (!title) {
       return reply.code(400).send({ error: "Title is required" });
     }
@@ -21,8 +22,11 @@ export async function goalsRoutes(app: any) {
   });
 
   // Fetch all goals for the current user
-  app.get("/goals", { preHandler: requireAuth }, async (req: any, reply: any) => {
+  app.get("/goals", async (req, reply) => {
     const userId = req.identity?.sub;
+    if (!userId) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
 
     const result = await app.pg.query(
       "SELECT * FROM goals WHERE user_id = $1 ORDER BY created_at DESC",
@@ -33,7 +37,7 @@ export async function goalsRoutes(app: any) {
   });
 
   // Fetch a single goal by ID
-  app.get("/goals/:id", { preHandler: requireAuth }, async (req: any, reply: any) => {
+  app.get("/goals/:id", async (req, reply) => {
     const userId = req.identity?.sub;
     const { id } = req.params;
 
