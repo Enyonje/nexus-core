@@ -1,10 +1,38 @@
-// src/components/Layout.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthProvider";
 
 export default function Layout({ children, theme }) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user, subscription, setSubscription } = useAuth();
+
+  useEffect(() => {
+    const fetchSubscription = async () => {
+      if (!user) return; // only fetch if logged in
+      try {
+        const res = await fetch("/auth/subscription", {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${user.token}`, // adjust if you store JWT differently
+          },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setSubscription(data.subscription);
+        } else {
+          console.error("Failed to fetch subscription:", res.status);
+          setSubscription("free");
+        }
+      } catch (err) {
+        console.error("Subscription fetch error:", err);
+        setSubscription("free");
+      }
+    };
+
+    fetchSubscription();
+  }, [user, setSubscription]);
 
   const styles = {
     wrapper: {
@@ -61,8 +89,6 @@ export default function Layout({ children, theme }) {
       display: "none",
       cursor: "pointer",
     },
-    // NOTE: inline style objects don't support @media queries directly.
-    // For responsive behavior, use Tailwind or CSS classes instead.
   };
 
   return (
@@ -75,32 +101,46 @@ export default function Layout({ children, theme }) {
         }}
       >
         <h2 style={{ marginBottom: "1rem", fontWeight: "700" }}>Nexus Core</h2>
+
+        {/* Always available */}
         <Link to="/" style={styles.navItem(location.pathname === "/")}>
           Dashboard
         </Link>
-        <Link
-          to="/executions"
-          style={styles.navItem(location.pathname.startsWith("/executions"))}
-        >
-          Executions
-        </Link>
+
+        {/* Pro tier */}
+        {subscription === "pro" && (
+          <Link
+            to="/executions"
+            style={styles.navItem(location.pathname.startsWith("/executions"))}
+          >
+            Executions
+          </Link>
+        )}
+
+        {/* Enterprise tier */}
+        {subscription === "enterprise" && (
+          <>
+            <Link
+              to="/streams"
+              style={styles.navItem(location.pathname.startsWith("/streams"))}
+            >
+              Streams
+            </Link>
+            <Link
+              to="/audit"
+              style={styles.navItem(location.pathname.startsWith("/audit"))}
+            >
+              Audit Logs
+            </Link>
+          </>
+        )}
+
+        {/* Common links */}
         <Link
           to="/goals"
           style={styles.navItem(location.pathname.startsWith("/goals"))}
         >
           Goals
-        </Link>
-        <Link
-          to="/audit"
-          style={styles.navItem(location.pathname.startsWith("/audit"))}
-        >
-          Audit Logs
-        </Link>
-        <Link
-          to="/streams"
-          style={styles.navItem(location.pathname.startsWith("/streams"))}
-        >
-          Streams
         </Link>
         <Link
           to="/settings"

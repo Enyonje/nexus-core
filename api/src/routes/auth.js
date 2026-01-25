@@ -1,4 +1,3 @@
-// src/routes/auth.js
 import { db } from "../db/db.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
@@ -7,31 +6,24 @@ import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { requireRole } from "../security/authorize.js";
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  console.warn("⚠️ JWT_SECRET not set. Using insecure fallback.");
-}
-
+const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2022-11-15" });
 
-function sendResetEmail(email, token) {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT),
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-  const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-  return transporter.sendMail({
-    from: process.env.SMTP_FROM,
-    to: email,
-    subject: "Password Reset Request",
-    html: `<p>You requested a password reset.</p>
-           <p><a href='${resetUrl}'>Click here to reset your password</a></p>
-           <p>If you did not request this, ignore this email.</p>`
-  });
+// Auth middleware for Fastify
+function requireAuth(req, reply, done) {
+  const auth = req.headers.authorization;
+  if (!auth) {
+    return reply.code(401).send({ error: "Missing auth" });
+  }
+  const token = auth.replace("Bearer ", "");
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.identity = payload;
+    done();
+  } catch (err) {
+    console.error("JWT verification failed:", err);
+    reply.code(401).send({ error: "Invalid token" });
+  }
 }
 
 export async function authRoutes(server) {
@@ -48,15 +40,15 @@ export async function authRoutes(server) {
       }
       const hash = await bcrypt.hash(password, 10);
       const res = await db.query(
-        `INSERT INTO users (email, password_hash, role)
-         VALUES ($1, $2, $3)
-         RETURNING id, email, role`,
-        [email, hash, role || "user"]
+        `INSERT INTO users (email, password_hash, role, subscription)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, email, role, subscription`,
+        [email, hash, role || "user", "free"]
       );
       const user = res.rows[0];
       const token = jwt.sign(
         { sub: user.id, email: user.email, role: user.role },
-        JWT_SECRET || "dev_secret",
+        JWT_SECRET,
         { expiresIn: "7d" }
       );
       return { token, user };
@@ -84,33 +76,76 @@ export async function authRoutes(server) {
       }
       const token = jwt.sign(
         { sub: user.id, email: user.email, role: user.role },
-        JWT_SECRET || "dev_secret",
+        JWT_SECRET,
         { expiresIn: "7d" }
       );
-      return { token, user: { id: user.id, email: user.email, role: user.role } };
+      return { token, user: { id: user.id, email: user.email, role: user.role, subscription: user.subscription } };
     } catch (err) {
       console.error("Login error:", err);
       return reply.code(500).send({ error: "Internal server error" });
     }
   });
 
-  // ... keep the rest of your routes (forgot-password, reset-password, stripe checkout, webhook, subscription)
-  // but wrap DB calls in try/catch and log errors like above
-}
+  // Subscription status
+  server.get("/auth/subscription", { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      const res = await db.query("SELECT subscription FROM users WHERE id = $1", [req.identity.sub]);
+      if (!res.rowCount) {
+        return reply.code(404).send({ error: "User not found" });
+      }
+      return { subscription: res.rows[0].subscription || "free" };
+    } catch (err) {
+      console.error("Subscription fetch error:", err);
+      return reply.code(500).send({ error: "Internal server error" });
+    }
+  });
 
-// Auth middleware for Fastify
-function requireAuth(req, reply, done) {
-  const auth = req.headers.authorization;
-  if (!auth) {
-    return reply.code(401).send({ error: "Missing auth" });
-  }
-  const token = auth.replace("Bearer ", "");
-  try {
-    const payload = jwt.verify(token, JWT_SECRET || "dev_secret");
-    req.identity = payload;
-    done();
-  } catch (err) {
-    console.error("JWT verification failed:", err);
-    reply.code(401).send({ error: "Invalid token" });
-  }
+  // Stripe checkout
+  server.post("/auth/stripe/checkout", { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      const { tier } = req.body; // "pro" or "enterprise"
+      if (!tier) {
+        return reply.code(400).send({ error: "Missing subscription tier" });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        line_items: [
+          {
+            price: tier === "pro" ? process.env.STRIPE_PRO_PRICE_ID : process.env.STRIPE_ENTERPRISE_PRICE_ID,
+            quantity: 1,
+          },
+        ],
+        success_url: `${process.env.FRONTEND_URL}/subscription-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.FRONTEND_URL}/subscription-cancel`,
+        customer_email: req.identity.email,
+      });
+
+      return { sessionId: session.id };
+    } catch (err) {
+      console.error("Stripe checkout error:", err);
+      return reply.code(500).send({ error: "Failed to create checkout session" });
+    }
+  });
+
+  // Stripe webhook (to update subscription in DB)
+  server.post("/auth/stripe/webhook", async (req, reply) => {
+    const sig = req.headers["stripe-signature"];
+    try {
+      const event = stripe.webhooks.constructEvent(req.rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET);
+
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object;
+        const email = session.customer_email;
+        const tier = session.metadata?.tier || "pro"; // fallback
+
+        await db.query("UPDATE users SET subscription = $1 WHERE email = $2", [tier, email]);
+      }
+
+      reply.send({ received: true });
+    } catch (err) {
+      console.error("Stripe webhook error:", err);
+      reply.code(400).send({ error: "Webhook error" });
+    }
+  });
 }

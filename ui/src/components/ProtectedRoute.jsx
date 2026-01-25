@@ -1,11 +1,21 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
+import LoadingSpinner from "./LoadingSpinner";
 
-export default function ProtectedRoute({ children, allowed }) {
-  const { user, subscription } = useAuth();
+export default function ProtectedRoute({ children, requiredTier }) {
+  const { user, subscription, loading } = useAuth();
 
-  if (!user) return <Navigate to="/login" replace />;
-  if (!allowed.includes(subscription)) return <Navigate to="/subscription" replace />;
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (requiredTier && subscription !== requiredTier) {
+    return <Navigate to="/subscription" replace />;
+  }
 
   return children;
 }

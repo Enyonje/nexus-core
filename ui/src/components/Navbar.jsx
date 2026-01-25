@@ -1,10 +1,9 @@
-// src/components/Navbar.jsx
 import React from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
 
 export default function Navbar({ onToggleTheme, isDark, theme }) {
-  const { user, logout } = useAuth();
+  const { user, subscription, logout } = useAuth();
 
   const styles = {
     wrapper: {
@@ -34,6 +33,7 @@ export default function Navbar({ onToggleTheme, isDark, theme }) {
       cursor: "pointer",
       fontSize: "0.9rem",
       fontWeight: "500",
+      textDecoration: "none",
     },
   };
 
@@ -43,8 +43,22 @@ export default function Navbar({ onToggleTheme, isDark, theme }) {
       <div style={styles.actions}>
         {user ? (
           <>
-            <Link to="/" style={styles.button}>Dashboard</Link>
-            <Link to="/executions" style={styles.button}>Executions</Link>
+            {/* Always available when logged in */}
+            <Link to="/dashboard" style={styles.button}>Dashboard</Link>
+
+            {/* Pro tier */}
+            {subscription === "pro" && (
+              <Link to="/executions" style={styles.button}>Executions</Link>
+            )}
+
+            {/* Enterprise tier */}
+            {subscription === "enterprise" && (
+              <>
+                <Link to="/streams" style={styles.button}>Streams</Link>
+                <Link to="/audit" style={styles.button}>Audit</Link>
+              </>
+            )}
+
             <button style={styles.button} onClick={logout}>
               Logout
             </button>
