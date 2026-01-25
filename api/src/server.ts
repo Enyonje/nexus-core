@@ -49,7 +49,7 @@ app.post("/goals", async (req: any) => {
   return { goalId };
 });
 
-// ✅ Register routes with proper prefixes
+// ✅ Register all routes with proper prefixes
 app.register(executionsRoutes, { prefix: "/executions" });
 app.register(auditRoutes);
 app.register(streamRoutes);
