@@ -8,7 +8,7 @@ import { executionsRoutes } from "./routes/executions.js";
 import { auditRoutes } from "./routes/audit.js";
 import { streamRoutes } from "./routes/stream.js";
 import { authRoutes } from "./routes/auth.js";
-import { goalsRoutes } from "./routes/goals.js"; // ✅ import your goals routes
+import { goalsRoutes } from "./routes/goals.js";
 
 const SYSTEM_IDENTITY = {
   sub: "nexus-core",
@@ -30,7 +30,7 @@ server.get("/health", async () => {
   return { status: "ok", db: result.rowCount === 1 };
 });
 
-// Existing inline goal creation (optional: remove if duplicating with goalsRoutes)
+// Inline goal creation (optional, can remove if duplicating with goalsRoutes)
 server.post("/goals", async (req) => {
   const { org_id, user_id, goal_type, goal_payload } = req.body;
 
@@ -51,9 +51,8 @@ server.post("/goals", async (req) => {
 server.register(executionsRoutes, { prefix: "/executions" });
 server.register(auditRoutes);
 server.register(streamRoutes);
-await server.register(authRoutes);
-await server.register(goalsRoutes); // ✅ register goals routes
+await server.register(authRoutes, { prefix: "/auth" }); // ensure prefix is applied
+await server.register(goalsRoutes);
 
-// Start server
 const PORT = process.env.PORT || 3000;
 server.listen({ port: PORT, host: "0.0.0.0" });

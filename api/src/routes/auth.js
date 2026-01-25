@@ -2,14 +2,12 @@ import { db } from "../db/db.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import Stripe from "stripe";
-import crypto from "crypto";
-import nodemailer from "nodemailer";
 import { requireRole } from "../security/authorize.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2022-11-15" });
 
-// Auth middleware for Fastify
+// Auth middleware
 function requireAuth(req, reply, done) {
   const auth = req.headers.authorization;
   if (!auth) {
@@ -27,7 +25,7 @@ function requireAuth(req, reply, done) {
 }
 
 export async function authRoutes(server) {
-  // Register (prefix will be /auth/register because server.js registers with { prefix: "/auth" })
+  // Register → /auth/register
   server.post("/register", async (req, reply) => {
     const { email, password, role } = req.body;
     if (!email || !password) {
@@ -58,7 +56,7 @@ export async function authRoutes(server) {
     }
   });
 
-  // Login
+  // Login → /auth/login
   server.post("/login", async (req, reply) => {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -94,7 +92,7 @@ export async function authRoutes(server) {
     }
   });
 
-  // Subscription status
+  // Subscription → /auth/subscription
   server.get("/subscription", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const res = await db.query("SELECT subscription FROM users WHERE id = $1", [req.identity.sub]);
@@ -108,7 +106,7 @@ export async function authRoutes(server) {
     }
   });
 
-  // Stripe checkout
+  // Stripe checkout → /auth/stripe/checkout
   server.post("/stripe/checkout", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const { tier } = req.body; // "pro" or "enterprise"
@@ -137,7 +135,7 @@ export async function authRoutes(server) {
     }
   });
 
-  // Stripe webhook
+  // Stripe webhook → /auth/stripe/webhook
   server.post("/stripe/webhook", async (req, reply) => {
     const sig = req.headers["stripe-signature"];
     try {
@@ -157,3 +155,4 @@ export async function authRoutes(server) {
       reply.code(400).send({ error: "Webhook error" });
     }
   });
+}
