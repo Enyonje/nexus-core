@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { formatDate } from "../lib/utils";
 
@@ -32,16 +32,38 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-6 space-y-8 max-w-7xl mx-auto">
+    <div className="p-6 space-y-10 max-w-7xl mx-auto">
+      {/* Top Navigation */}
+      <nav className="flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 text-transparent bg-clip-text">
+          Nexus Core
+        </h1>
+        <div className="flex gap-6 text-sm font-medium">
+          <NavLink to="/dashboard" className={({ isActive }) =>
+            isActive ? "text-blue-600 dark:text-blue-400 underline" : "hover:text-blue-600 dark:hover:text-blue-400"
+          }>Dashboard</NavLink>
+          <NavLink to="/executions" className="hover:text-blue-600 dark:hover:text-blue-400">Executions</NavLink>
+          <NavLink to="/goals" className="hover:text-blue-600 dark:hover:text-blue-400">Goals</NavLink>
+          <NavLink to="/streams" className="hover:text-blue-600 dark:hover:text-blue-400">Streams</NavLink>
+          <NavLink to="/audit" className="hover:text-blue-600 dark:hover:text-blue-400">Audit</NavLink>
+          <NavLink to="/subscription" className="hover:text-blue-600 dark:hover:text-blue-400">Subscription</NavLink>
+        </div>
+      </nav>
+
       {/* Header */}
-      <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-        <span className="inline-block bg-gradient-to-r from-blue-500 to-purple-600 text-transparent bg-clip-text">
-          Dashboard
-        </span>
-        <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 animate-bounce">
-          LIVE
-        </span>
-      </h1>
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white flex items-center gap-2">
+          <span className="bg-gradient-to-r from-blue-500 to-purple-600 text-transparent bg-clip-text">
+            Dashboard
+          </span>
+          <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 animate-bounce">
+            LIVE
+          </span>
+        </h2>
+        <p className="text-gray-500 dark:text-gray-400 mt-1">
+          From workflows to workforces — manage your digital agents seamlessly.
+        </p>
+      </div>
 
       {/* System Health */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
@@ -81,9 +103,9 @@ export default function Dashboard() {
       {/* Recent Executions */}
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-lg p-6 transition-all duration-300 hover:shadow-2xl">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
             Recent Executions
-          </h2>
+          </h3>
           <Link
             to="/executions"
             className="text-blue-600 dark:text-blue-400 font-medium hover:underline transition-colors"
@@ -93,7 +115,7 @@ export default function Dashboard() {
         </div>
         {executions.length === 0 ? (
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            No executions yet.
+            No executions yet. Start by submitting a goal.
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -117,10 +139,7 @@ export default function Dashboard() {
                       <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 text-white font-bold text-xs shadow-md">
                         {idx + 1}
                       </span>
-                      <Link
-                        to={`/executions/${exec.id}`}
-                        className="hover:underline"
-                      >
+                      <Link to={`/executions/${exec.id}`} className="hover:underline">
                         {exec.id.slice(0, 8)}…
                       </Link>
                     </td>
@@ -143,15 +162,29 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Next Step CTA */}
+      <div className="bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-xl p-6 shadow-lg flex items-center justify-between">
+        <div>
+          <h4 className="text-lg font-semibold">Ready to scale?</h4>
+          <p className="text-sm opacity-90">
+            Upgrade your subscription to unlock Streams and Audit features.
+          </p>
+        </div>
+        <Link
+          to="/subscription"
+          className="bg-white text-blue-600 font-medium px-4 py-2 rounded-lg shadow hover:bg-gray-100 transition"
+        >
+          Upgrade →
+        </Link>
+      </div>
     </div>
   );
 }
 
-function InfoCard({ label, value, accent = "from-gray-200 to-gray-400" }) {
+function InfoCard({ label, value, accent }) {
   return (
-    <div
-      className={`relative bg-white dark:bg-gray-800 p-6 rounded-xl shadow group overflow-hidden transition-all duration-300 hover:scale-[1.03] hover:shadow-xl`}
-    >
+    <div className="relative bg-white dark:bg-gray-800 p-6 rounded-xl shadow group overflow-hidden transition-all duration-300 hover:scale-[1.03] hover:shadow-xl">
       <div
         className={`absolute inset-0 opacity-10 bg-gradient-to-br ${accent} pointer-events-none transition-all duration-300 group-hover:opacity-20`}
       />
@@ -168,6 +201,7 @@ function InfoCard({ label, value, accent = "from-gray-200 to-gray-400" }) {
 function StatusBadge({ status }) {
   const base =
     "px-3 py-1 rounded-full text-xs font-semibold shadow-sm transition-colors duration-200";
+
   const styles = {
     RUNNING:
       "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700 animate-pulse",
@@ -176,6 +210,7 @@ function StatusBadge({ status }) {
     FAILED:
       "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 border border-red-300 dark:border-red-700",
   };
+
   return (
     <span
       className={`${base} ${
