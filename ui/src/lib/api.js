@@ -1,16 +1,10 @@
-const API_BASE =
-  import.meta.env.VITE_API_URL ||
-  (window.location.hostname === "nexus-core-kappa.vercel.app"
-    ? "https://nexus-core-a0px.onrender.com"
-    : "http://localhost:3000");
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:3001";
 
-/**
- * Low-level authenticated fetch wrapper
- */
 export async function apiFetch(path, options = {}) {
   const token = localStorage.getItem("token");
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -20,33 +14,13 @@ export async function apiFetch(path, options = {}) {
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Request failed: ${res.status}`);
+    let msg = "Request failed";
+    try {
+      const data = await res.json();
+      msg = data.error || msg;
+    } catch {}
+    throw new Error(msg);
   }
 
   return res.json();
-}
-
-/**
- * HIGH-LEVEL API CALLS
- * (what your UI should import)
- */
-
-export async function fetchExecutions() {
-  return apiFetch("/executions");
-}
-
-export async function fetchExecution(executionId) {
-  return apiFetch(`/executions/${executionId}`);
-}
-
-export async function fetchExecutionSteps(executionId) {
-  return apiFetch(`/executions/${executionId}/steps`);
-}
-
-export async function submitGoal(payload) {
-  return apiFetch("/goals", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
 }
