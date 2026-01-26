@@ -1,6 +1,6 @@
 export async function goalsRoutes(app) {
   // Create a new goal
-  app.post("/goals", async (req, reply) => {
+  app.post("/", async (req, reply) => {
     const userId = req.identity?.sub;
     const { title, description } = req.body;
 
@@ -21,8 +21,8 @@ export async function goalsRoutes(app) {
     return { status: "accepted", goal: result.rows[0] };
   });
 
-  // Fetch all goals for the current user
-  app.get("/goals", async (req, reply) => {
+  // Fetch all goals
+  app.get("/", async (req, reply) => {
     const userId = req.identity?.sub;
     if (!userId) {
       return reply.code(401).send({ error: "Unauthorized" });
@@ -36,8 +36,8 @@ export async function goalsRoutes(app) {
     return result.rows;
   });
 
-  // Fetch a single goal by ID
-  app.get("/goals/:id", async (req, reply) => {
+  // Fetch single goal
+  app.get("/:id", async (req, reply) => {
     const userId = req.identity?.sub;
     const { id } = req.params;
 
@@ -46,7 +46,7 @@ export async function goalsRoutes(app) {
       [id, userId]
     );
 
-    if (result.rows.length === 0) {
+    if (!result.rows.length) {
       return reply.code(404).send({ error: "Goal not found" });
     }
 

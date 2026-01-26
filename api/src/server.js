@@ -3,58 +3,71 @@ import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 
 import { db } from "./db/db.js";
-import { publishEvent } from "./events/publish.js";
+
+// Routes
 import { executionsRoutes } from "./routes/executions.js";
 import { auditRoutes } from "./routes/audit.js";
 import { streamRoutes } from "./routes/stream.js";
-import { authRoutes } from "./routes/auth.js";
+import { authRoutes, requireAuth } from "./routes/auth.js";
 import { goalsRoutes } from "./routes/goals.js";
 
-const SYSTEM_IDENTITY = {
-  sub: "nexus-core",
-  role: "service",
-};
+const app = Fastify({
+  logger: true,
+});
 
-const app = Fastify({ logger: true });
-
-// Register CORS
+/* ----------------------------- CORS ----------------------------- */
 await app.register(cors, {
-  origin: "*",
+  origin: [
+    "http://localhost:5173",
+    "https://nexus-core-chi.vercel.app",
+    "https://nexus-core-a0px.onrender.com",
+  ],
+  credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 });
 
-// Register WebSocket
+/* -------------------------- WebSockets -------------------------- */
 await app.register(websocket);
 
-// Health check
+/* -------------------------- Health Check ------------------------ */
 app.get("/health", async () => {
   const result = await db.query("SELECT 1");
-  return { status: "ok", db: result.rowCount === 1 };
+  return {
+    status: "ok",
+    db: result.rowCount === 1,
+    uptime: process.uptime(),
+  };
 });
 
-// Inline goal creation (optional, can remove if duplicating with goalsRoutes)
-app.post("/goals", async (req) => {
-  const { org_id, user_id, goal_type, goal_payload } = req.body;
+/* ----------------------------- Routes --------------------------- */
 
-  const result = await db.query(
-    `INSERT INTO goals (org_id, submitted_by, goal_type, goal_payload)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id`,
-    [org_id, user_id, goal_type, goal_payload]
-  );
+// Public / Auth
+await app.register(authRoutes, { prefix: "/auth" });
 
-  const goalId = result.rows[0].id;
-  await publishEvent(db, SYSTEM_IDENTITY, "GOAL_SUBMITTED", { goalId });
-
-  return { goalId };
+// Protected routes
+await app.register(executionsRoutes, {
+  prefix: "/executions",
+  preHandler: requireAuth,
 });
 
-// ✅ Register all routes with proper prefixes
-app.register(executionsRoutes, { prefix: "/executions" });
-app.register(auditRoutes);
-app.register(streamRoutes);
-await app.register(authRoutes, { prefix: "/auth" }); // important for /auth/subscription
-await app.register(goalsRoutes);
+await app.register(goalsRoutes, {
+  prefix: "/goals",
+  preHandler: requireAuth,
+});
 
+await app.register(auditRoutes, {
+  prefix: "/audit",
+  preHandler: requireAuth,
+});
+
+await app.register(streamRoutes, {
+  prefix: "/stream",
+  preHandler: requireAuth,
+});
+
+/* ----------------------------- Server --------------------------- */
 const PORT = process.env.PORT || 3001;
-app.listen({ port: PORT, host: "0.0.0.0" });
+
+app.listen({ port: PORT, host: "0.0.0.0" }).then(() => {
+  console.log(`🚀 API running on port ${PORT}`);
+});

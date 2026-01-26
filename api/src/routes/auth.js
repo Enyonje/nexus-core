@@ -2,43 +2,41 @@ import { db } from "../db/db.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import Stripe from "stripe";
-import { requireRole } from "../security/authorize.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 const FRONTEND_URL = process.env.FRONTEND_URL;
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2022-11-15",
 });
 
 /* ============================
-   AUTH MIDDLEWARE
+   AUTH MIDDLEWARE (EXPORT!)
 ============================ */
-function requireAuth(req, reply, done) {
+export function requireAuth(req, reply, done) {
   const auth = req.headers.authorization;
+
   if (!auth) {
     return reply.code(401).send({ error: "Missing authorization header" });
   }
 
   const token = auth.replace("Bearer ", "");
+
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     req.identity = payload;
     done();
   } catch (err) {
-    console.error("JWT verification failed:", err);
     return reply.code(401).send({ error: "Invalid token" });
   }
 }
 
 /* ============================
-   ROUTES
+   AUTH ROUTES
 ============================ */
-export async function authRoutes(server) {
-  /**
-   * REGISTER
-   * POST /auth/register
-   */
-  server.post("/auth/register", async (req, reply) => {
+export async function authRoutes(app) {
+  /* -------- REGISTER -------- */
+  app.post("/register", async (req, reply) => {
     const { email, password, role } = req.body;
 
     if (!email || !password) {
@@ -81,11 +79,8 @@ export async function authRoutes(server) {
     }
   });
 
-  /**
-   * LOGIN
-   * POST /auth/login
-   */
-  server.post("/auth/login", async (req, reply) => {
+  /* -------- LOGIN -------- */
+  app.post("/login", async (req, reply) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -130,41 +125,33 @@ export async function authRoutes(server) {
     }
   });
 
-  /**
-   * SUBSCRIPTION STATUS
-   * GET /auth/subscription
-   */
-  server.get(
-    "/auth/subscription",
-    { preHandler: requireAuth },
-    async (req, reply) => {
-      try {
-        const result = await db.query(
-          "SELECT subscription FROM users WHERE id = $1",
-          [req.identity.sub]
-        );
+  /* -------- SUBSCRIPTION -------- */
+  app.get("/subscription", { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      const result = await db.query(
+        "SELECT subscription FROM users WHERE id = $1",
+        [req.identity.sub]
+      );
 
-        if (!result.rowCount) {
-          return reply.code(404).send({ error: "User not found" });
-        }
-
-        return reply.send({
-          active: result.rows[0].subscription !== "free",
-          tier: result.rows[0].subscription,
-        });
-      } catch (err) {
-        console.error("Subscription fetch error:", err);
-        return reply.code(500).send({ error: "Internal server error" });
+      if (!result.rowCount) {
+        return reply.code(404).send({ error: "User not found" });
       }
-    }
-  );
 
-  /**
-   * STRIPE CHECKOUT
-   * POST /auth/stripe/checkout
-   */
-  server.post(
-    "/auth/stripe/checkout",
+      const tier = result.rows[0].subscription || "free";
+
+      return reply.send({
+        active: tier !== "free",
+        tier,
+      });
+    } catch (err) {
+      console.error("Subscription fetch error:", err);
+      return reply.code(500).send({ error: "Internal server error" });
+    }
+  });
+
+  /* -------- STRIPE CHECKOUT -------- */
+  app.post(
+    "/stripe/checkout",
     { preHandler: requireAuth },
     async (req, reply) => {
       const { tier } = req.body;
@@ -181,7 +168,6 @@ export async function authRoutes(server) {
 
         const session = await stripe.checkout.sessions.create({
           mode: "subscription",
-          payment_method_types: ["card"],
           line_items: [{ price: priceId, quantity: 1 }],
           customer_email: req.identity.email,
           success_url: `${FRONTEND_URL}/subscription-success`,
@@ -199,11 +185,8 @@ export async function authRoutes(server) {
     }
   );
 
-  /**
-   * STRIPE WEBHOOK
-   * POST /auth/stripe/webhook
-   */
-  server.post("/auth/stripe/webhook", async (req, reply) => {
+  /* -------- STRIPE WEBHOOK -------- */
+  app.post("/stripe/webhook", async (req, reply) => {
     const sig = req.headers["stripe-signature"];
 
     try {
