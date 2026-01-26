@@ -1,5 +1,4 @@
-const API_BASE =
-  import.meta.env.VITE_API_URL || "http://localhost:3000";
+const API_URL = import.meta.env.VITE_API_URL;
 
 /**
  * Low-level authenticated fetch wrapper
@@ -7,7 +6,7 @@ const API_BASE =
 export async function apiFetch(path, options = {}) {
   const token = localStorage.getItem("token");
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -16,9 +15,18 @@ export async function apiFetch(path, options = {}) {
     },
   });
 
+  // Handle errors gracefully
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Request failed: ${res.status}`);
+    // Try to parse JSON error, fallback to text
+    let errorMessage = `Request failed: ${res.status}`;
+    try {
+      const errorJson = await res.json();
+      errorMessage = errorJson.error || errorMessage;
+    } catch {
+      const text = await res.text();
+      if (text) errorMessage = text;
+    }
+    throw new Error(errorMessage);
   }
 
   return res.json();
@@ -28,7 +36,6 @@ export async function apiFetch(path, options = {}) {
  * HIGH-LEVEL API CALLS
  * (what your UI should import)
  */
-
 export async function fetchExecutions() {
   return apiFetch("/executions");
 }
