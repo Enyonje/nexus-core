@@ -11,14 +11,17 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 });
 
 /* ============================
-   AUTH MIDDLEWARE
+   AUTH MIDDLEWARE (EXPORT!)
 ============================ */
 export function requireAuth(req, reply, done) {
   const auth = req.headers.authorization;
+
   if (!auth) {
     return reply.code(401).send({ error: "Missing authorization header" });
   }
+
   const token = auth.replace("Bearer ", "");
+
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     req.identity = payload;
@@ -35,27 +38,40 @@ export async function authRoutes(app) {
   /* -------- REGISTER -------- */
   app.post("/register", async (req, reply) => {
     const { email, password, role } = req.body;
+
     if (!email || !password) {
       return reply.code(400).send({ error: "Email and password required" });
     }
+
     try {
-      const existing = await db.query("SELECT id FROM users WHERE email = $1", [email]);
+      const existing = await db.query(
+        "SELECT id FROM users WHERE email = $1",
+        [email]
+      );
+
       if (existing.rowCount) {
         return reply.code(409).send({ error: "Email already exists" });
       }
+
       const hash = await bcrypt.hash(password, 10);
+
       const result = await db.query(
-        `INSERT INTO users (email, password_hash, role, subscription)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, email, role, subscription`,
-        [email, hash, role || "user", "free"]
+        `
+        INSERT INTO users (email, password_hash, role, subscription)
+        VALUES ($1, $2, $3, 'free')
+        RETURNING id, email, role, subscription
+        `,
+        [email, hash, role || "user"]
       );
+
       const user = result.rows[0];
+
       const token = jwt.sign(
         { sub: user.id, email: user.email, role: user.role },
         JWT_SECRET,
         { expiresIn: "7d" }
       );
+
       return reply.send({ token, user });
     } catch (err) {
       console.error("Register error:", err);
@@ -66,24 +82,34 @@ export async function authRoutes(app) {
   /* -------- LOGIN -------- */
   app.post("/login", async (req, reply) => {
     const { email, password } = req.body;
+
     if (!email || !password) {
       return reply.code(400).send({ error: "Email and password required" });
     }
+
     try {
-      const result = await db.query("SELECT * FROM users WHERE email = $1", [email]);
+      const result = await db.query(
+        "SELECT * FROM users WHERE email = $1",
+        [email]
+      );
+
       if (!result.rowCount) {
         return reply.code(401).send({ error: "Invalid credentials" });
       }
+
       const user = result.rows[0];
       const valid = await bcrypt.compare(password, user.password_hash);
+
       if (!valid) {
         return reply.code(401).send({ error: "Invalid credentials" });
       }
+
       const token = jwt.sign(
         { sub: user.id, email: user.email, role: user.role },
         JWT_SECRET,
         { expiresIn: "7d" }
       );
+
       return reply.send({
         token,
         user: {
@@ -102,12 +128,21 @@ export async function authRoutes(app) {
   /* -------- SUBSCRIPTION -------- */
   app.get("/subscription", { preHandler: requireAuth }, async (req, reply) => {
     try {
-      const result = await db.query("SELECT subscription FROM users WHERE id = $1", [req.identity.sub]);
+      const result = await db.query(
+        "SELECT subscription FROM users WHERE id = $1",
+        [req.identity.sub]
+      );
+
       if (!result.rowCount) {
         return reply.code(404).send({ error: "User not found" });
       }
+
       const tier = result.rows[0].subscription || "free";
-      return reply.send({ active: tier !== "free", tier });
+
+      return reply.send({
+        active: tier !== "free",
+        tier,
+      });
     } catch (err) {
       console.error("Subscription fetch error:", err);
       return reply.code(500).send({ error: "Internal server error" });
@@ -115,48 +150,62 @@ export async function authRoutes(app) {
   });
 
   /* -------- STRIPE CHECKOUT -------- */
-  app.post("/stripe/checkout", { preHandler: requireAuth }, async (req, reply) => {
-    const { tier } = req.body;
-    if (!tier) {
-      return reply.code(400).send({ error: "Missing subscription tier" });
+  app.post(
+    "/stripe/checkout",
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const { tier } = req.body;
+
+      if (!tier) {
+        return reply.code(400).send({ error: "Missing subscription tier" });
+      }
+
+      try {
+        const priceId =
+          tier === "pro"
+            ? process.env.STRIPE_PRO_PRICE_ID
+            : process.env.STRIPE_ENTERPRISE_PRICE_ID;
+
+        const session = await stripe.checkout.sessions.create({
+          mode: "subscription",
+          line_items: [{ price: priceId, quantity: 1 }],
+          customer_email: req.identity.email,
+          success_url: `${FRONTEND_URL}/subscription-success`,
+          cancel_url: `${FRONTEND_URL}/subscription-cancel`,
+          metadata: { tier },
+        });
+
+        return reply.send({ sessionId: session.id });
+      } catch (err) {
+        console.error("Stripe checkout error:", err);
+        return reply
+          .code(500)
+          .send({ error: "Failed to create checkout session" });
+      }
     }
-    try {
-      const priceId =
-        tier === "pro"
-          ? process.env.STRIPE_PRO_PRICE_ID
-          : process.env.STRIPE_ENTERPRISE_PRICE_ID;
-      const session = await stripe.checkout.sessions.create({
-        mode: "subscription",
-        line_items: [{ price: priceId, quantity: 1 }],
-        customer_email: req.identity.email,
-        success_url: `${FRONTEND_URL}/subscription-success`,
-        cancel_url: `${FRONTEND_URL}/subscription-cancel`,
-        metadata: { tier },
-      });
-      return reply.send({ sessionId: session.id });
-    } catch (err) {
-      console.error("Stripe checkout error:", err);
-      return reply.code(500).send({ error: "Failed to create checkout session" });
-    }
-  });
+  );
 
   /* -------- STRIPE WEBHOOK -------- */
   app.post("/stripe/webhook", async (req, reply) => {
     const sig = req.headers["stripe-signature"];
+
     try {
       const event = stripe.webhooks.constructEvent(
         req.rawBody,
         sig,
         process.env.STRIPE_WEBHOOK_SECRET
       );
+
       if (event.type === "checkout.session.completed") {
         const session = event.data.object;
         const tier = session.metadata?.tier || "pro";
-        await db.query("UPDATE users SET subscription = $1 WHERE email = $2", [
-          tier,
-          session.customer_email,
-        ]);
+
+        await db.query(
+          "UPDATE users SET subscription = $1 WHERE email = $2",
+          [tier, session.customer_email]
+        );
       }
+
       reply.send({ received: true });
     } catch (err) {
       console.error("Stripe webhook error:", err);
