@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../lib/api";
 
 const AuthContext = createContext(null);
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -10,52 +11,59 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Restore session on refresh
+  /* =========================
+     INIT SESSION (ON LOAD)
+  ========================= */
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (!token) {
+    if (token) {
+      refreshSession(token);
+    } else {
       setLoading(false);
-      return;
     }
-
-    refreshSession();
   }, []);
 
-  async function refreshSession() {
+  /* =========================
+     REFRESH SESSION
+  ========================= */
+  async function refreshSession(token) {
     try {
-      setLoading(true);
+      const res = await fetch(`${API_URL}/auth/subscription`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-      const data = await apiFetch("/auth/subscription");
+      if (!res.ok) throw new Error("Session invalid");
 
-      // backend returns: { active, tier }
-      setUser({ token: localStorage.getItem("token") });
-      setSubscription(data.tier || "free");
+      const data = await res.json();
+
+      setUser({ token });
+      setSubscription(data.subscription || "free");
     } catch (err) {
-      console.error("Session restore failed:", err);
+      console.warn("Session refresh failed:", err.message);
       logout(false);
     } finally {
       setLoading(false);
     }
   }
 
-  const login = async ({ user, token }) => {
-    localStorage.setItem("token", token);
-    setUser(user);
+  /* =========================
+     LOGIN
+  ========================= */
+  async function login(userData) {
+    localStorage.setItem("token", userData.token);
+    setUser(userData);
 
-    try {
-      const data = await apiFetch("/auth/subscription");
-      const tier = data.tier || "free";
+    await refreshSession(userData.token);
 
-      setSubscription(tier);
-      redirectByTier(tier);
-    } catch (err) {
-      console.error("Subscription fetch failed:", err);
-      setSubscription("free");
-      navigate("/dashboard", { replace: true });
-    }
-  };
+    redirectByTier(userData.subscription || "free");
+  }
 
-  const redirectByTier = (tier) => {
+  /* =========================
+     REDIRECT LOGIC
+  ========================= */
+  function redirectByTier(tier) {
     if (tier === "enterprise") {
       navigate("/streams", { replace: true });
     } else if (tier === "pro") {
@@ -63,14 +71,20 @@ export function AuthProvider({ children }) {
     } else {
       navigate("/dashboard", { replace: true });
     }
-  };
+  }
 
-  const logout = (redirect = true) => {
+  /* =========================
+     LOGOUT
+  ========================= */
+  function logout(redirect = true) {
     localStorage.removeItem("token");
     setUser(null);
     setSubscription("free");
-    if (redirect) navigate("/", { replace: true });
-  };
+
+    if (redirect) {
+      navigate("/", { replace: true });
+    }
+  }
 
   return (
     <AuthContext.Provider
@@ -83,11 +97,14 @@ export function AuthProvider({ children }) {
         refreshSession,
       }}
     >
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 }
 
+/* =========================
+   HOOK
+========================= */
 export function useAuth() {
   return useContext(AuthContext);
 }

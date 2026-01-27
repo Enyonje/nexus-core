@@ -1,21 +1,28 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
-import { useToast } from "./ToastContext";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useToast } from "./ToastContext.jsx";
+import { useNavigate } from "react-router-dom";
 
 export default function Subscription() {
-  const [sub, setSub] = useState(null);
+  const [tier, setTier] = useState("free");
+  const [active, setActive] = useState(false);
   const [loading, setLoading] = useState(true);
+
   const { addToast } = useToast();
   const navigate = useNavigate();
-  const location = useLocation();
 
+  /* =========================
+     LOAD SUBSCRIPTION
+  ========================= */
   async function loadSubscription() {
     try {
       const data = await apiFetch("/auth/subscription");
-      setSub(data);
+
+      setTier(data.tier || "free");
+      setActive(Boolean(data.active));
     } catch (err) {
-      addToast(err.message || "Failed to load subscription", "error");
+      addToast("Please login to view subscription", "error");
+      navigate("/login", { replace: true });
     } finally {
       setLoading(false);
     }
@@ -25,15 +32,9 @@ export default function Subscription() {
     loadSubscription();
   }, []);
 
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.get("success")) {
-      addToast("Subscription upgraded successfully!", "success");
-      loadSubscription();
-      navigate("/subscription", { replace: true });
-    }
-  }, [location]);
-
+  /* =========================
+     STRIPE UPGRADE
+  ========================= */
   async function handleUpgrade(tier) {
     try {
       const res = await apiFetch("/auth/stripe/checkout", {
@@ -41,42 +42,55 @@ export default function Subscription() {
         body: JSON.stringify({ tier }),
       });
 
+      if (!res.sessionId) {
+        throw new Error("Stripe session missing");
+      }
+
       const stripe = window.Stripe(
         import.meta.env.VITE_STRIPE_PUBLIC_KEY
       );
 
       await stripe.redirectToCheckout({ sessionId: res.sessionId });
     } catch (err) {
-      addToast(err.message || "Stripe checkout failed", "error");
+      addToast(err.message || "Checkout failed", "error");
     }
   }
 
-  if (loading) return <div className="p-6">Loading subscription…</div>;
+  /* =========================
+     UI STATES
+  ========================= */
+  if (loading) {
+    return <div className="p-6">Loading subscription…</div>;
+  }
 
   return (
     <div className="max-w-lg mx-auto mt-12 p-6 bg-white dark:bg-gray-900 rounded shadow">
       <h2 className="text-xl font-bold mb-4">Subscription</h2>
 
-      {sub?.active ? (
-        <p>
-          Current plan: <b>{sub.tier}</b>
-        </p>
-      ) : (
-        <p>No active subscription</p>
-      )}
+      <div className="mb-4">
+        <div>
+          Current Plan: <b className="capitalize">{tier}</b>
+        </div>
+        <div>Status: {active ? "Active" : "Inactive"}</div>
+      </div>
 
-      <div className="mt-6 space-x-3">
+      <div className="flex gap-3">
         <button
+          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+          disabled={tier === "pro"}
           onClick={() => handleUpgrade("pro")}
-          className="bg-blue-600 text-white px-4 py-2 rounded"
         >
-          Upgrade to Pro
+          {tier === "pro" ? "Pro Active" : "Upgrade to Pro"}
         </button>
+
         <button
+          className="bg-purple-600 text-white px-4 py-2 rounded disabled:opacity-50"
+          disabled={tier === "enterprise"}
           onClick={() => handleUpgrade("enterprise")}
-          className="bg-purple-600 text-white px-4 py-2 rounded"
         >
-          Upgrade to Enterprise
+          {tier === "enterprise"
+            ? "Enterprise Active"
+            : "Upgrade to Enterprise"}
         </button>
       </div>
     </div>
