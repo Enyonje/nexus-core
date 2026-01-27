@@ -14,17 +14,19 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
    AUTH MIDDLEWARE
 ========================= */
 export function requireAuth(req, reply, done) {
-  const auth = req.headers.authorization;
-  if (!auth) {
-    return reply.code(401).send({ error: "Missing Authorization header" });
-  }
-
-  const token = auth.replace("Bearer ", "");
   try {
+    const auth = req.headers.authorization;
+
+    if (!auth || !auth.startsWith("Bearer ")) {
+      return reply.code(401).send({ error: "Missing Authorization header" });
+    }
+
+    const token = auth.replace("Bearer ", "");
     const payload = jwt.verify(token, JWT_SECRET);
+
     req.identity = payload;
     done();
-  } catch {
+  } catch (err) {
     return reply.code(401).send({ error: "Invalid token" });
   }
 }
@@ -33,126 +35,157 @@ export function requireAuth(req, reply, done) {
    ROUTES
 ========================= */
 export async function authRoutes(server) {
-  // REGISTER
+  /* ---------- REGISTER ---------- */
   server.post("/register", async (req, reply) => {
-    const { email, password } = req.body;
+    try {
+      const { email, password } = req.body;
 
-    if (!email || !password) {
-      return reply.code(400).send({ error: "Email and password required" });
+      if (!email || !password) {
+        return reply.code(400).send({ error: "Email and password required" });
+      }
+
+      const exists = await db.query(
+        "SELECT id FROM users WHERE email = $1",
+        [email]
+      );
+
+      if (exists.rowCount) {
+        return reply.code(409).send({ error: "Email already exists" });
+      }
+
+      const hash = await bcrypt.hash(password, 10);
+
+      const result = await db.query(
+        `
+        INSERT INTO users (email, password_hash, role, subscription)
+        VALUES ($1, $2, 'user', 'free')
+        RETURNING id, email, role, subscription
+        `,
+        [email, hash]
+      );
+
+      const user = result.rows[0];
+
+      const token = jwt.sign(
+        { sub: user.id, email: user.email, role: user.role },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
+      reply.send({ token, user });
+    } catch (err) {
+      console.error("Register error:", err);
+      reply.code(500).send({ error: "Internal server error" });
     }
-
-    const exists = await db.query(
-      "SELECT id FROM users WHERE email = $1",
-      [email]
-    );
-
-    if (exists.rowCount) {
-      return reply.code(409).send({ error: "Email already exists" });
-    }
-
-    const hash = await bcrypt.hash(password, 10);
-
-    const result = await db.query(
-      `
-      INSERT INTO users (email, password_hash, role, subscription)
-      VALUES ($1, $2, 'user', 'free')
-      RETURNING id, email, role, subscription
-      `,
-      [email, hash]
-    );
-
-    const user = result.rows[0];
-
-    const token = jwt.sign(
-      { sub: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    reply.send({ token, user });
   });
 
-  // LOGIN
+  /* ---------- LOGIN ---------- */
   server.post("/login", async (req, reply) => {
-    const { email, password } = req.body;
+    try {
+      const { email, password } = req.body;
 
-    const result = await db.query(
-      "SELECT * FROM users WHERE email = $1",
-      [email]
-    );
+      if (!email || !password) {
+        return reply.code(400).send({ error: "Email and password required" });
+      }
 
-    if (!result.rowCount) {
-      return reply.code(401).send({ error: "Invalid credentials" });
+      const result = await db.query(
+        "SELECT * FROM users WHERE email = $1",
+        [email]
+      );
+
+      if (!result.rowCount) {
+        return reply.code(401).send({ error: "Invalid credentials" });
+      }
+
+      const user = result.rows[0];
+      const valid = await bcrypt.compare(password, user.password_hash);
+
+      if (!valid) {
+        return reply.code(401).send({ error: "Invalid credentials" });
+      }
+
+      const token = jwt.sign(
+        { sub: user.id, email: user.email, role: user.role },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
+      reply.send({
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          subscription: user.subscription,
+        },
+      });
+    } catch (err) {
+      console.error("Login error:", err);
+      reply.code(500).send({ error: "Internal server error" });
     }
-
-    const user = result.rows[0];
-    const valid = await bcrypt.compare(password, user.password_hash);
-
-    if (!valid) {
-      return reply.code(401).send({ error: "Invalid credentials" });
-    }
-
-    const token = jwt.sign(
-      { sub: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    reply.send({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        subscription: user.subscription,
-      },
-    });
   });
 
-  // SUBSCRIPTION STATUS
+  /* ---------- SUBSCRIPTION ---------- */
   server.get(
     "/subscription",
     { preHandler: requireAuth },
     async (req, reply) => {
-      const result = await db.query(
-        "SELECT subscription FROM users WHERE id = $1",
-        [req.identity.sub]
-      );
+      try {
+        const result = await db.query(
+          "SELECT subscription FROM users WHERE id = $1",
+          [req.identity.sub]
+        );
 
-      if (!result.rowCount) {
-        return reply.code(404).send({ error: "User not found" });
+        if (!result.rowCount) {
+          return reply.code(404).send({ error: "User not found" });
+        }
+
+        const subscription = result.rows[0].subscription || "free";
+
+        reply.send({
+          subscription,              // ✅ frontend expects this
+          tier: subscription,         // optional
+          active: subscription !== "free",
+        });
+      } catch (err) {
+        console.error("Subscription error:", err);
+        reply.code(500).send({ error: "Internal server error" });
       }
-
-      reply.send({
-        active: result.rows[0].subscription !== "free",
-        tier: result.rows[0].subscription,
-      });
     }
   );
 
-  // STRIPE CHECKOUT
+  /* ---------- STRIPE CHECKOUT ---------- */
   server.post(
     "/stripe/checkout",
     { preHandler: requireAuth },
     async (req, reply) => {
-      const { tier } = req.body;
+      try {
+        const { tier } = req.body;
 
-      const priceId =
-        tier === "pro"
-          ? process.env.STRIPE_PRO_PRICE_ID
-          : process.env.STRIPE_ENTERPRISE_PRICE_ID;
+        if (!tier) {
+          return reply.code(400).send({ error: "Missing tier" });
+        }
 
-      const session = await stripe.checkout.sessions.create({
-        mode: "subscription",
-        payment_method_types: ["card"],
-        line_items: [{ price: priceId, quantity: 1 }],
-        customer_email: req.identity.email,
-        success_url: `${FRONTEND_URL}/subscription?success=1`,
-        cancel_url: `${FRONTEND_URL}/subscription`,
-        metadata: { tier },
-      });
+        const priceId =
+          tier === "pro"
+            ? process.env.STRIPE_PRO_PRICE_ID
+            : process.env.STRIPE_ENTERPRISE_PRICE_ID;
 
-      reply.send({ sessionId: session.id });
+        const session = await stripe.checkout.sessions.create({
+          mode: "subscription",
+          payment_method_types: ["card"],
+          line_items: [{ price: priceId, quantity: 1 }],
+          customer_email: req.identity.email,
+          success_url: `${FRONTEND_URL}/subscription?success=1`,
+          cancel_url: `${FRONTEND_URL}/subscription`,
+          metadata: { tier },
+        });
+
+        reply.send({ sessionId: session.id });
+      } catch (err) {
+        console.error("Stripe checkout error:", err);
+        reply.code(500).send({ error: "Stripe checkout failed" });
+      }
     }
   );
 }
