@@ -1,38 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
 
 export default function Layout({ children, theme }) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, subscription, setSubscription } = useAuth();
 
-  useEffect(() => {
-    const fetchSubscription = async () => {
-      if (!user) return; // only fetch if logged in
-      try {
-        const res = await fetch("/auth/subscription", {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${user.token}`, // adjust if you store JWT differently
-          },
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          setSubscription(data.subscription);
-        } else {
-          console.error("Failed to fetch subscription:", res.status);
-          setSubscription("free");
-        }
-      } catch (err) {
-        console.error("Subscription fetch error:", err);
-        setSubscription("free");
-      }
-    };
-
-    fetchSubscription();
-  }, [user, setSubscription]);
+  const { user, subscription, loading } = useAuth();
 
   const styles = {
     wrapper: {
@@ -40,117 +14,118 @@ export default function Layout({ children, theme }) {
       backgroundColor: theme.colors.background,
       fontFamily: theme.typography.fontFamily,
       display: "flex",
-      flexDirection: "row",
     },
     sidebar: {
       width: "220px",
       backgroundColor: theme.colors.surface,
       borderRight: `1px solid ${theme.colors.divider}`,
-      display: "flex",
-      flexDirection: "column",
       padding: "1rem",
-      transition: "transform 0.3s ease-in-out",
-    },
-    sidebarHidden: {
-      transform: "translateX(-100%)",
-      position: "absolute",
-      top: 0,
-      left: 0,
-      height: "100%",
-      zIndex: 50,
     },
     navItem: (active) => ({
-      padding: "0.5rem 0.75rem",
+      display: "block",
+      padding: "0.6rem 0.75rem",
       marginBottom: "0.5rem",
       borderRadius: "6px",
       textDecoration: "none",
-      color: active ? theme.colors.primary : theme.colors.text.primary,
-      backgroundColor: active ? theme.colors.primaryLight : "transparent",
-      fontWeight: active ? "600" : "400",
+      color: active
+        ? theme.colors.primary
+        : theme.colors.text.primary,
+      backgroundColor: active
+        ? theme.colors.primaryLight
+        : "transparent",
+      fontWeight: active ? 600 : 400,
     }),
     content: {
       flex: 1,
-      display: "flex",
-      flexDirection: "column",
       padding: "1.5rem",
     },
     header: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
       borderBottom: `1px solid ${theme.colors.divider}`,
       paddingBottom: "0.75rem",
       marginBottom: "1rem",
       fontSize: "1.25rem",
-      fontWeight: "600",
-      color: theme.colors.text.primary,
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-    mobileToggle: {
-      display: "none",
-      cursor: "pointer",
+      fontWeight: 600,
     },
   };
 
+  if (loading) {
+    return (
+      <div style={{ padding: "2rem", color: theme.colors.text.secondary }}>
+        Loading session…
+      </div>
+    );
+  }
+
   return (
     <div style={styles.wrapper}>
-      {/* Sidebar Navigation */}
-      <aside
-        style={{
-          ...styles.sidebar,
-          ...(sidebarOpen ? {} : styles.sidebarHidden),
-        }}
-      >
-        <h2 style={{ marginBottom: "1rem", fontWeight: "700" }}>Nexus Core</h2>
+      {/* SIDEBAR */}
+      <aside style={styles.sidebar}>
+        <h2 style={{ marginBottom: "1rem", fontWeight: 700 }}>
+          Nexus Core
+        </h2>
 
-        {/* Always available */}
-        <Link to="/" style={styles.navItem(location.pathname === "/")}>
+        <Link
+          to="/"
+          style={styles.navItem(location.pathname === "/")}
+        >
           Dashboard
         </Link>
 
-        {/* Pro tier */}
-        {subscription === "pro" && (
-          <Link
-            to="/executions"
-            style={styles.navItem(location.pathname.startsWith("/executions"))}
-          >
-            Executions
-          </Link>
-        )}
-
-        {/* Enterprise tier */}
-        {subscription === "enterprise" && (
-          <>
-            <Link
-              to="/streams"
-              style={styles.navItem(location.pathname.startsWith("/streams"))}
-            >
-              Streams
-            </Link>
-            <Link
-              to="/audit"
-              style={styles.navItem(location.pathname.startsWith("/audit"))}
-            >
-              Audit Logs
-            </Link>
-          </>
-        )}
-
-        {/* Common links */}
         <Link
           to="/goals"
           style={styles.navItem(location.pathname.startsWith("/goals"))}
         >
           Goals
         </Link>
+
+        {/* PRO */}
+        {subscription === "pro" || subscription === "enterprise" ? (
+          <Link
+            to="/executions"
+            style={styles.navItem(
+              location.pathname.startsWith("/executions")
+            )}
+          >
+            Executions
+          </Link>
+        ) : null}
+
+        {/* ENTERPRISE */}
+        {subscription === "enterprise" && (
+          <>
+            <Link
+              to="/streams"
+              style={styles.navItem(
+                location.pathname.startsWith("/streams")
+              )}
+            >
+              Streams
+            </Link>
+            <Link
+              to="/audit"
+              style={styles.navItem(
+                location.pathname.startsWith("/audit")
+              )}
+            >
+              Audit Logs
+            </Link>
+          </>
+        )}
+
         <Link
-          to="/settings"
-          style={styles.navItem(location.pathname.startsWith("/settings"))}
+          to="/subscription"
+          style={styles.navItem(
+            location.pathname.startsWith("/subscription")
+          )}
         >
-          Settings
+          Subscription
         </Link>
       </aside>
 
-      {/* Main Content */}
+      {/* MAIN */}
       <main style={styles.content}>
         <div style={styles.header}>
           <span>
@@ -158,13 +133,14 @@ export default function Layout({ children, theme }) {
               ? "Dashboard"
               : location.pathname.replace("/", "").toUpperCase()}
           </span>
-          <button
-            style={styles.mobileToggle}
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-          >
-            ☰
-          </button>
+
+          {user && (
+            <span style={{ fontSize: "0.85rem", opacity: 0.7 }}>
+              {subscription?.toUpperCase() || "FREE"}
+            </span>
+          )}
         </div>
+
         {children}
       </main>
     </div>
