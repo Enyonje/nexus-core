@@ -1,48 +1,41 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../lib/api";
 
 const AuthContext = createContext(null);
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [subscription, setSubscription] = useState("free");
   const [loading, setLoading] = useState(true);
+
   const navigate = useNavigate();
 
   /* =========================
-     INIT SESSION (ON LOAD)
+     INITIAL SESSION LOAD
   ========================= */
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (token) {
-      refreshSession(token);
-    } else {
+    if (!token) {
       setLoading(false);
+      return;
     }
+
+    refreshSession();
   }, []);
 
   /* =========================
      REFRESH SESSION
   ========================= */
-  async function refreshSession(token) {
+  async function refreshSession() {
     try {
-      const res = await fetch(`${API_URL}/auth/subscription`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const data = await apiFetch("/auth/subscription");
 
-      if (!res.ok) throw new Error("Session invalid");
-
-      const data = await res.json();
-
-      setUser({ token });
-      setSubscription(data.subscription || "free");
+      setSubscription(data.tier || "free");
+      setUser({ token: localStorage.getItem("token") });
     } catch (err) {
-      console.warn("Session refresh failed:", err.message);
-      logout(false);
+      console.warn("Session invalid");
+      logout();
     } finally {
       setLoading(false);
     }
@@ -51,39 +44,23 @@ export function AuthProvider({ children }) {
   /* =========================
      LOGIN
   ========================= */
-  async function login(userData) {
-    localStorage.setItem("token", userData.token);
-    setUser(userData);
+  async function login(loginResponse) {
+    localStorage.setItem("token", loginResponse.token);
+    setUser(loginResponse.user);
 
-    await refreshSession(userData.token);
+    await refreshSession();
 
-    redirectByTier(userData.subscription || "free");
-  }
-
-  /* =========================
-     REDIRECT LOGIC
-  ========================= */
-  function redirectByTier(tier) {
-    if (tier === "enterprise") {
-      navigate("/streams", { replace: true });
-    } else if (tier === "pro") {
-      navigate("/executions", { replace: true });
-    } else {
-      navigate("/dashboard", { replace: true });
-    }
+    navigate("/dashboard", { replace: true });
   }
 
   /* =========================
      LOGOUT
   ========================= */
-  function logout(redirect = true) {
+  function logout() {
     localStorage.removeItem("token");
     setUser(null);
     setSubscription("free");
-
-    if (redirect) {
-      navigate("/", { replace: true });
-    }
+    navigate("/login", { replace: true });
   }
 
   return (
@@ -94,7 +71,6 @@ export function AuthProvider({ children }) {
         loading,
         login,
         logout,
-        refreshSession,
       }}
     >
       {children}
@@ -102,9 +78,6 @@ export function AuthProvider({ children }) {
   );
 }
 
-/* =========================
-   HOOK
-========================= */
 export function useAuth() {
   return useContext(AuthContext);
 }

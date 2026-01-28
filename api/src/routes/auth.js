@@ -125,34 +125,37 @@ export async function authRoutes(server) {
     }
   });
 
-  /* ---------- SUBSCRIPTION ---------- */
+ // SUBSCRIPTION STATUS
   server.get(
-    "/subscription",
-    { preHandler: requireAuth },
-    async (req, reply) => {
-      try {
-        const result = await db.query(
-          "SELECT subscription FROM users WHERE id = $1",
-          [req.identity.sub]
-        );
+  "/subscription",
+  { preHandler: requireAuth },
+  async (req, reply) => {
+    try {
+      const userId = req.identity?.sub;
 
-        if (!result.rowCount) {
-          return reply.code(404).send({ error: "User not found" });
-        }
-
-        const subscription = result.rows[0].subscription || "free";
-
-        reply.send({
-          subscription,              // ✅ frontend expects this
-          tier: subscription,         // optional
-          active: subscription !== "free",
-        });
-      } catch (err) {
-        console.error("Subscription error:", err);
-        reply.code(500).send({ error: "Internal server error" });
+      if (!userId) {
+        return reply.code(401).send({ error: "Invalid session" });
       }
+
+      const result = await db.query(
+        "SELECT subscription FROM users WHERE id = $1",
+        [userId]
+      );
+
+      if (!result.rowCount) {
+        return reply.code(404).send({ error: "User not found" });
+      }
+
+      reply.send({
+        tier: result.rows[0].subscription,
+        active: result.rows[0].subscription !== "free",
+      });
+    } catch (err) {
+      console.error("Subscription fetch failed:", err);
+      reply.code(500).send({ error: "Internal Server Error" });
     }
-  );
+  }
+);
 
   /* ---------- STRIPE CHECKOUT ---------- */
   server.post(
