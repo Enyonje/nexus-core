@@ -2,7 +2,6 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const AuthContext = createContext(null);
-
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 export function AuthProvider({ children }) {
@@ -12,7 +11,7 @@ export function AuthProvider({ children }) {
   const navigate = useNavigate();
 
   /* =========================
-     INIT SESSION (ON LOAD)
+     INIT SESSION
   ========================= */
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -34,12 +33,12 @@ export function AuthProvider({ children }) {
         },
       });
 
-      if (!res.ok) throw new Error("Session invalid");
+      if (!res.ok) throw new Error("Invalid session");
 
       const data = await res.json();
 
       setUser({ token });
-      setSubscription(data.subscription || "free");
+      setSubscription(data.tier || "free");
     } catch (err) {
       console.warn("Session refresh failed:", err.message);
       logout(false);
@@ -51,17 +50,14 @@ export function AuthProvider({ children }) {
   /* =========================
      LOGIN
   ========================= */
-  async function login(userData) {
-    localStorage.setItem("token", userData.token);
-    setUser(userData);
-
-    await refreshSession(userData.token);
-
-    redirectByTier(userData.subscription || "free");
+  async function login({ token }) {
+    localStorage.setItem("token", token);
+    await refreshSession(token);
+    redirectByTier(subscription);
   }
 
   /* =========================
-     REDIRECT LOGIC
+     REDIRECT
   ========================= */
   function redirectByTier(tier) {
     if (tier === "enterprise") {
@@ -80,10 +76,9 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("token");
     setUser(null);
     setSubscription("free");
+    setLoading(false);
 
-    if (redirect) {
-      navigate("/", { replace: true });
-    }
+    if (redirect) navigate("/", { replace: true });
   }
 
   return (
@@ -94,7 +89,6 @@ export function AuthProvider({ children }) {
         loading,
         login,
         logout,
-        refreshSession,
       }}
     >
       {children}
@@ -102,9 +96,6 @@ export function AuthProvider({ children }) {
   );
 }
 
-/* =========================
-   HOOK
-========================= */
 export function useAuth() {
   return useContext(AuthContext);
 }

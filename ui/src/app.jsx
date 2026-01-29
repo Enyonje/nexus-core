@@ -6,12 +6,15 @@ import Layout from "./components/Layout.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import ExecutionList from "./components/ExecutionList.jsx";
 import ExecutionDetail from "./components/ExecutionDetail.jsx";
+import Subscription from "./components/Subscription.jsx";
+import Goals from "./components/Goals.jsx";
+
 import Login from "./components/Login.jsx";
 import Register from "./components/Register.jsx";
-import Subscription from "./components/Subscription.jsx";
 import ForgotPassword from "./components/ForgotPassword.jsx";
 import ResetPassword from "./components/ResetPassword.jsx";
 import LandingPage from "./components/LandingPage.jsx";
+
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { lightTheme, darkTheme } from "./theme";
 import { AuthProvider } from "./context/AuthProvider.jsx";
@@ -24,39 +27,45 @@ export default function App() {
     <AuthProvider>
       <div
         style={{
-          display: "flex",
-          flexDirection: "column",
-          height: "100vh",
+          minHeight: "100vh",
           fontFamily: theme.typography.fontFamily,
           backgroundColor: theme.colors.background,
           color: theme.colors.text.primary,
         }}
       >
+        {/* Navbar is global */}
         <Navbar
           onToggleTheme={() => setIsDark(!isDark)}
           isDark={isDark}
           theme={theme}
         />
 
-        <Layout theme={theme}>
-          <Routes>
-            {/* Public routes */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/subscription" element={<Subscription />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
+        <Routes>
+          {/* =======================
+              PUBLIC ROUTES
+          ======================= */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
-            {/* Protected routes */}
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute allowed={["free", "pro", "enterprise"]}>
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
+          {/* =======================
+              PROTECTED APP SHELL
+          ======================= */}
+          <Route
+            element={
+              <ProtectedRoute allowed={["free", "pro", "enterprise"]}>
+                <Layout theme={theme} />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/dashboard" element={<Dashboard />} />
+
+            {/* FREE: goals + limited execution */}
+            <Route path="/goals" element={<Goals />} />
+
+            {/* PRO & ENTERPRISE */}
             <Route
               path="/executions"
               element={
@@ -73,9 +82,16 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
-            {/* Add enterprise-only routes here */}
-          </Routes>
-        </Layout>
+
+            {/* Subscription must be logged-in */}
+            <Route path="/subscription" element={<Subscription />} />
+          </Route>
+
+          {/* =======================
+              FALLBACK
+          ======================= */}
+          <Route path="*" element={<LandingPage />} />
+        </Routes>
       </div>
     </AuthProvider>
   );

@@ -1,43 +1,17 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
-import { apiFetch } from "../lib/api";
 
 export default function Layout({ children }) {
   const location = useLocation();
-  const { user, subscription, setSubscription } = useAuth();
-  const [loading, setLoading] = useState(true);
-
-  /* =========================
-     LOAD SUBSCRIPTION SAFELY
-  ========================= */
-  useEffect(() => {
-    async function loadSubscription() {
-      if (!user?.token) {
-        setSubscription("free");
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const data = await apiFetch("/auth/subscription");
-        setSubscription(data.tier || "free");
-      } catch {
-        setSubscription("free");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadSubscription();
-  }, [user, setSubscription]);
+  const { subscription, loading } = useAuth();
 
   if (loading) return null;
 
   const navItem = (path, label) => (
     <Link
       to={path}
-      className={`block px-3 py-2 rounded text-sm ${
+      className={`block px-3 py-2 rounded text-sm font-medium ${
         location.pathname.startsWith(path)
           ? "bg-blue-600 text-white"
           : "hover:bg-gray-200 dark:hover:bg-gray-700"
@@ -56,20 +30,20 @@ export default function Layout({ children }) {
         {navItem("/dashboard", "Dashboard")}
         {navItem("/goals", "Goals")}
 
-        {/* ✅ EXECUTIONS AVAILABLE FOR FREE */}
+        {/* ✅ FREE USERS CAN EXECUTE (LIMITED) */}
         {navItem("/executions", "Executions")}
 
-        {/* PRO+ */}
+        {/* PRO + ENTERPRISE */}
         {subscription !== "free" && navItem("/streams", "Streams")}
 
-        {/* ENTERPRISE */}
+        {/* ENTERPRISE ONLY */}
         {subscription === "enterprise" && navItem("/audit", "Audit Logs")}
 
         {navItem("/subscription", "Subscription")}
       </aside>
 
       {/* CONTENT */}
-      <main className="flex-1 p-6">{children}</main>
+      <main className="flex-1 p-6 overflow-y-auto">{children}</main>
     </div>
   );
 }
