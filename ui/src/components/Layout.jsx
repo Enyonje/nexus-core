@@ -1,8 +1,8 @@
 import React from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
 
-export default function Layout({ children }) {
+export default function Layout({ theme }) {
   const location = useLocation();
   const { subscription, loading } = useAuth();
 
@@ -30,7 +30,7 @@ export default function Layout({ children }) {
         {navItem("/dashboard", "Dashboard")}
         {navItem("/goals", "Goals")}
 
-        {/* ✅ FREE USERS CAN EXECUTE (LIMITED) */}
+        {/* FREE USERS CAN EXECUTE (LIMITED) */}
         {navItem("/executions", "Executions")}
 
         {/* PRO + ENTERPRISE */}
@@ -43,7 +43,10 @@ export default function Layout({ children }) {
       </aside>
 
       {/* CONTENT */}
-      <main className="flex-1 p-6 overflow-y-auto">{children}</main>
+      <main className="flex-1 p-6 overflow-y-auto">
+        {/* ✅ Outlet renders nested routes from App.jsx */}
+        <Outlet />
+      </main>
     </div>
   );
 }

@@ -26,6 +26,7 @@ export default function ExecutionList() {
         <thead>
           <tr className="bg-gray-100 dark:bg-gray-800 text-left text-sm text-gray-600 dark:text-gray-300">
             <th className="p-2">ID</th>
+            <th className="p-2">Goal Title</th>
             <th className="p-2">Goal Type</th>
             <th className="p-2">Status</th>
             <th className="p-2">Started</th>
@@ -36,9 +37,15 @@ export default function ExecutionList() {
           {executions.map((exec) => (
             <tr key={exec.id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-900">
               <td className="p-2">
-                <Link to={`/executions/${exec.id}`} className="text-blue-600 dark:text-blue-400 underline">
+                <Link
+                  to={`/executions/${exec.id}`}
+                  className="text-blue-600 dark:text-blue-400 underline"
+                >
                   {exec.id.slice(0, 8)}…
                 </Link>
+              </td>
+              <td className="p-2">
+                {exec.goal_payload?.title || "Untitled goal"}
               </td>
               <td className="p-2">{exec.goal_type}</td>
               <td className="p-2">
@@ -57,9 +64,14 @@ export default function ExecutionList() {
 function StatusBadge({ status }) {
   const base = "px-2 py-1 rounded text-xs font-medium";
   const styles = {
-    RUNNING: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-    COMPLETED: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-    FAILED: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+    running: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+    completed: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+    failed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+    blocked: "bg-gray-300 text-gray-800 dark:bg-gray-700 dark:text-gray-200",
   };
-  return <span className={`${base} ${styles[status] || "bg-gray-200 text-gray-800"}`}>{status}</span>;
+  return (
+    <span className={`${base} ${styles[status?.toLowerCase()] || "bg-gray-200 text-gray-800"}`}>
+      {status}
+    </span>
+  );
 }

@@ -4,93 +4,165 @@ import { useToast } from "./ToastContext.jsx";
 
 export default function Goals() {
   const [goals, setGoals] = useState([]);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [goalType, setGoalType] = useState("");
+  const [running, setRunning] = useState(null); // track which goal is running
 
   const { addToast } = useToast();
 
+  /* =========================
+     LOAD GOALS
+  ========================= */
   async function loadGoals() {
     try {
       const data = await apiFetch("/goals");
       setGoals(data || []);
     } catch (err) {
-      addToast("Failed to load goals", "error");
+      addToast(err.message || "Failed to load goals", "error");
     } finally {
       setLoading(false);
     }
   }
 
-  async function createGoal() {
-    if (!goalType) {
-      addToast("Select a goal type", "error");
+  useEffect(() => {
+    loadGoals();
+  }, []);
+
+  /* =========================
+     CREATE GOAL
+  ========================= */
+  async function createGoal(e) {
+    e.preventDefault();
+
+    if (!title.trim()) {
+      addToast("Goal title is required", "error");
       return;
     }
 
+    setCreating(true);
     try {
-      setCreating(true);
       const newGoal = await apiFetch("/goals", {
         method: "POST",
-        body: JSON.stringify({ goal_type: goalType }),
+        body: JSON.stringify({
+          goalType: "analysis", // adjust type as needed
+          payload: { title, description },
+        }),
       });
 
       setGoals((prev) => [newGoal, ...prev]);
-      setGoalType("");
-      addToast("Goal created", "success");
+      setTitle("");
+      setDescription("");
+      addToast("Goal created successfully", "success");
     } catch (err) {
-      addToast(err.message || "Goal limit reached", "error");
+      addToast(err.message || "Failed to create goal", "error");
     } finally {
       setCreating(false);
     }
   }
 
+  /* =========================
+     RUN EXECUTION
+  ========================= */
+  async function runExecution(goalId) {
+    setRunning(goalId);
+    try {
+      const res = await apiFetch(`/executions/${goalId}/run`, {
+        method: "POST",
+      });
+      addToast(`Execution started for goal ${goalId}`, "success");
+    } catch (err) {
+      addToast(err.message || "Failed to start execution", "error");
+    } finally {
+      setRunning(null);
+    }
+  }
+
+  /* =========================
+     UI
+  ========================= */
   if (loading) {
-    return <div className="p-6">Loading goals…</div>;
+    return <div className="p-6 text-gray-500">Loading goals…</div>;
   }
 
   return (
-    <div className="max-w-3xl mx-auto p-6">
-      <h2 className="text-xl font-bold mb-4">Goals</h2>
-
-      {/* Create goal */}
-      <div className="flex gap-2 mb-6">
-        <input
-          className="border px-3 py-2 rounded w-full"
-          placeholder="Goal type (e.g. research, scrape, analyze)"
-          value={goalType}
-          onChange={(e) => setGoalType(e.target.value)}
-        />
-        <button
-          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
-          disabled={creating}
-          onClick={createGoal}
-        >
-          Create
-        </button>
+    <div className="max-w-3xl mx-auto space-y-8">
+      {/* HEADER */}
+      <div>
+        <h1 className="text-2xl font-bold">Goals</h1>
+        <p className="text-gray-500 text-sm">
+          Create goals to run executions and test Nexus Core.
+        </p>
       </div>
 
-      {/* Goal list */}
-      {goals.length === 0 ? (
-        <div className="text-gray-500">No goals yet</div>
-      ) : (
-        <ul className="space-y-3">
-          {goals.map((g) => (
-            <li
-              key={g.id}
-              className="border rounded p-4 flex justify-between"
+      {/* CREATE GOAL */}
+      <form
+        onSubmit={createGoal}
+        className="bg-white dark:bg-gray-900 p-4 rounded shadow space-y-3"
+      >
+        <input
+          type="text"
+          placeholder="Goal title (e.g. Analyze market trends)"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="w-full p-2 border rounded"
+        />
+
+        <textarea
+          placeholder="Optional description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className="w-full p-2 border rounded"
+          rows={3}
+        />
+
+        <button
+          type="submit"
+          disabled={creating}
+          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-60"
+        >
+          {creating ? "Creating…" : "Create Goal"}
+        </button>
+      </form>
+
+      {/* GOALS LIST */}
+      <div className="space-y-4">
+        {goals.length === 0 ? (
+          <div className="text-gray-500 text-sm">
+            No goals yet. Create your first goal above.
+          </div>
+        ) : (
+          goals.map((goal) => (
+            <div
+              key={goal.id}
+              className="bg-white dark:bg-gray-800 p-4 rounded shadow flex justify-between items-center"
             >
               <div>
-                <div className="font-semibold capitalize">
-                  {g.goal_type}
+                <div className="font-medium">
+                  {goal.goal_payload?.title || "Untitled goal"}
                 </div>
-                <div className="text-sm text-gray-500">
-                  Created {new Date(g.created_at).toLocaleString()}
+                {goal.goal_payload?.description && (
+                  <div className="text-xs text-gray-500">
+                    {goal.goal_payload.description}
+                  </div>
+                )}
+                <div className="text-xs text-gray-500">
+                  Created {new Date(goal.created_at).toLocaleString()}
                 </div>
               </div>
-            </li>
-          ))}
-        </ul>
-      )}
+
+              <button
+                onClick={() => runExecution(goal.id)}
+                disabled={running === goal.id}
+                className="text-sm text-blue-600 hover:underline"
+              >
+                {running === goal.id ? "Running…" : "Run →"}
+              </button>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

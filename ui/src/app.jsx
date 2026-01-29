@@ -61,11 +61,8 @@ export default function App() {
             }
           >
             <Route path="/dashboard" element={<Dashboard />} />
-
-            {/* FREE: goals + limited execution */}
             <Route path="/goals" element={<Goals />} />
 
-            {/* PRO & ENTERPRISE */}
             <Route
               path="/executions"
               element={
@@ -83,7 +80,6 @@ export default function App() {
               }
             />
 
-            {/* Subscription must be logged-in */}
             <Route path="/subscription" element={<Subscription />} />
           </Route>
 

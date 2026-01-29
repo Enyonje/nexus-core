@@ -39,9 +39,11 @@ export function AuthProvider({ children }) {
 
       setUser({ token });
       setSubscription(data.tier || "free");
+      return data.tier || "free"; // ✅ return tier for login flow
     } catch (err) {
       console.warn("Session refresh failed:", err.message);
       logout(false);
+      return "free";
     } finally {
       setLoading(false);
     }
@@ -52,8 +54,8 @@ export function AuthProvider({ children }) {
   ========================= */
   async function login({ token }) {
     localStorage.setItem("token", token);
-    await refreshSession(token);
-    redirectByTier(subscription);
+    const tier = await refreshSession(token);
+    redirectByTier(tier); // ✅ use returned tier, not stale state
   }
 
   /* =========================
@@ -86,6 +88,7 @@ export function AuthProvider({ children }) {
       value={{
         user,
         subscription,
+        setSubscription, // ✅ expose setter
         loading,
         login,
         logout,
