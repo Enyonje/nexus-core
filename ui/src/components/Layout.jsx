@@ -1,148 +1,75 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
+import { apiFetch } from "../lib/api";
 
-export default function Layout({ children, theme }) {
+export default function Layout({ children }) {
   const location = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user, subscription, setSubscription } = useAuth();
+  const [loading, setLoading] = useState(true);
 
-  const { user, subscription, loading } = useAuth();
+  /* =========================
+     LOAD SUBSCRIPTION SAFELY
+  ========================= */
+  useEffect(() => {
+    async function loadSubscription() {
+      if (!user?.token) {
+        setSubscription("free");
+        setLoading(false);
+        return;
+      }
 
-  const styles = {
-    wrapper: {
-      minHeight: "100vh",
-      backgroundColor: theme.colors.background,
-      fontFamily: theme.typography.fontFamily,
-      display: "flex",
-    },
-    sidebar: {
-      width: "220px",
-      backgroundColor: theme.colors.surface,
-      borderRight: `1px solid ${theme.colors.divider}`,
-      padding: "1rem",
-    },
-    navItem: (active) => ({
-      display: "block",
-      padding: "0.6rem 0.75rem",
-      marginBottom: "0.5rem",
-      borderRadius: "6px",
-      textDecoration: "none",
-      color: active
-        ? theme.colors.primary
-        : theme.colors.text.primary,
-      backgroundColor: active
-        ? theme.colors.primaryLight
-        : "transparent",
-      fontWeight: active ? 600 : 400,
-    }),
-    content: {
-      flex: 1,
-      padding: "1.5rem",
-    },
-    header: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      borderBottom: `1px solid ${theme.colors.divider}`,
-      paddingBottom: "0.75rem",
-      marginBottom: "1rem",
-      fontSize: "1.25rem",
-      fontWeight: 600,
-    },
-  };
+      try {
+        const data = await apiFetch("/auth/subscription");
+        setSubscription(data.tier || "free");
+      } catch {
+        setSubscription("free");
+      } finally {
+        setLoading(false);
+      }
+    }
 
-  if (loading) {
-    return (
-      <div style={{ padding: "2rem", color: theme.colors.text.secondary }}>
-        Loading session…
-      </div>
-    );
-  }
+    loadSubscription();
+  }, [user, setSubscription]);
+
+  if (loading) return null;
+
+  const navItem = (path, label) => (
+    <Link
+      to={path}
+      className={`block px-3 py-2 rounded text-sm ${
+        location.pathname.startsWith(path)
+          ? "bg-blue-600 text-white"
+          : "hover:bg-gray-200 dark:hover:bg-gray-700"
+      }`}
+    >
+      {label}
+    </Link>
+  );
 
   return (
-    <div style={styles.wrapper}>
+    <div className="min-h-screen flex bg-gray-50 dark:bg-gray-900">
       {/* SIDEBAR */}
-      <aside style={styles.sidebar}>
-        <h2 style={{ marginBottom: "1rem", fontWeight: 700 }}>
-          Nexus Core
-        </h2>
+      <aside className="w-56 bg-white dark:bg-gray-800 p-4 space-y-2 border-r">
+        <h2 className="font-bold mb-4">Nexus Core</h2>
 
-        <Link
-          to="/"
-          style={styles.navItem(location.pathname === "/")}
-        >
-          Dashboard
-        </Link>
+        {navItem("/dashboard", "Dashboard")}
+        {navItem("/goals", "Goals")}
 
-        <Link
-          to="/goals"
-          style={styles.navItem(location.pathname.startsWith("/goals"))}
-        >
-          Goals
-        </Link>
+        {/* ✅ EXECUTIONS AVAILABLE FOR FREE */}
+        {navItem("/executions", "Executions")}
 
-        {/* PRO */}
-        {subscription === "pro" || subscription === "enterprise" ? (
-          <Link
-            to="/executions"
-            style={styles.navItem(
-              location.pathname.startsWith("/executions")
-            )}
-          >
-            Executions
-          </Link>
-        ) : null}
+        {/* PRO+ */}
+        {subscription !== "free" && navItem("/streams", "Streams")}
 
         {/* ENTERPRISE */}
-        {subscription === "enterprise" && (
-          <>
-            <Link
-              to="/streams"
-              style={styles.navItem(
-                location.pathname.startsWith("/streams")
-              )}
-            >
-              Streams
-            </Link>
-            <Link
-              to="/audit"
-              style={styles.navItem(
-                location.pathname.startsWith("/audit")
-              )}
-            >
-              Audit Logs
-            </Link>
-          </>
-        )}
+        {subscription === "enterprise" && navItem("/audit", "Audit Logs")}
 
-        <Link
-          to="/subscription"
-          style={styles.navItem(
-            location.pathname.startsWith("/subscription")
-          )}
-        >
-          Subscription
-        </Link>
+        {navItem("/subscription", "Subscription")}
       </aside>
 
-      {/* MAIN */}
-      <main style={styles.content}>
-        <div style={styles.header}>
-          <span>
-            {location.pathname === "/"
-              ? "Dashboard"
-              : location.pathname.replace("/", "").toUpperCase()}
-          </span>
-
-          {user && (
-            <span style={{ fontSize: "0.85rem", opacity: 0.7 }}>
-              {subscription?.toUpperCase() || "FREE"}
-            </span>
-          )}
-        </div>
-
-        {children}
-      </main>
+      {/* CONTENT */}
+      <main className="flex-1 p-6">{children}</main>
     </div>
   );
 }

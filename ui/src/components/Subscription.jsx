@@ -12,17 +12,30 @@ export default function Subscription() {
   const navigate = useNavigate();
 
   /* =========================
-     LOAD SUBSCRIPTION
+     LOAD SUBSCRIPTION (SAFE)
   ========================= */
   async function loadSubscription() {
+    setLoading(true);
+
     try {
       const data = await apiFetch("/auth/subscription");
 
-      setTier(data.tier || "free");
-      setActive(Boolean(data.active));
+      // ✅ Always normalize response
+      setTier(data?.tier ?? "free");
+      setActive(Boolean(data?.active));
     } catch (err) {
-      addToast("Please login to view subscription", "error");
-      navigate("/login", { replace: true });
+      console.warn("Subscription load failed:", err.message);
+
+      // ✅ NEVER crash or parse HTML
+      setTier("free");
+      setActive(false);
+
+      if (err.message.toLowerCase().includes("authorization")) {
+        addToast("Please log in to view subscription", "error");
+        navigate("/login", { replace: true });
+      } else {
+        addToast("Unable to load subscription", "error");
+      }
     } finally {
       setLoading(false);
     }
@@ -33,17 +46,21 @@ export default function Subscription() {
   }, []);
 
   /* =========================
-     STRIPE UPGRADE
+     STRIPE UPGRADE (SAFE)
   ========================= */
-  async function handleUpgrade(tier) {
+  async function handleUpgrade(targetTier) {
     try {
       const res = await apiFetch("/auth/stripe/checkout", {
         method: "POST",
-        body: JSON.stringify({ tier }),
+        body: JSON.stringify({ tier: targetTier }),
       });
 
-      if (!res.sessionId) {
+      if (!res?.sessionId) {
         throw new Error("Stripe session missing");
+      }
+
+      if (!window.Stripe) {
+        throw new Error("Stripe not loaded");
       }
 
       const stripe = window.Stripe(
@@ -52,6 +69,7 @@ export default function Subscription() {
 
       await stripe.redirectToCheckout({ sessionId: res.sessionId });
     } catch (err) {
+      console.error("Stripe error:", err);
       addToast(err.message || "Checkout failed", "error");
     }
   }
@@ -60,18 +78,32 @@ export default function Subscription() {
      UI STATES
   ========================= */
   if (loading) {
-    return <div className="p-6">Loading subscription…</div>;
+    return (
+      <div className="p-6 text-gray-500 dark:text-gray-400">
+        Loading subscription…
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-lg mx-auto mt-12 p-6 bg-white dark:bg-gray-900 rounded shadow">
+    <div className="max-w-lg mx-auto mt-12 p-6 bg-white dark:bg-gray-900 rounded-xl shadow">
       <h2 className="text-xl font-bold mb-4">Subscription</h2>
 
-      <div className="mb-4">
+      <div className="mb-6 space-y-1">
         <div>
-          Current Plan: <b className="capitalize">{tier}</b>
+          Current Plan:{" "}
+          <b className="capitalize">{tier}</b>
         </div>
-        <div>Status: {active ? "Active" : "Inactive"}</div>
+        <div>
+          Status:{" "}
+          <span
+            className={
+              active ? "text-green-600" : "text-gray-500"
+            }
+          >
+            {active ? "Active" : "Inactive"}
+          </span>
+        </div>
       </div>
 
       <div className="flex gap-3">
