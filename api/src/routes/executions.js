@@ -1,4 +1,3 @@
-import { db } from "../db/db.js";
 import { runExecution } from "../execution/runner.js";
 import { requireAuth } from "./auth.js";
 
@@ -8,7 +7,8 @@ export async function executionsRoutes(server) {
     try {
       const userId = req.identity.sub;
 
-      const { rows } = await db.query(
+      const client = await server.pg.connect();
+      const { rows } = await client.query(
         `SELECT
            e.id,
            e.status,
@@ -23,10 +23,11 @@ export async function executionsRoutes(server) {
          LIMIT 20`,
         [userId]
       );
+      client.release();
 
       return reply.send(rows);
     } catch (err) {
-      console.error("Fetch executions failed:", err);
+      server.log.error("Fetch executions failed:", err);
       return reply.code(500).send({ error: "Failed to load executions" });
     }
   });
@@ -37,14 +38,15 @@ export async function executionsRoutes(server) {
       const userId = req.identity.sub;
       const { id } = req.params;
 
-      const subRes = await db.query(
+      const client = await server.pg.connect();
+      const subRes = await client.query(
         "SELECT subscription FROM users WHERE id = $1",
         [userId]
       );
       const tier = subRes.rows[0]?.subscription || "free";
 
       if (tier === "free") {
-        const countRes = await db.query(
+        const countRes = await client.query(
           `SELECT COUNT(*)
            FROM executions e
            JOIN goals g ON g.id = e.goal_id
@@ -53,16 +55,19 @@ export async function executionsRoutes(server) {
         );
 
         if (Number(countRes.rows[0].count) >= 5) {
+          client.release();
           return reply.code(403).send({
             error: "Free tier limit reached. Upgrade to continue.",
           });
         }
       }
 
+      client.release();
+
       runExecution(id);
       return reply.send({ status: "started", executionId: id });
     } catch (err) {
-      console.error("Execution start failed:", err);
+      server.log.error("Execution start failed:", err);
       return reply.code(500).send({ error: "Failed to start execution" });
     }
   });

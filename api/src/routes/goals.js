@@ -1,4 +1,3 @@
-import { db } from "../db/db.js";
 import { requireAuth } from "./auth.js";
 
 export async function goalsRoutes(server) {
@@ -12,16 +11,18 @@ export async function goalsRoutes(server) {
         return reply.code(400).send({ error: "goalType and payload are required" });
       }
 
-      const result = await db.query(
+      const client = await server.pg.connect();
+      const result = await client.query(
         `INSERT INTO goals (submitted_by, goal_type, goal_payload, created_at)
          VALUES ($1, $2, $3, NOW())
          RETURNING *`,
         [userId, goalType, payload]
       );
+      client.release();
 
       return reply.send(result.rows[0]);
     } catch (err) {
-      console.error("Create goal failed:", err);
+      server.log.error("Create goal failed:", err);
       return reply.code(500).send({ error: "Failed to create goal" });
     }
   });
@@ -31,14 +32,16 @@ export async function goalsRoutes(server) {
     try {
       const userId = req.identity.sub;
 
-      const result = await db.query(
+      const client = await server.pg.connect();
+      const result = await client.query(
         `SELECT * FROM goals WHERE submitted_by = $1 ORDER BY created_at DESC`,
         [userId]
       );
+      client.release();
 
       return reply.send(result.rows);
     } catch (err) {
-      console.error("Fetch goals failed:", err);
+      server.log.error("Fetch goals failed:", err);
       return reply.code(500).send({ error: "Failed to load goals" });
     }
   });
@@ -49,10 +52,12 @@ export async function goalsRoutes(server) {
       const userId = req.identity.sub;
       const { id } = req.params;
 
-      const result = await db.query(
+      const client = await server.pg.connect();
+      const result = await client.query(
         `SELECT * FROM goals WHERE id = $1 AND submitted_by = $2`,
         [id, userId]
       );
+      client.release();
 
       if (!result.rows.length) {
         return reply.code(404).send({ error: "Goal not found" });
@@ -60,7 +65,7 @@ export async function goalsRoutes(server) {
 
       return reply.send(result.rows[0]);
     } catch (err) {
-      console.error("Fetch goal failed:", err);
+      server.log.error("Fetch goal failed:", err);
       return reply.code(500).send({ error: "Failed to load goal" });
     }
   });

@@ -1,8 +1,8 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
+import fastifyPostgres from "@fastify/postgres";
 
-import { db } from "./db/db.js";
 import { authRoutes } from "./routes/auth.js";
 import { goalsRoutes } from "./routes/goals.js";
 
@@ -25,6 +25,12 @@ await app.register(cors, {
 // WebSocket (safe to keep)
 await app.register(websocket);
 
+// Postgres (critical fix)
+await app.register(fastifyPostgres, {
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
+
 // Enable rawBody (Stripe-safe)
 app.addHook("onRequest", async (req, reply) => {
   req.rawBody = req.body;
@@ -34,7 +40,9 @@ app.addHook("onRequest", async (req, reply) => {
    HEALTH CHECK
 ========================= */
 app.get("/health", async () => {
-  const result = await db.query("SELECT 1");
+  const client = await app.pg.connect();
+  const result = await client.query("SELECT 1");
+  client.release();
   return { status: "ok", db: result.rowCount === 1 };
 });
 
@@ -45,8 +53,8 @@ app.get("/health", async () => {
 // AUTH → /auth/login, /auth/subscription, etc
 app.register(authRoutes, { prefix: "/auth" });
 
-// GOALS → /goals (DO NOT double-prefix)
-app.register(goalsRoutes);
+// GOALS → /goals
+app.register(goalsRoutes, { prefix: "/goals" });
 
 /* =========================
    ERROR HANDLER (IMPORTANT)
