@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { formatDate } from "../lib/utils";
@@ -13,7 +13,34 @@ export default function ExecutionDetail() {
 
   const events = useExecutionStream(id);
 
-  const totalSteps = execution?.goal_payload?.steps?.length || 0;
+  // ✅ Normalize steps safely
+  const baseSteps = Array.isArray(execution?.goal_payload?.steps)
+    ? execution.goal_payload.steps
+    : [];
+
+  // ✅ Merge stream events into steps
+  const mergedSteps = useMemo(() => {
+    if (!execution) return [];
+
+    // Start with base steps
+    const stepsCopy = baseSteps.map((s) => ({ ...s }));
+
+    // Apply progress events
+    events.forEach((evt) => {
+      if (evt.event === "execution_progress" && evt.stepIndex != null) {
+        const idx = evt.stepIndex;
+        if (stepsCopy[idx]) {
+          stepsCopy[idx].status = evt.status || "in_progress";
+          stepsCopy[idx].started_at = evt.started_at || stepsCopy[idx].started_at;
+          stepsCopy[idx].finished_at = evt.finished_at || stepsCopy[idx].finished_at;
+        }
+      }
+    });
+
+    return stepsCopy;
+  }, [execution, baseSteps, events]);
+
+  const totalSteps = baseSteps.length;
   const progressEvents = events.filter((evt) => evt.event === "execution_progress");
   const completedSteps = progressEvents.length;
   const progressPercent =
@@ -25,7 +52,6 @@ export default function ExecutionDetail() {
 
     const latest = events[events.length - 1];
 
-    // Decide bar color based on event type/status
     let barColor = "bg-blue-600"; // default running
     if (latest.event === "execution_completed") barColor = "bg-green-600";
     if (latest.event === "execution_failed") barColor = "bg-red-600";
@@ -82,5 +108,31 @@ export default function ExecutionDetail() {
   if (error) return <div className="p-6 text-red-500">Error: {error}</div>;
   if (!execution) return <div className="p-6 text-gray-500">Execution not found.</div>;
 
-  // ... keep your existing JSX (progress bar, logs, etc.)
+  return (
+    <div className="p-6">
+      <h2 className="text-xl font-bold mb-2">Execution {execution.id}</h2>
+      <p>Status: {execution.status}</p>
+      <p>Started: {execution.started_at ? formatDate(execution.started_at) : "N/A"}</p>
+      <p>Finished: {execution.finished_at ? formatDate(execution.finished_at) : "In progress"}</p>
+
+      <h3 className="text-lg font-semibold mt-4">Steps</h3>
+      {mergedSteps.length === 0 ? (
+        <p className="text-gray-500">No steps recorded yet.</p>
+      ) : (
+        <ul className="list-disc pl-6">
+          {mergedSteps.map((step, i) => (
+            <li key={step.id || i} className="mb-1">
+              <strong>{step.name || `Step ${i + 1}`}</strong> – {step.status}
+              {step.started_at && <span> (started: {formatDate(step.started_at)})</span>}
+              {step.finished_at && <span> (finished: {formatDate(step.finished_at)})</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Link to="/executions" className="mt-4 inline-block text-blue-600 hover:underline">
+        ← Back to executions
+      </Link>
+    </div>
+  );
 }
