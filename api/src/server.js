@@ -6,7 +6,7 @@ import fastifyPostgres from "@fastify/postgres";
 import { authRoutes } from "./routes/auth.js";
 import { goalsRoutes } from "./routes/goals.js";
 import { adminRoutes } from "./routes/admin.js";
-import { executionsRoutes } from "./routes/executions.js"; // <-- added
+import { executionsRoutes } from "./routes/executions.js";
 
 const app = Fastify({
   logger: true,
@@ -17,7 +17,10 @@ const app = Fastify({
    GLOBAL PLUGINS
 ========================= */
 await app.register(cors, {
-  origin: true,
+  origin: [
+    "https://nexus-core-chi.vercel.app", // ✅ production frontend
+    "http://localhost:3000",             // ✅ local dev frontend
+  ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 });
@@ -48,7 +51,7 @@ app.get("/health", async () => {
 ========================= */
 app.register(authRoutes, { prefix: "/auth" });
 app.register(goalsRoutes, { prefix: "/goals" });
-app.register(adminRoutes, { prefix: "/admin" });   // ✅ fixed: use app not server
+app.register(adminRoutes, { prefix: "/admin" });
 app.register(executionsRoutes, { prefix: "/executions" });
 
 /* =========================

@@ -1,7 +1,32 @@
+// routes/executions.js
 import { runExecution } from "../execution/runner.js";
 import { requireAuth } from "./auth.js";
 
 export async function executionsRoutes(server) {
+  // LIST EXECUTIONS
+  server.get("/", { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      const userId = req.identity.sub;
+      const client = await server.pg.connect();
+
+      const result = await client.query(
+        `SELECT e.id, e.status, e.started_at, e.finished_at
+         FROM executions e
+         JOIN goals g ON g.id = e.goal_id
+         WHERE g.submitted_by = $1
+         ORDER BY e.started_at DESC
+         LIMIT 20`,
+        [userId]
+      );
+
+      client.release();
+      return { executions: result.rows };
+    } catch (err) {
+      server.log.error("Execution list failed:", err);
+      return reply.code(500).send({ error: "Failed to fetch executions" });
+    }
+  });
+
   // RUN EXECUTION
   server.post("/:id/run", { preHandler: requireAuth }, async (req, reply) => {
     try {
@@ -14,16 +39,14 @@ export async function executionsRoutes(server) {
         [userId]
       );
       const tier = subRes.rows[0]?.subscription || "free";
-      const role = subRes.rows[0]?.role || "user"; // default role
+      const role = subRes.rows[0]?.role || "user";
 
-      // ✅ Admin override: skip all limits
       if (role === "admin") {
         client.release();
-        runExecution(id);
+        await runExecution(id);
         return reply.send({ status: "started", executionId: id, override: true });
       }
 
-      // Detect timezone from header (fallback to UTC)
       const userTz = req.headers["x-timezone"] || "UTC";
 
       if (tier === "free") {
@@ -46,8 +69,7 @@ export async function executionsRoutes(server) {
       }
 
       client.release();
-
-      runExecution(id);
+      await runExecution(id);
       return reply.send({ status: "started", executionId: id });
     } catch (err) {
       server.log.error("Execution start failed:", err);
