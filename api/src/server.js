@@ -5,6 +5,7 @@ import fastifyPostgres from "@fastify/postgres";
 
 import { authRoutes } from "./routes/auth.js";
 import { goalsRoutes } from "./routes/goals.js";
+import { executionsRoutes } from "./routes/executions.js"; // <-- added
 
 const app = Fastify({
   logger: true,
@@ -14,24 +15,19 @@ const app = Fastify({
 /* =========================
    GLOBAL PLUGINS
 ========================= */
-
-// CORS (Vercel + local dev safe)
 await app.register(cors, {
   origin: true,
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 });
 
-// WebSocket (safe to keep)
 await app.register(websocket);
 
-// Postgres (critical fix)
 await app.register(fastifyPostgres, {
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
 
-// Enable rawBody (Stripe-safe)
 app.addHook("onRequest", async (req, reply) => {
   req.rawBody = req.body;
 });
@@ -49,19 +45,15 @@ app.get("/health", async () => {
 /* =========================
    ROUTES
 ========================= */
-
-// AUTH → /auth/login, /auth/subscription, etc
 app.register(authRoutes, { prefix: "/auth" });
-
-// GOALS → /goals
 app.register(goalsRoutes, { prefix: "/goals" });
+app.register(executionsRoutes, { prefix: "/executions" }); // <-- critical fix
 
 /* =========================
-   ERROR HANDLER (IMPORTANT)
+   ERROR HANDLER
 ========================= */
 app.setErrorHandler((error, request, reply) => {
   request.log.error(error);
-
   reply.code(error.statusCode || 500).send({
     error: error.message || "Internal Server Error",
   });
@@ -71,7 +63,6 @@ app.setErrorHandler((error, request, reply) => {
    START SERVER
 ========================= */
 const PORT = process.env.PORT || 3001;
-
 app.listen({ port: PORT, host: "0.0.0.0" }).then(() => {
   console.log(`🚀 API running on port ${PORT}`);
 });
