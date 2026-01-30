@@ -1,4 +1,3 @@
-// src/execution/runner.js
 import { db } from "../db/db.js";
 import { executeStep } from "./stepExecutor.js";
 import { withRetry } from "./retry.js";
@@ -13,15 +12,12 @@ export async function runExecution(executionId) {
     [executionId]
   );
 
-  await publishEvent(db, SYSTEM_IDENTITY, "EXECUTION_STARTED", { executionId });
+  await publishEvent(db, SYSTEM_IDENTITY, "execution_started", { executionId });
 
   const { rows: steps } = await db.query(
-    `
-    SELECT *
-    FROM execution_steps
-    WHERE execution_id = $1
-    ORDER BY position ASC
-    `,
+    `SELECT * FROM execution_steps
+     WHERE execution_id = $1
+     ORDER BY position ASC`,
     [executionId]
   );
 
@@ -31,23 +27,31 @@ export async function runExecution(executionId) {
         () => executeStep(step),
         { retries: step.retry_count ?? 2 }
       );
+
+      // Optional: publish progress after each step
+      await publishEvent(db, SYSTEM_IDENTITY, "execution_progress", {
+        executionId,
+        stepId: step.id,
+        position: step.position,
+        status: "completed",
+      });
     }
 
-    // Mark execution as completed and set finished_at
+    // Mark execution as completed
     await db.query(
       `UPDATE executions SET status = 'COMPLETED', finished_at = now() WHERE id = $1`,
       [executionId]
     );
 
-    await publishEvent(db, SYSTEM_IDENTITY, "EXECUTION_COMPLETED", { executionId });
+    await publishEvent(db, SYSTEM_IDENTITY, "execution_completed", { executionId });
   } catch (err) {
-    // Mark execution as failed and set finished_at
+    // Mark execution as failed
     await db.query(
       `UPDATE executions SET status = 'FAILED', error = $2, finished_at = now() WHERE id = $1`,
       [executionId, err.message]
     );
 
-    await publishEvent(db, SYSTEM_IDENTITY, "EXECUTION_FAILED", {
+    await publishEvent(db, SYSTEM_IDENTITY, "execution_failed", {
       executionId,
       error: err.message,
     });

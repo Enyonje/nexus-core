@@ -1,5 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import { useState } from "react";
+import { Toaster } from "react-hot-toast";   // ✅ import toaster
 
 import Navbar from "./components/Navbar.jsx";
 import Layout from "./components/Layout.jsx";
@@ -39,6 +40,9 @@ export default function App() {
           isDark={isDark}
           theme={theme}
         />
+
+        {/* ✅ Global toaster for notifications */}
+        <Toaster position="top-right" />
 
         <Routes>
           {/* =======================

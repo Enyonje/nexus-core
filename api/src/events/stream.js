@@ -33,8 +33,15 @@ export function emitEvent(executionId, payload) {
   const listeners = clients.get(executionId);
   if (!listeners) return;
 
+  // Always enrich payload with event + executionId
+  const enriched = {
+    event: payload.event,
+    executionId,
+    ...payload,
+  };
+
   for (const reply of listeners) {
-    reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+    reply.raw.write(`data: ${JSON.stringify(enriched)}\n\n`);
   }
 }
 
@@ -43,8 +50,14 @@ export function emitEvent(executionId, payload) {
  */
 export function broadcastEvent(payload) {
   for (const [executionId, listeners] of clients.entries()) {
+    const enriched = {
+      event: payload.event,
+      executionId,
+      ...payload,
+    };
+
     for (const reply of listeners) {
-      reply.raw.write(`data: ${JSON.stringify({ executionId, ...payload })}\n\n`);
+      reply.raw.write(`data: ${JSON.stringify(enriched)}\n\n`);
     }
   }
 }
