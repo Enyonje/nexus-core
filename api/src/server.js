@@ -5,6 +5,7 @@ import fastifyPostgres from "@fastify/postgres";
 
 import { authRoutes } from "./routes/auth.js";
 import { goalsRoutes } from "./routes/goals.js";
+import { adminRoutes } from "./routes/admin.js";
 import { executionsRoutes } from "./routes/executions.js"; // <-- added
 
 const app = Fastify({
@@ -47,7 +48,8 @@ app.get("/health", async () => {
 ========================= */
 app.register(authRoutes, { prefix: "/auth" });
 app.register(goalsRoutes, { prefix: "/goals" });
-app.register(executionsRoutes, { prefix: "/executions" }); // <-- critical fix
+app.register(adminRoutes, { prefix: "/admin" });   // ✅ fixed: use app not server
+app.register(executionsRoutes, { prefix: "/executions" });
 
 /* =========================
    ERROR HANDLER

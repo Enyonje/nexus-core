@@ -38,6 +38,7 @@ export default function Layout({ theme }) {
 
         {/* ENTERPRISE ONLY */}
         {subscription === "enterprise" && navItem("/audit", "Audit Logs")}
+        {subscription === "admin" && navItem("/admin", "Admin")}
 
         {navItem("/subscription", "Subscription")}
       </aside>

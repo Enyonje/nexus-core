@@ -1,6 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import { useState } from "react";
-import { Toaster } from "react-hot-toast";   // ✅ import toaster
+import { Toaster } from "react-hot-toast";
 
 import Navbar from "./components/Navbar.jsx";
 import Layout from "./components/Layout.jsx";
@@ -15,6 +15,7 @@ import Register from "./components/Register.jsx";
 import ForgotPassword from "./components/ForgotPassword.jsx";
 import ResetPassword from "./components/ResetPassword.jsx";
 import LandingPage from "./components/LandingPage.jsx";
+import AdminDashboard from "./components/AdminDashboard.jsx";
 
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { lightTheme, darkTheme } from "./theme";
@@ -66,7 +67,6 @@ export default function App() {
           >
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/goals" element={<Goals />} />
-
             <Route
               path="/executions"
               element={
@@ -83,9 +83,20 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route path="/subscription" element={<Subscription />} />
           </Route>
+
+          {/* =======================
+              ADMIN ROUTES
+          ======================= */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute allowed={["admin"]}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
 
           {/* =======================
               FALLBACK

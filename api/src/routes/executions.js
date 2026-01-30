@@ -2,36 +2,6 @@ import { runExecution } from "../execution/runner.js";
 import { requireAuth } from "./auth.js";
 
 export async function executionsRoutes(server) {
-  // LIST EXECUTIONS
-  server.get("/", { preHandler: requireAuth }, async (req, reply) => {
-    try {
-      const userId = req.identity.sub;
-
-      const client = await server.pg.connect();
-      const { rows } = await client.query(
-        `SELECT
-           e.id,
-           e.status,
-           e.started_at,
-           e.finished_at,
-           g.goal_type,
-           g.goal_payload
-         FROM executions e
-         JOIN goals g ON g.id = e.goal_id
-         WHERE g.submitted_by = $1
-         ORDER BY e.started_at DESC
-         LIMIT 20`,
-        [userId]
-      );
-      client.release();
-
-      return reply.send(rows);
-    } catch (err) {
-      server.log.error("Fetch executions failed:", err);
-      return reply.code(500).send({ error: "Failed to load executions" });
-    }
-  });
-
   // RUN EXECUTION
   server.post("/:id/run", { preHandler: requireAuth }, async (req, reply) => {
     try {
@@ -40,24 +10,37 @@ export async function executionsRoutes(server) {
 
       const client = await server.pg.connect();
       const subRes = await client.query(
-        "SELECT subscription FROM users WHERE id = $1",
+        "SELECT subscription, role FROM users WHERE id = $1",
         [userId]
       );
       const tier = subRes.rows[0]?.subscription || "free";
+      const role = subRes.rows[0]?.role || "user"; // default role
+
+      // ✅ Admin override: skip all limits
+      if (role === "admin") {
+        client.release();
+        runExecution(id);
+        return reply.send({ status: "started", executionId: id, override: true });
+      }
+
+      // Detect timezone from header (fallback to UTC)
+      const userTz = req.headers["x-timezone"] || "UTC";
 
       if (tier === "free") {
         const countRes = await client.query(
-          `SELECT COUNT(*)
+          `SELECT COUNT(*) 
            FROM executions e
            JOIN goals g ON g.id = e.goal_id
-           WHERE g.submitted_by = $1`,
-          [userId]
+           WHERE g.submitted_by = $1
+             AND e.started_at AT TIME ZONE $2 >= date_trunc('day', now() AT TIME ZONE $2)
+             AND e.started_at AT TIME ZONE $2 < date_trunc('day', now() AT TIME ZONE $2) + interval '1 day'`,
+          [userId, userTz]
         );
 
-        if (Number(countRes.rows[0].count) >= 5) {
+        if (Number(countRes.rows[0].count) >= 3) {
           client.release();
           return reply.code(403).send({
-            error: "Free tier limit reached. Upgrade to continue.",
+            error: "Free tier daily limit reached (3 per day). Upgrade to continue.",
           });
         }
       }
