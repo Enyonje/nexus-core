@@ -38,20 +38,28 @@ export async function executionsRoutes(server) {
       }
 
       const client = await server.pg.connect();
-      const result = await client.query(
-        `INSERT INTO executions (goal_id, status, started_at)
-         SELECT $1, 'pending', NOW()
-         WHERE EXISTS (SELECT 1 FROM goals WHERE id = $1 AND submitted_by = $2)
-         RETURNING id, status, started_at, goal_id`,
+
+      // Step 1: check goal exists and belongs to user
+      const goalRes = await client.query(
+        `SELECT id FROM goals WHERE id = $1 AND submitted_by = $2`,
         [goalId, userId]
       );
-      client.release();
 
-      if (!result.rows.length) {
-        return reply.code(404).send({ error: "Goal not found" });
+      if (goalRes.rows.length === 0) {
+        client.release();
+        return reply.code(404).send({ error: "Goal not found or not owned by user" });
       }
 
-      return reply.send(result.rows[0]);
+      // Step 2: insert execution
+      const execRes = await client.query(
+        `INSERT INTO executions (goal_id, status, started_at)
+         VALUES ($1, 'pending', NOW())
+         RETURNING id, status, started_at, goal_id`,
+        [goalId]
+      );
+
+      client.release();
+      return reply.send(execRes.rows[0]);
     } catch (err) {
       server.log.error("Create execution failed:", err);
       return reply.code(500).send({ error: "Failed to create execution" });
