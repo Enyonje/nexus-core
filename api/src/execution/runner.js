@@ -1,6 +1,7 @@
 import { db } from "../db/db.js";
 import { executeGoalLogic } from "./logic.js";
 import { checkAiQuota, incrementAiUsage } from "../usage/aiQuota.js";
+import { publishEvent } from "../events/publisher.js"; // SSE publisher
 
 export async function runExecution(executionId) {
   const { rows } = await db.query(
@@ -26,7 +27,6 @@ export async function runExecution(executionId) {
   }
 
   const execution = rows[0];
-
   const user = {
     id: execution.user_id,
     subscription: execution.subscription,
@@ -35,27 +35,61 @@ export async function runExecution(executionId) {
 
   try {
     /* =========================
-       AI QUOTA CHECK
+       QUOTA & PERMISSIONS
     ========================= */
     if (execution.goal_type.startsWith("ai_")) {
       await checkAiQuota(user);
     }
 
     await db.query(
-      `UPDATE executions SET status = 'running' WHERE id = $1`,
+      `UPDATE executions SET status = 'running', started_at = NOW() WHERE id = $1`,
       [executionId]
     );
+
+    publishEvent(executionId, {
+      event: "execution_started",
+      goalType: execution.goal_type,
+    });
+
+    /* =========================
+       STEP-BY-STEP EXECUTION
+    ========================= */
+    let completedSteps = 0;
+    const totalSteps = await countSteps(execution.goal_type, execution.goal_payload);
 
     const result = await executeGoalLogic(
       execution.goal_type,
       execution.goal_payload,
-      executionId
+      executionId,
+      async (stepInfo) => {
+        completedSteps++;
+        // Update DB step record
+        await db.query(
+          `INSERT INTO execution_steps (execution_id, name, status, started_at)
+           VALUES ($1, $2, 'completed', NOW())`,
+          [executionId, stepInfo.name]
+        );
+
+        // Publish progress
+        publishEvent(executionId, {
+          event: "execution_progress",
+          completedSteps,
+          totalSteps,
+          step: stepInfo.name,
+        });
+      }
     );
 
+    /* =========================
+       QUOTA INCREMENT
+    ========================= */
     if (execution.goal_type.startsWith("ai_")) {
       await incrementAiUsage(user);
     }
 
+    /* =========================
+       FINALIZE SUCCESS
+    ========================= */
     await db.query(
       `
       UPDATE executions
@@ -66,7 +100,16 @@ export async function runExecution(executionId) {
       `,
       [executionId, result]
     );
+
+    publishEvent(executionId, {
+      event: "execution_completed",
+      totalSteps,
+      result,
+    });
   } catch (err) {
+    /* =========================
+       FINALIZE FAILURE
+    ========================= */
     await db.query(
       `
       UPDATE executions
@@ -78,6 +121,21 @@ export async function runExecution(executionId) {
       [executionId, err.message]
     );
 
+    publishEvent(executionId, {
+      event: "execution_failed",
+      error: err.message,
+    });
+
     throw err;
   }
+}
+
+/* Utility: count steps based on goal type/payload */
+async function countSteps(goalType, payload) {
+  // You can implement dynamic step counts here
+  // e.g. AI goals = 3 steps (prepare, call model, post-process)
+  // analysis goals = payload.tasks.length
+  if (goalType.startsWith("ai_")) return 3;
+  if (payload?.tasks) return payload.tasks.length;
+  return 1;
 }

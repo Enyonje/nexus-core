@@ -1,28 +1,42 @@
 // src/execution/stepExecutor.js
 import { publishEvent } from "../events/publish.js";
 import { db } from "../db/db.js";
+import fetch from "node-fetch"; // for http_request steps
+import OpenAI from "openai";
 
-// Define the service identity for this executor
 const SYSTEM_IDENTITY = {
   sub: "nexus-core",
   role: "service",
 };
 
+function getOpenAIClient() {
+  if (!process.env.OPENAI_API_KEY) return null;
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
+
 export async function executeStep(executionId, step) {
   try {
-    // ... your step execution logic here ...
+    // Mark step as started in DB
+    await db.query(
+      `UPDATE execution_steps SET status = 'running', started_at = NOW() WHERE id = $1`,
+      [step.id]
+    );
 
-    // Example: publish an event when a step starts
     await publishEvent(db, SYSTEM_IDENTITY, "EXECUTION_STEP_STARTED", {
       executionId,
       stepId: step.id,
       stepType: step.step_type,
     });
 
-    // Run the step (placeholder logic)
+    // Run the step based on type
     const result = await runStep(step);
 
-    // Publish event when step completes
+    // Mark step as completed
+    await db.query(
+      `UPDATE execution_steps SET status = 'completed', finished_at = NOW(), output = $2 WHERE id = $1`,
+      [step.id, JSON.stringify(result)]
+    );
+
     await publishEvent(db, SYSTEM_IDENTITY, "EXECUTION_STEP_COMPLETED", {
       executionId,
       stepId: step.id,
@@ -31,18 +45,86 @@ export async function executeStep(executionId, step) {
 
     return result;
   } catch (err) {
-    // Publish event when step fails
+    // Mark step as failed
+    await db.query(
+      `UPDATE execution_steps SET status = 'failed', finished_at = NOW(), error = $2 WHERE id = $1`,
+      [step.id, err.message]
+    );
+
     await publishEvent(db, SYSTEM_IDENTITY, "EXECUTION_STEP_FAILED", {
       executionId,
       stepId: step.id,
       error: err.message,
     });
+
     throw err;
   }
 }
 
-// Example placeholder for actual step logic
+/* =========================
+   STEP LOGIC HANDLERS
+========================= */
 async function runStep(step) {
-  // Replace with your real step execution code
-  return { success: true, data: `Ran step ${step.step_type}` };
+  switch (step.step_type) {
+    case "http_request":
+      return runHttpStep(step);
+    case "ai_analysis":
+      return runAiStep(step, "You are an expert analyst.");
+    case "ai_summary":
+      return runAiStep(step, "Summarize the following text clearly.");
+    case "automation":
+      return runAutomationStep(step);
+    default:
+      return { success: true, data: `Ran step ${step.step_type}` };
+  }
+}
+
+async function runHttpStep(step) {
+  const { url, method = "GET", headers = {}, body } = step.payload || {};
+  if (!url) throw new Error("Missing URL in http_request step");
+
+  const res = await fetch(url, { method, headers, body });
+  const text = await res.text();
+  return { status: res.status, body: text };
+}
+
+async function runAiStep(step, systemPrompt) {
+  const client = getOpenAIClient();
+  if (!client) return { model: "fallback", message: "AI unavailable" };
+
+  const stream = await client.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: step.payload?.prompt || step.payload?.text },
+    ],
+    stream: true,
+  });
+
+  let text = "";
+  for await (const chunk of stream) {
+    const delta = chunk.choices?.[0]?.delta?.content;
+    if (!delta) continue;
+    text += delta;
+
+    // Publish streaming progress
+    await publishEvent(db, SYSTEM_IDENTITY, "EXECUTION_STEP_PROGRESS", {
+      executionId: step.execution_id,
+      stepId: step.id,
+      partial: text,
+    });
+  }
+
+  return { model: "openai:gpt-4o-mini", text };
+}
+
+async function runAutomationStep(step) {
+  if (!Array.isArray(step.payload?.tasks)) {
+    throw new Error("Automation step requires tasks[]");
+  }
+  return step.payload.tasks.map((t, i) => ({
+    step: i + 1,
+    name: t,
+    status: "done",
+  }));
 }

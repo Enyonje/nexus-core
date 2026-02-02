@@ -9,6 +9,7 @@ export default function Goals() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [running, setRunning] = useState(null);
+  const [progress, setProgress] = useState({}); // ✅ track progress per execution
 
   const { addToast } = useToast();
 
@@ -37,8 +38,8 @@ export default function Goals() {
       const goal = await apiFetch("/goals", {
         method: "POST",
         body: JSON.stringify({
-          goal_type: "analysis",
-          goal_payload: { title, description },
+          goalType: "analysis",
+          payload: { title, description },
         }),
       });
 
@@ -53,22 +54,78 @@ export default function Goals() {
     }
   }
 
-  /* RUN GOAL */
+  /* RUN GOAL + STREAM */
   async function runGoal(goalId) {
     setRunning(goalId);
     try {
       // STEP 1 — create execution
       const execution = await apiFetch("/executions", {
         method: "POST",
-        body: JSON.stringify({ goal_id: goalId }),
+        body: JSON.stringify({ goalId }),
       });
 
       // STEP 2 — run execution
-      await apiFetch(`/executions/${execution.id}/run`, {
-        method: "POST",
-      });
+      await apiFetch(`/executions/${execution.id}/run`, { method: "POST" });
 
       addToast("Execution started", "success");
+
+      // STEP 3 — subscribe to stream
+      const evtSource = new EventSource(
+        `https://nexus-core-a0px.onrender.com/executions/${execution.id}/stream`,
+        { withCredentials: true }
+      );
+
+      evtSource.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+
+          if (data.event === "execution_progress") {
+            const { completedSteps, totalSteps } = data;
+            const percent =
+              totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+
+            setProgress((prev) => ({
+              ...prev,
+              [execution.id]: {
+                percent,
+                status: "running",
+                completedSteps,
+                totalSteps,
+              },
+            }));
+          }
+
+          if (data.event === "execution_completed") {
+            setProgress((prev) => ({
+              ...prev,
+              [execution.id]: {
+                percent: 100,
+                status: "completed",
+                completedSteps: data.totalSteps,
+                totalSteps: data.totalSteps,
+              },
+            }));
+            addToast(`Execution ${execution.id} completed 🎉`, "success");
+            evtSource.close();
+          }
+
+          if (data.event === "execution_failed") {
+            setProgress((prev) => ({
+              ...prev,
+              [execution.id]: {
+                percent: 0,
+                status: "failed",
+                completedSteps: 0,
+                totalSteps: data.totalSteps || 0,
+              },
+            }));
+            addToast(`Execution ${execution.id} failed ❌`, "error");
+            evtSource.close();
+          }
+        } catch {
+          console.warn("Bad stream event", e.data);
+        }
+      };
     } catch (err) {
       addToast(err.message || "Execution failed", "error");
     } finally {
@@ -95,34 +152,67 @@ export default function Goals() {
           placeholder="Description"
           className="w-full p-2 border rounded"
         />
-        <button className="bg-blue-600 text-white px-4 py-2 rounded">
+        <button
+          type="submit"
+          disabled={creating}
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+        >
           {creating ? "Creating…" : "Create Goal"}
         </button>
       </form>
 
-      {goals.map((goal) => (
-        <div
-          key={goal.id}
-          className="p-4 bg-white dark:bg-gray-800 rounded flex justify-between"
-        >
-          <div>
-            <div className="font-medium">
-              {goal.goal_payload?.title || "Untitled"}
-            </div>
-            <div className="text-xs text-gray-500">
-              {new Date(goal.created_at).toLocaleString()}
-            </div>
-          </div>
-
-          <button
-            onClick={() => runGoal(goal.id)}
-            disabled={running === goal.id}
-            className="text-blue-600"
+      {goals.map((goal) => {
+        const prog = progress[goal.id];
+        return (
+          <div
+            key={goal.id}
+            className="p-4 bg-white dark:bg-gray-800 rounded space-y-2"
           >
-            {running === goal.id ? "Running…" : "Run →"}
-          </button>
-        </div>
-      ))}
+            <div className="flex justify-between">
+              <div>
+                <div className="font-medium">
+                  {goal.goal_payload?.title || "Untitled"}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {new Date(goal.created_at).toLocaleString()}
+                </div>
+              </div>
+
+              <button
+                onClick={() => runGoal(goal.id)}
+                disabled={running === goal.id}
+                className="text-sm text-blue-600 hover:underline"
+              >
+                {running === goal.id ? "Running…" : "Run →"}
+              </button>
+            </div>
+
+            {/* ✅ Progress bar + step counts */}
+            {prog && (
+              <div className="space-y-1">
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded h-2">
+                  <div
+                    className={`h-2 rounded transition-all duration-300 ${
+                      prog.status === "completed"
+                        ? "bg-green-600"
+                        : prog.status === "failed"
+                        ? "bg-red-600"
+                        : "bg-blue-600"
+                    }`}
+                    style={{ width: `${prog.percent}%` }}
+                  ></div>
+                </div>
+                <div className="text-xs text-gray-600">
+                  {prog.status === "running" &&
+                    `Step ${prog.completedSteps} of ${prog.totalSteps}`}
+                  {prog.status === "completed" && "Completed ✅"}
+                  {prog.status === "failed" && "Failed ❌"}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
