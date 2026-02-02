@@ -13,8 +13,10 @@ export default function ExecutionList() {
       try {
         const data = await apiFetch("/executions");
 
-        // ✅ IMPORTANT: backend returns { executions: [...] }
-        if (Array.isArray(data.executions)) {
+        // ✅ HANDLE ALL BACKEND SHAPES
+        if (Array.isArray(data)) {
+          setExecutions(data);
+        } else if (Array.isArray(data.executions)) {
           setExecutions(data.executions);
         } else {
           console.error("Unexpected executions payload:", data);
@@ -64,25 +66,33 @@ export default function ExecutionList() {
         <tbody>
           {executions.map((exec) => (
             <tr
-              key={exec.id}
+              key={exec.id || Math.random()}
               className="border-b hover:bg-gray-50 dark:hover:bg-gray-900"
             >
               <td className="p-2">
-                <Link
-                  to={`/executions/${exec.id}`}
-                  className="text-blue-600 dark:text-blue-400 underline"
-                >
-                  {exec.id.slice(0, 8)}…
-                </Link>
+                {exec.id ? (
+                  <Link
+                    to={`/executions/${exec.id}`}
+                    className="text-blue-600 dark:text-blue-400 underline"
+                  >
+                    {exec.id.substring(0, 8)}…
+                  </Link>
+                ) : (
+                  <span className="text-gray-400">unknown</span>
+                )}
               </td>
 
               <td className="p-2">
                 <StatusBadge status={exec.status} />
               </td>
 
-              <td className="p-2">{formatDate(exec.started_at)}</td>
+              <td className="p-2">
+                {exec.started_at ? formatDate(exec.started_at) : "—"}
+              </td>
 
-              <td className="p-2">{formatDate(exec.finished_at)}</td>
+              <td className="p-2">
+                {exec.finished_at ? formatDate(exec.finished_at) : "—"}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -93,6 +103,7 @@ export default function ExecutionList() {
 
 function StatusBadge({ status }) {
   const base = "px-2 py-1 rounded text-xs font-medium";
+
   const styles = {
     running:
       "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
@@ -104,10 +115,12 @@ function StatusBadge({ status }) {
       "bg-gray-300 text-gray-800 dark:bg-gray-700 dark:text-gray-200",
   };
 
+  const key = status?.toLowerCase();
+
   return (
     <span
       className={`${base} ${
-        styles[status?.toLowerCase()] || "bg-gray-200 text-gray-800"
+        styles[key] || "bg-gray-200 text-gray-800"
       }`}
     >
       {status || "unknown"}

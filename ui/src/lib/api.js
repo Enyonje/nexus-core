@@ -1,40 +1,38 @@
-const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:3001";
+const API_BASE = "https://nexus-core-a0px.onrender.com";
 
 export async function apiFetch(path, options = {}) {
-  const token = localStorage.getItem("token");
-
-  const headers = {
-    ...(options.headers || {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-
-  // Only set Content-Type if body exists
-  if (options.body && !(options.body instanceof FormData)) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+    credentials: "include", // ensures cookies/session are sent
     ...options,
-    headers,
   });
 
-  // Auto-logout on auth failure
-  if (res.status === 401) {
-    localStorage.removeItem("token");
-  }
-
+  // Handle non-OK responses
   if (!res.ok) {
-    let msg = "Request failed";
+    let message;
     try {
+      // Try to parse JSON error if available
       const data = await res.json();
-      msg = data.error || msg;
-    } catch {}
-    throw new Error(msg);
+      message = data.error || JSON.stringify(data);
+    } catch {
+      // Fall back to text or status text
+      message = await res.text();
+      if (!message) message = res.statusText;
+    }
+    throw new Error(`${res.status} ${message}`);
   }
 
-  // Handle empty responses (204)
-  if (res.status === 204) return null;
+  // Handle empty response bodies (e.g. 204 No Content)
+  const text = await res.text();
+  if (!text) return null;
 
-  return res.json();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
 }
