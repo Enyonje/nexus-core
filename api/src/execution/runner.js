@@ -1,7 +1,7 @@
 import { db } from "../db/db.js";
 import { executeGoalLogic } from "./logic.js";
 import { checkAiQuota, incrementAiUsage } from "../usage/aiQuota.js";
-import { publishEvent } from "../events/publisher.js"; // SSE publisher
+import { publishEvent } from "../events/publish.js"; // SSE publisher
 
 export async function runExecution(executionId) {
   const { rows } = await db.query(
