@@ -6,30 +6,14 @@ export async function apiFetch(path, options = {}) {
       "Content-Type": "application/json",
       ...(options.headers || {}),
     },
-    credentials: "include", // ensures cookies/session are sent
+    credentials: "include",
     ...options,
   });
 
-  // Handle non-OK responses
   if (!res.ok) {
-    let message;
-    try {
-      const data = await res.json();
-      message = data.error || JSON.stringify(data);
-    } catch {
-      message = await res.text();
-      if (!message) message = res.statusText;
-    }
-    throw new Error(`${res.status} ${message}`);
+    const text = await res.text();
+    throw new Error(text || res.statusText);
   }
 
-  // Handle empty response bodies (e.g. 204 No Content)
-  const text = await res.text();
-  if (!text) return null;
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
+  return res.json();
 }
