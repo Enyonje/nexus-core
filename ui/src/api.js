@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || "https://nexus-core-a0px.onrender.com";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 export async function apiFetch(path, options = {}) {
   const token = localStorage.getItem("token");
@@ -17,18 +17,18 @@ export async function apiFetch(path, options = {}) {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers,
-    credentials: "include", // ✅ ensures cookies/session if backend uses them
+    credentials: "include", // ✅ supports cookie/session auth
   });
 
-  // Auto-logout on auth failure
+  // Handle auth failure
   if (res.status === 401) {
     localStorage.removeItem("token");
     throw new Error("Session expired. Please log in again.");
   }
 
-  // Handle not found (404) with clearer message
+  // Handle not found
   if (res.status === 404) {
-    throw new Error(`Endpoint not found: ${path}`);
+    throw new Error(`API route not found: ${path}`);
   }
 
   // Handle other errors
