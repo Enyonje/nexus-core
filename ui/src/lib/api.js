@@ -14,11 +14,9 @@ export async function apiFetch(path, options = {}) {
   if (!res.ok) {
     let message;
     try {
-      // Try to parse JSON error if available
       const data = await res.json();
       message = data.error || JSON.stringify(data);
     } catch {
-      // Fall back to text or status text
       message = await res.text();
       if (!message) message = res.statusText;
     }
@@ -34,5 +32,4 @@ export async function apiFetch(path, options = {}) {
   } catch {
     return text;
   }
-}
 }
