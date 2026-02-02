@@ -20,13 +20,11 @@ export default function Goals() {
       try {
         const data = await apiFetch("/goals");
 
-        // backend may return { goals: [...] }
-        if (Array.isArray(data.goals)) {
+        if (Array.isArray(data?.goals)) {
           setGoals(data.goals);
         } else if (Array.isArray(data)) {
           setGoals(data);
         } else {
-          console.error("Unexpected goals payload:", data);
           setGoals([]);
         }
       } catch (err) {
@@ -44,6 +42,7 @@ export default function Goals() {
   ========================= */
   async function createGoal(e) {
     e.preventDefault();
+
     if (!title.trim()) {
       addToast("Goal title is required", "error");
       return;
@@ -64,7 +63,7 @@ export default function Goals() {
 
       setTitle("");
       setDescription("");
-      addToast("Goal created", "success");
+      addToast("Goal created successfully", "success");
     } catch (err) {
       addToast(err.message || "Failed to create goal", "error");
     } finally {
@@ -73,24 +72,21 @@ export default function Goals() {
   }
 
   /* =========================
-     RUN GOAL (CORRECT FLOW)
+     RUN GOAL (✅ CORRECT)
+     Backend creates + runs execution
   ========================= */
   async function runGoal(goalId) {
     setRunning(goalId);
+
     try {
-      // 1️⃣ Create execution
-      const execRes = await apiFetch("/executions", {
+      const res = await apiFetch("/executions", {
         method: "POST",
         body: JSON.stringify({ goalId }),
       });
 
-      const executionId = execRes.execution?.id || execRes.id;
-      if (!executionId) throw new Error("Execution creation failed");
-
-      // 2️⃣ Run execution
-      await apiFetch(`/executions/${executionId}/run`, {
-        method: "POST",
-      });
+      if (!res.executionId && !res.id) {
+        throw new Error("Execution failed to start");
+      }
 
       addToast("Execution started", "success");
     } catch (err) {
@@ -109,13 +105,15 @@ export default function Goals() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
+      {/* HEADER */}
       <div>
         <h1 className="text-2xl font-bold">Goals</h1>
         <p className="text-gray-500 text-sm">
-          Create goals, then run executions on them.
+          Create goals and run executions on them.
         </p>
       </div>
 
+      {/* CREATE GOAL */}
       <form
         onSubmit={createGoal}
         className="bg-white dark:bg-gray-900 p-4 rounded shadow space-y-3"
@@ -136,13 +134,15 @@ export default function Goals() {
         />
 
         <button
+          type="submit"
           disabled={creating}
-          className="bg-blue-600 text-white px-4 py-2 rounded"
+          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-60"
         >
           {creating ? "Creating…" : "Create Goal"}
         </button>
       </form>
 
+      {/* GOALS LIST */}
       <div className="space-y-4">
         {goals.length === 0 ? (
           <div className="text-gray-500 text-sm">
@@ -152,7 +152,7 @@ export default function Goals() {
           goals.map((goal) => (
             <div
               key={goal.id}
-              className="bg-white dark:bg-gray-800 p-4 rounded shadow flex justify-between"
+              className="bg-white dark:bg-gray-800 p-4 rounded shadow flex justify-between items-center"
             >
               <div>
                 <div className="font-medium">
@@ -166,7 +166,7 @@ export default function Goals() {
               <button
                 onClick={() => runGoal(goal.id)}
                 disabled={running === goal.id}
-                className="text-blue-600 text-sm hover:underline"
+                className="text-sm text-blue-600 hover:underline disabled:opacity-60"
               >
                 {running === goal.id ? "Running…" : "Run →"}
               </button>
