@@ -10,7 +10,7 @@ export async function executionsRoutes(server) {
       const client = await server.pg.connect();
 
       const result = await client.query(
-        `SELECT e.id, e.status, e.started_at, e.finished_at
+        `SELECT e.id, e.status, e.started_at, e.finished_at, e.goal_id
          FROM executions e
          JOIN goals g ON g.id = e.goal_id
          WHERE g.submitted_by = $1
@@ -27,6 +27,37 @@ export async function executionsRoutes(server) {
     }
   });
 
+  // CREATE EXECUTION FROM GOAL (POST /executions)
+  server.post("/", { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      const userId = req.identity.sub;
+      const { goalId } = req.body;
+
+      if (!goalId) {
+        return reply.code(400).send({ error: "goalId is required" });
+      }
+
+      const client = await server.pg.connect();
+      const result = await client.query(
+        `INSERT INTO executions (goal_id, status, started_at)
+         SELECT $1, 'pending', NOW()
+         WHERE EXISTS (SELECT 1 FROM goals WHERE id = $1 AND submitted_by = $2)
+         RETURNING id, status, started_at, goal_id`,
+        [goalId, userId]
+      );
+      client.release();
+
+      if (!result.rows.length) {
+        return reply.code(404).send({ error: "Goal not found" });
+      }
+
+      return reply.send(result.rows[0]);
+    } catch (err) {
+      server.log.error("Create execution failed:", err);
+      return reply.code(500).send({ error: "Failed to create execution" });
+    }
+  });
+
   // EXECUTION DETAIL (GET /executions/:id)
   server.get("/:id", { preHandler: requireAuth }, async (req, reply) => {
     try {
@@ -34,9 +65,8 @@ export async function executionsRoutes(server) {
       const userId = req.identity.sub;
       const client = await server.pg.connect();
 
-      // Fetch execution record
       const execRes = await client.query(
-        `SELECT e.id, e.status, e.started_at, e.finished_at
+        `SELECT e.id, e.status, e.started_at, e.finished_at, e.goal_id
          FROM executions e
          JOIN goals g ON g.id = e.goal_id
          WHERE e.id = $1 AND g.submitted_by = $2`,
@@ -48,7 +78,6 @@ export async function executionsRoutes(server) {
         return reply.code(404).send({ error: "Execution not found" });
       }
 
-      // Fetch related steps
       const stepsRes = await client.query(
         `SELECT s.id, s.name, s.status, s.started_at, s.finished_at
          FROM execution_steps s
@@ -61,7 +90,7 @@ export async function executionsRoutes(server) {
 
       return {
         ...execRes.rows[0],
-        steps: stepsRes.rows || [], // ✅ always an array
+        steps: stepsRes.rows || [],
       };
     } catch (err) {
       server.log.error("Execution detail failed:", err);
@@ -83,7 +112,6 @@ export async function executionsRoutes(server) {
       const tier = subRes.rows[0]?.subscription || "free";
       const role = subRes.rows[0]?.role || "user";
 
-      // ✅ Admin override
       if (role === "admin") {
         client.release();
         await runExecution(id);
@@ -118,5 +146,23 @@ export async function executionsRoutes(server) {
       server.log.error("Execution start failed:", err);
       return reply.code(500).send({ error: "Failed to start execution" });
     }
+  });
+
+  // STREAM EXECUTION EVENTS (GET /executions/:id/stream)
+  server.get("/:id/stream", { preHandler: requireAuth }, async (req, reply) => {
+    reply.raw.setHeader("Content-Type", "text/event-stream");
+    reply.raw.setHeader("Cache-Control", "no-cache");
+    reply.raw.setHeader("Connection", "keep-alive");
+
+    const executionId = req.params.id;
+
+    // Example: push heartbeat events
+    const interval = setInterval(() => {
+      reply.raw.write(`event: heartbeat\ndata: {"executionId":"${executionId}"}\n\n`);
+    }, 5000);
+
+    req.raw.on("close", () => {
+      clearInterval(interval);
+    });
   });
 }

@@ -15,7 +15,7 @@ export async function goalsRoutes(server) {
       const result = await client.query(
         `INSERT INTO goals (submitted_by, goal_type, goal_payload, created_at)
          VALUES ($1, $2, $3, NOW())
-         RETURNING *`,
+         RETURNING id, goal_type, goal_payload, created_at`,
         [userId, goalType, payload]
       );
       client.release();
@@ -31,14 +31,15 @@ export async function goalsRoutes(server) {
   server.get("/", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.identity.sub;
-
       const client = await server.pg.connect();
       const result = await client.query(
-        `SELECT * FROM goals WHERE submitted_by = $1 ORDER BY created_at DESC`,
+        `SELECT id, goal_type, goal_payload, created_at
+         FROM goals
+         WHERE submitted_by = $1
+         ORDER BY created_at DESC`,
         [userId]
       );
       client.release();
-
       return reply.send(result.rows);
     } catch (err) {
       server.log.error("Fetch goals failed:", err);
@@ -51,10 +52,11 @@ export async function goalsRoutes(server) {
     try {
       const userId = req.identity.sub;
       const { id } = req.params;
-
       const client = await server.pg.connect();
       const result = await client.query(
-        `SELECT * FROM goals WHERE id = $1 AND submitted_by = $2`,
+        `SELECT id, goal_type, goal_payload, created_at
+         FROM goals
+         WHERE id = $1 AND submitted_by = $2`,
         [id, userId]
       );
       client.release();
