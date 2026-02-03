@@ -1,6 +1,14 @@
 import { v4 as uuidv4 } from "uuid";
 import { runExecution } from "../execution/runner.js";
 
+// Simple role-based guard
+function requireAdmin(req, reply, next) {
+  if (!req.user || req.user.role !== "admin") {
+    return reply.code(403).send({ error: "Admin access required" });
+  }
+  next();
+}
+
 export async function executionsRoutes(app) {
   /* LIST EXECUTIONS */
   app.get("/", async (req, reply) => {
@@ -33,7 +41,6 @@ export async function executionsRoutes(app) {
       [uuidv4(), goal.id, goal.goal_type, goal.goal_payload]
     );
 
-    // ✅ return execution directly, not wrapped
     return reply.code(201).send(execRes.rows[0]);
   });
 
@@ -66,5 +73,32 @@ export async function executionsRoutes(app) {
       return reply.code(404).send({ error: "Execution not found" });
     }
     return execRes.rows[0];
+  });
+
+  /* STREAM EXECUTION EVENTS (SSE) */
+  app.get("/:id/stream", async (req, reply) => {
+    const { id } = req.params;
+
+    reply.raw.setHeader("Content-Type", "text/event-stream");
+    reply.raw.setHeader("Cache-Control", "no-cache");
+    reply.raw.setHeader("Connection", "keep-alive");
+    reply.raw.flushHeaders();
+
+    const unsubscribe = app.eventBus.subscribe(id, (event) => {
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+    });
+
+    req.raw.on("close", () => {
+      unsubscribe();
+      reply.raw.end();
+    });
+  });
+
+  /* ADMIN OVERRIDE DASHBOARD */
+  app.get("/admin/override", { preHandler: requireAdmin }, async (req, reply) => {
+    const { rows } = await app.pg.query(
+      `SELECT * FROM executions ORDER BY started_at DESC NULLS LAST`
+    );
+    return { adminExecutions: rows };
   });
 }
