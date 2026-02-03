@@ -7,10 +7,9 @@ import { z } from "zod";
 ====================================================== */
 const baseGoalSchema = z.object({
   goalType: z.string().min(1, "goalType is required"),
-  payload: z.any(), // validated per type below
+  payload: z.any(),
 });
 
-// Specific schemas per goalType
 const schemasByType = {
   test: z.object({
     message: z.string().min(1, "message is required"),
@@ -22,7 +21,8 @@ const schemasByType = {
     body: z.any().optional(),
   }),
   analysis: z.object({
-    data: z.record(z.any(), { required_error: "data is required" }),
+    title: z.string().min(1, "title is required"),
+    description: z.string().min(1, "description is required"),
   }),
   automation: z.object({
     steps: z.array(z.string().min(1)).min(1, "At least one step required"),
@@ -39,21 +39,18 @@ const schemasByType = {
 };
 
 export async function goalsRoutes(app) {
-  /* ======================================================
-     CREATE GOAL
-  ====================================================== */
+  /* CREATE GOAL */
   app.post("/", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.identity.sub;
+      const orgId = req.identity.org_id; // ✅ make sure your auth middleware sets this
       const { goalType, payload } = req.body;
 
-      // Validate base
       const baseParse = baseGoalSchema.safeParse(req.body);
       if (!baseParse.success) {
         return reply.code(400).send({ error: baseParse.error.errors.map(e => e.message) });
       }
 
-      // Validate payload by type
       const schema = schemasByType[goalType];
       if (!schema) {
         return reply.code(400).send({ error: `Unsupported goalType: ${goalType}` });
@@ -64,22 +61,20 @@ export async function goalsRoutes(app) {
       }
 
       const result = await app.pg.query(
-        `INSERT INTO goals (user_id, goal_type, goal_payload, created_at)
-         VALUES ($1, $2, $3, NOW())
+        `INSERT INTO goals (org_id, user_id, goal_type, goal_payload, created_at)
+         VALUES ($1, $2, $3, $4, NOW())
          RETURNING id, goal_type, goal_payload, created_at`,
-        [userId, goalType, payload]
+        [orgId, userId, goalType, payload]
       );
 
       return reply.code(201).send(result.rows[0]);
     } catch (err) {
-      app.log.error("Create goal failed:", err);
+      app.log.error("Create goal failed:", err.message);
       return reply.code(500).send({ error: "Failed to create goal", detail: err.message });
     }
   });
 
-  /* ======================================================
-     GET USER GOALS
-  ====================================================== */
+  /* GET USER GOALS */
   app.get("/", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.identity.sub;
@@ -92,14 +87,12 @@ export async function goalsRoutes(app) {
       );
       return reply.send(result.rows);
     } catch (err) {
-      app.log.error("Fetch goals failed:", err);
+      app.log.error("Fetch goals failed:", err.message);
       return reply.code(500).send({ error: "Failed to load goals", detail: err.message });
     }
   });
 
-  /* ======================================================
-     GET SINGLE GOAL
-  ====================================================== */
+  /* GET SINGLE GOAL */
   app.get("/:id", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.identity.sub;
@@ -117,7 +110,7 @@ export async function goalsRoutes(app) {
 
       return reply.send(result.rows[0]);
     } catch (err) {
-      app.log.error("Fetch goal failed:", err);
+      app.log.error("Fetch goal failed:", err.message);
       return reply.code(500).send({ error: "Failed to load goal", detail: err.message });
     }
   });
