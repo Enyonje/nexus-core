@@ -1,41 +1,125 @@
-// CREATE EXECUTION FROM GOAL (POST /executions)
-server.post("/", { preHandler: requireAuth }, async (req, reply) => {
-  const userId = req.identity.sub;
-  const { goalId } = req.body;
+// src/routes/executions.js
+import express from "express";
+import { db } from "../db.js";
+import { v4 as uuidv4 } from "uuid";
 
-  if (!goalId) {
-    return reply.code(400).send({ error: "goalId is required" });
-  }
+export const executionsRoutes = express.Router();
 
-  const client = await server.pg.connect();
+/* ======================================================
+   GET /executions
+   ====================================================== */
+executionsRoutes.get("/", async (req, res) => {
   try {
-    // Step 1: check goal exists and belongs to user
-    const goalRes = await client.query(
-      `SELECT id, goal_type, goal_payload 
-       FROM goals 
-       WHERE id = $1 AND user_id = $2`,   // ✅ use correct ownership column
-      [goalId, userId]
-    );
+    const executions = await db`
+      SELECT *
+      FROM executions
+      ORDER BY started_at DESC NULLS LAST
+    `;
 
-    if (goalRes.rows.length === 0) {
-      return reply.code(404).send({ error: "Goal not found or not owned by user" });
+    res.json({ executions });
+  } catch (err) {
+    console.error("GET /executions failed:", err);
+    res.status(500).json({ error: "Failed to load executions" });
+  }
+});
+
+/* ======================================================
+   POST /executions
+   Create execution from a goal
+   ====================================================== */
+executionsRoutes.post("/", async (req, res) => {
+  try {
+    const { goalId } = req.body;
+
+    if (!goalId) {
+      return res.status(400).json({ error: "goalId is required" });
     }
 
-    const goal = goalRes.rows[0];
+    // Pull goal info safely
+    const [goal] = await db`
+      SELECT id, goal_type
+      FROM goals
+      WHERE id = ${goalId}
+    `;
 
-    // Step 2: insert execution
-    const execRes = await client.query(
-      `INSERT INTO executions (goal_id, goal_type, goal_payload, status, started_at)
-       VALUES ($1, $2, $3, 'pending', NOW())
-       RETURNING id, status, started_at, goal_id`,
-      [goal.id, goal.goal_type, goal.goal_payload]
-    );
+    if (!goal) {
+      return res.status(404).json({ error: "Goal not found" });
+    }
 
-    return reply.send(execRes.rows[0]);
+    const [execution] = await db`
+      INSERT INTO executions (
+        id,
+        goal_id,
+        goal_type,
+        version,
+        status,
+        started_at
+      )
+      VALUES (
+        ${uuidv4()},
+        ${goal.id},
+        ${goal.goal_type},
+        1,
+        'pending',
+        NOW()
+      )
+      RETURNING *
+    `;
+
+    res.status(201).json({ execution });
   } catch (err) {
-    server.log.error("Create execution failed:", err);
-    return reply.code(500).send({ error: "Failed to create execution", detail: err.message });
-  } finally {
-    client.release();
+    console.error("POST /executions failed:", err);
+    res.status(500).json({ error: "Failed to create execution" });
+  }
+});
+
+/* ======================================================
+   POST /executions/:id/run
+   ====================================================== */
+executionsRoutes.post("/:id/run", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [execution] = await db`
+      UPDATE executions
+      SET
+        status = 'running',
+        started_at = COALESCE(started_at, NOW())
+      WHERE id = ${id}
+      RETURNING *
+    `;
+
+    if (!execution) {
+      return res.status(404).json({ error: "Execution not found" });
+    }
+
+    // (Later you’ll trigger workers / agents here)
+
+    res.json({ execution });
+  } catch (err) {
+    console.error("POST /executions/:id/run failed:", err);
+    res.status(500).json({ error: "Failed to run execution" });
+  }
+});
+
+/* ======================================================
+   GET /executions/:id
+   ====================================================== */
+executionsRoutes.get("/:id", async (req, res) => {
+  try {
+    const [execution] = await db`
+      SELECT *
+      FROM executions
+      WHERE id = ${req.params.id}
+    `;
+
+    if (!execution) {
+      return res.status(404).json({ error: "Execution not found" });
+    }
+
+    res.json({ execution });
+  } catch (err) {
+    console.error("GET /executions/:id failed:", err);
+    res.status(500).json({ error: "Failed to load execution" });
   }
 });
