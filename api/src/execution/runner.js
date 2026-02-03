@@ -62,21 +62,53 @@ export async function runExecution(executionId) {
       execution.goal_payload,
       executionId,
       async (stepInfo) => {
-        completedSteps++;
-        // Update DB step record
-        await db.query(
+        // Insert step start
+        const { rows: stepRows } = await db.query(
           `INSERT INTO execution_steps (execution_id, name, status, started_at)
-           VALUES ($1, $2, 'completed', NOW())`,
+           VALUES ($1, $2, 'running', NOW())
+           RETURNING id`,
           [executionId, stepInfo.name]
         );
+        const stepId = stepRows[0].id;
 
-        // Publish progress
-        publishEvent(executionId, {
-          event: "execution_progress",
-          completedSteps,
-          totalSteps,
-          step: stepInfo.name,
-        });
+        try {
+          // Simulate step work
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
+          // Mark step completed
+          await db.query(
+            `UPDATE execution_steps
+             SET status = 'completed', finished_at = NOW()
+             WHERE id = $1`,
+            [stepId]
+          );
+
+          completedSteps++;
+          publishEvent(executionId, {
+            event: "execution_progress",
+            completedSteps,
+            totalSteps,
+            step: stepInfo.name,
+          });
+        } catch (stepErr) {
+          // Mark step failed
+          await db.query(
+            `UPDATE execution_steps
+             SET status = 'failed', finished_at = NOW()
+             WHERE id = $1`,
+            [stepId]
+          );
+
+          publishEvent(executionId, {
+            event: "execution_progress",
+            completedSteps,
+            totalSteps,
+            step: stepInfo.name,
+            error: stepErr.message,
+          });
+
+          throw stepErr; // bubble up to fail the whole execution
+        }
       }
     );
 
@@ -91,14 +123,11 @@ export async function runExecution(executionId) {
        FINALIZE SUCCESS
     ========================= */
     await db.query(
-      `
-      UPDATE executions
-      SET status = 'completed',
-          finished_at = NOW(),
-          result = $2
-      WHERE id = $1
-      `,
-      [executionId, result]
+      `UPDATE executions
+       SET status = 'completed',
+           finished_at = NOW()
+       WHERE id = $1`,
+      [executionId]
     );
 
     publishEvent(executionId, {
@@ -111,14 +140,11 @@ export async function runExecution(executionId) {
        FINALIZE FAILURE
     ========================= */
     await db.query(
-      `
-      UPDATE executions
-      SET status = 'failed',
-          finished_at = NOW(),
-          error = $2
-      WHERE id = $1
-      `,
-      [executionId, err.message]
+      `UPDATE executions
+       SET status = 'failed',
+           finished_at = NOW()
+       WHERE id = $1`,
+      [executionId]
     );
 
     publishEvent(executionId, {
@@ -132,9 +158,6 @@ export async function runExecution(executionId) {
 
 /* Utility: count steps based on goal type/payload */
 async function countSteps(goalType, payload) {
-  // You can implement dynamic step counts here
-  // e.g. AI goals = 3 steps (prepare, call model, post-process)
-  // analysis goals = payload.tasks.length
   if (goalType.startsWith("ai_")) return 3;
   if (payload?.tasks) return payload.tasks.length;
   return 1;

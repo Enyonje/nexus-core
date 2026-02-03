@@ -9,7 +9,7 @@ export default function Goals() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [running, setRunning] = useState(null);
-  const [progress, setProgress] = useState({}); // ✅ track progress per execution
+  const [progress, setProgress] = useState({});
 
   const { addToast } = useToast();
 
@@ -61,7 +61,7 @@ export default function Goals() {
       // STEP 1 — create execution
       const execution = await apiFetch("/executions", {
         method: "POST",
-        body: JSON.stringify({ goalId }),
+        body: JSON.stringify({ goalId }), // ✅ ensure goalId is sent
       });
 
       // STEP 2 — run execution
@@ -69,11 +69,10 @@ export default function Goals() {
 
       addToast("Execution started", "success");
 
-      // STEP 3 — subscribe to stream
-      const evtSource = new EventSource(
-        `https://nexus-core-a0px.onrender.com/executions/${execution.id}/stream`,
-        { withCredentials: true }
-      );
+      // STEP 3 — subscribe to stream (use relative URL)
+      const evtSource = new EventSource(`/executions/${execution.id}/stream`, {
+        withCredentials: true,
+      });
 
       evtSource.onmessage = (e) => {
         try {
@@ -171,7 +170,10 @@ export default function Goals() {
             <div className="flex justify-between">
               <div>
                 <div className="font-medium">
-                  {goal.goal_payload?.title || "Untitled"}
+                  {/* ✅ handle different payload shapes */}
+                  {goal.goal_payload?.title ||
+                   goal.goal_payload?.message ||
+                   "Untitled"}
                 </div>
                 <div className="text-xs text-gray-500">
                   {new Date(goal.created_at).toLocaleString()}
@@ -187,7 +189,6 @@ export default function Goals() {
               </button>
             </div>
 
-            {/* ✅ Progress bar + step counts */}
             {prog && (
               <div className="space-y-1">
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded h-2">
