@@ -1,6 +1,6 @@
 // src/routes/executions.js
 import express from "express";
-import { db } from "../db.js";
+import { db } from "../db/db.js";
 import { v4 as uuidv4 } from "uuid";
 
 export const executionsRoutes = express.Router();
