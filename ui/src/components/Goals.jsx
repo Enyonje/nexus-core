@@ -61,7 +61,7 @@ export default function Goals() {
       // STEP 1 — create execution
       const execution = await apiFetch("/executions", {
         method: "POST",
-        body: JSON.stringify({ goalId }), // ✅ ensure goalId is sent
+        body: JSON.stringify({ goalId }),
       });
 
       // STEP 2 — run execution
@@ -69,7 +69,7 @@ export default function Goals() {
 
       addToast("Execution started", "success");
 
-      // STEP 3 — subscribe to stream (use relative URL)
+      // STEP 3 — subscribe to stream
       const evtSource = new EventSource(`/executions/${execution.id}/stream`, {
         withCredentials: true,
       });
@@ -86,12 +86,26 @@ export default function Goals() {
             setProgress((prev) => ({
               ...prev,
               [execution.id]: {
+                ...prev[execution.id],
                 percent,
                 status: "running",
                 completedSteps,
                 totalSteps,
               },
             }));
+
+            // Handle failed step inline
+            if (data.error) {
+              setProgress((prev) => ({
+                ...prev,
+                [execution.id]: {
+                  ...prev[execution.id],
+                  status: "failed",
+                  failedStep: data.step,
+                  error: data.error,
+                },
+              }));
+            }
           }
 
           if (data.event === "execution_completed") {
@@ -116,6 +130,7 @@ export default function Goals() {
                 status: "failed",
                 completedSteps: 0,
                 totalSteps: data.totalSteps || 0,
+                error: data.error,
               },
             }));
             addToast(`Execution ${execution.id} failed ❌`, "error");
@@ -124,6 +139,11 @@ export default function Goals() {
         } catch {
           console.warn("Bad stream event", e.data);
         }
+      };
+
+      evtSource.onerror = () => {
+        addToast("Stream connection lost", "error");
+        evtSource.close();
       };
     } catch (err) {
       addToast(err.message || "Execution failed", "error");
@@ -135,85 +155,98 @@ export default function Goals() {
   if (loading) return <div className="p-6">Loading goals…</div>;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold">Goals</h1>
+    <div className="max-w-5xl mx-auto px-6 py-10 space-y-8">
+      <h1 className="text-3xl font-bold tracking-tight">Goals</h1>
 
-      <form onSubmit={createGoal} className="space-y-2">
+      {/* Create Goal Form */}
+      <form
+        onSubmit={createGoal}
+        className="space-y-4 bg-gray-50 dark:bg-gray-900 p-6 rounded-xl shadow"
+      >
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Goal title"
-          className="w-full p-2 border rounded"
+          className="w-full p-3 border rounded-lg focus:ring focus:ring-blue-300"
         />
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Description"
-          className="w-full p-2 border rounded"
+          className="w-full p-3 border rounded-lg focus:ring focus:ring-blue-300"
         />
         <button
           type="submit"
           disabled={creating}
-          className="bg-blue-600 text-white px-4 py-2 rounded"
+          className="bg-blue-600 text-white px-6 py-2 rounded-lg shadow hover:bg-blue-700 transition"
         >
           {creating ? "Creating…" : "Create Goal"}
         </button>
       </form>
 
-      {goals.map((goal) => {
-        const prog = progress[goal.id];
-        return (
-          <div
-            key={goal.id}
-            className="p-4 bg-white dark:bg-gray-800 rounded space-y-2"
-          >
-            <div className="flex justify-between">
-              <div>
-                <div className="font-medium">
-                  {/* ✅ handle different payload shapes */}
-                  {goal.goal_payload?.title ||
-                   goal.goal_payload?.message ||
-                   "Untitled"}
+      {/* Goals Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {goals.map((goal) => {
+          const prog = progress[goal.id];
+          return (
+            <div
+              key={goal.id}
+              className="p-6 bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition space-y-4"
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="font-semibold text-lg">
+                    {goal.goal_payload?.title ||
+                      goal.goal_payload?.message ||
+                      "Untitled"}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {new Date(goal.created_at).toLocaleString()}
+                  </div>
                 </div>
-                <div className="text-xs text-gray-500">
-                  {new Date(goal.created_at).toLocaleString()}
-                </div>
+
+                <button
+                  onClick={() => runGoal(goal.id)}
+                  disabled={running === goal.id}
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  {running === goal.id ? "Running…" : "Run →"}
+                </button>
               </div>
 
-              <button
-                onClick={() => runGoal(goal.id)}
-                disabled={running === goal.id}
-                className="text-sm text-blue-600 hover:underline"
-              >
-                {running === goal.id ? "Running…" : "Run →"}
-              </button>
+              {prog && (
+                <div className="space-y-2">
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded h-2">
+                    <div
+                      className={`h-2 rounded transition-all duration-300 ${
+                        prog.status === "completed"
+                          ? "bg-green-600"
+                          : prog.status === "failed"
+                          ? "bg-red-600"
+                          : "bg-blue-600"
+                      }`}
+                      style={{ width: `${prog.percent}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    {prog.status === "running" &&
+                      `Step ${prog.completedSteps} of ${prog.totalSteps}`}
+                    {prog.status === "completed" && "Completed ✅"}
+                    {prog.status === "failed" && "Failed ❌"}
+                  </div>
+
+                  {/* Inline failed step details */}
+                  {prog.status === "failed" && prog.failedStep && (
+                    <div className="text-xs text-red-600 mt-1">
+                      ❌ Step "{prog.failedStep}" failed: {prog.error}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-
-            {prog && (
-              <div className="space-y-1">
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded h-2">
-                  <div
-                    className={`h-2 rounded transition-all duration-300 ${
-                      prog.status === "completed"
-                        ? "bg-green-600"
-                        : prog.status === "failed"
-                        ? "bg-red-600"
-                        : "bg-blue-600"
-                    }`}
-                    style={{ width: `${prog.percent}%` }}
-                  ></div>
-                </div>
-                <div className="text-xs text-gray-600">
-                  {prog.status === "running" &&
-                    `Step ${prog.completedSteps} of ${prog.totalSteps}`}
-                  {prog.status === "completed" && "Completed ✅"}
-                  {prog.status === "failed" && "Failed ❌"}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

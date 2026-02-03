@@ -26,10 +26,8 @@ export default function Login() {
         throw new Error("Invalid login response");
       }
 
-      // Persist token immediately
       localStorage.setItem("token", res.token);
 
-      // Let AuthProvider handle session + redirects
       login({
         user: res.user,
         token: res.token,
@@ -48,37 +46,34 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-black px-4">
       <form
         onSubmit={handleLogin}
-        className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-xl shadow-lg p-6 space-y-5"
+        className="w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-lg p-8 space-y-6"
       >
-        {/* Header */}
-        <div className="text-center">
+        <div className="text-center space-y-1">
           <h2 className="text-2xl font-bold">Sign in to Nexus Core</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Continue building intelligent workflows
           </p>
         </div>
 
-        {/* Email */}
-        <input
-          type="email"
-          placeholder="Email address"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full p-3 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
-          required
-        />
+        <div className="space-y-4">
+          <input
+            type="email"
+            placeholder="Email address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
+            required
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
+            required
+          />
+        </div>
 
-        {/* Password */}
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full p-3 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
-          required
-        />
-
-        {/* Forgot password */}
         <div className="text-right">
           <Link
             to="/forgot-password"
@@ -88,23 +83,20 @@ export default function Login() {
           </Link>
         </div>
 
-        {/* Submit */}
         <button
           type="submit"
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-medium transition disabled:opacity-60"
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition disabled:opacity-60"
           disabled={loading}
         >
           {loading ? "Signing in…" : "Sign In"}
         </button>
 
-        {/* Divider */}
         <div className="flex items-center gap-3 text-gray-400 text-sm">
           <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700" />
           or
           <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700" />
         </div>
 
-        {/* Signup CTA */}
         <div className="text-center text-sm">
           <span className="text-gray-600 dark:text-gray-400">
             Don’t have an account?
