@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { db } from "../db/db.js";
-import { publishEvent } from "../execution/executions.js"; // use your in‑memory SSE bus
+import { publishEvent } from "../routes/executions.js"; // use your in‑memory SSE bus
 
 /* =========================
    SAFE OPENAI CLIENT
