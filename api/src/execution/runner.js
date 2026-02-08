@@ -72,15 +72,15 @@ export async function runExecution(executionId) {
         const stepId = stepRows[0].id;
 
         try {
-          // Simulate step work
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          // 🔥 Run real step logic instead of simulation
+          const output = await runStep(stepInfo);
 
           // Mark step completed
           await db.query(
             `UPDATE execution_steps
-             SET status = 'completed', finished_at = NOW()
+             SET status = 'completed', finished_at = NOW(), result = $2
              WHERE id = $1`,
-            [stepId]
+            [stepId, JSON.stringify(output)]
           );
 
           completedSteps++;
@@ -89,14 +89,15 @@ export async function runExecution(executionId) {
             completedSteps,
             totalSteps,
             step: stepInfo.name,
+            result: output,
           });
         } catch (stepErr) {
           // Mark step failed
           await db.query(
             `UPDATE execution_steps
-             SET status = 'failed', finished_at = NOW()
+             SET status = 'failed', finished_at = NOW(), error = $2
              WHERE id = $1`,
-            [stepId]
+            [stepId, stepErr.message]
           );
 
           publishEvent(executionId, {
@@ -125,9 +126,10 @@ export async function runExecution(executionId) {
     await db.query(
       `UPDATE executions
        SET status = 'completed',
-           finished_at = NOW()
+           finished_at = NOW(),
+           result = $2
        WHERE id = $1`,
-      [executionId]
+      [executionId, JSON.stringify(result)]
     );
 
     publishEvent(executionId, {
@@ -142,9 +144,10 @@ export async function runExecution(executionId) {
     await db.query(
       `UPDATE executions
        SET status = 'failed',
-           finished_at = NOW()
+           finished_at = NOW(),
+           error = $2
        WHERE id = $1`,
-      [executionId]
+      [executionId, err.message]
     );
 
     publishEvent(executionId, {
@@ -161,4 +164,26 @@ async function countSteps(goalType, payload) {
   if (goalType.startsWith("ai_")) return 3;
   if (payload?.tasks) return payload.tasks.length;
   return 1;
+}
+
+/* 🔥 Real step runner */
+async function runStep(stepInfo) {
+  // Example: replace with your actual business logic
+  if (stepInfo.name === "fetchData") {
+    const res = await fetch("https://api.github.com/repos/vercel/vercel");
+    return await res.json();
+  }
+
+  if (stepInfo.name === "processFile") {
+    // Imagine you process a file here
+    return { processed: true, file: stepInfo.filePath };
+  }
+
+  if (stepInfo.name === "ai_generate") {
+    // Call your AI logic
+    return { text: "AI-generated output" };
+  }
+
+  // Default: echo payload
+  return { echo: stepInfo.payload };
 }
