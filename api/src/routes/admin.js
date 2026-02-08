@@ -1,5 +1,5 @@
 import { db } from "../db/db.js";
-import { runExecution } from "../runner/runner.js";
+import { runExecution } from "../execution/runner.js";
 
 /**
  * Admin-only routes
