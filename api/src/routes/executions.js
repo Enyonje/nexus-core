@@ -139,6 +139,16 @@ export async function executionsRoutes(app) {
   app.get("/:id/stream", async (req, reply) => {
     const { id } = req.params;
 
+    // Explicit CORS headers for SSE
+    const origin = req.headers.origin;
+    if (
+      origin === "https://nexus-core-chi.vercel.app" ||
+      origin?.startsWith("http://localhost")
+    ) {
+      reply.raw.setHeader("Access-Control-Allow-Origin", origin);
+      reply.raw.setHeader("Access-Control-Allow-Credentials", "true");
+    }
+
     reply.raw.setHeader("Content-Type", "text/event-stream");
     reply.raw.setHeader("Cache-Control", "no-cache");
     reply.raw.setHeader("Connection", "keep-alive");
@@ -174,6 +184,36 @@ export async function executionsRoutes(app) {
     } catch (err) {
       req.log.error(err);
       return reply.code(500).send({ error: "Admin fetch failed" });
+    }
+  });
+
+  /* ===============================
+     ADMIN RERUN EXECUTION
+  =============================== */
+  app.post("/admin/:id/rerun", { preHandler: requireAdmin }, async (req, reply) => {
+    try {
+      const { id } = req.params;
+      runExecution(id, publishEvent).catch((err) => {
+        req.log.error("Admin rerun failed:", err);
+      });
+      return { success: true, message: `Execution ${id} rerun started` };
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ error: "Failed to rerun execution" });
+    }
+  });
+
+  /* ===============================
+     ADMIN DELETE EXECUTION
+  =============================== */
+  app.delete("/admin/:id", { preHandler: requireAdmin }, async (req, reply) => {
+    try {
+      const { id } = req.params;
+      await app.pg.query(`DELETE FROM executions WHERE id = $1`, [id]);
+      return { success: true, message: `Execution ${id} deleted` };
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ error: "Failed to delete execution" });
     }
   });
 }
