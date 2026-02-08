@@ -7,6 +7,7 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [subscription, setSubscription] = useState("free");
+  const [role, setRole] = useState("user"); // ✅ track role separately
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -37,13 +38,16 @@ export function AuthProvider({ children }) {
 
       const data = await res.json();
 
-      setUser({ token });
+      // ✅ store user, role, subscription
+      setUser({ token, email: data.email, id: data.id });
       setSubscription(data.tier || "free");
-      return data.tier || "free"; // ✅ return tier for login flow
+      setRole(data.role || "user");
+
+      return { tier: data.tier || "free", role: data.role || "user" };
     } catch (err) {
       console.warn("Session refresh failed:", err.message);
       logout(false);
-      return "free";
+      return { tier: "free", role: "user" };
     } finally {
       setLoading(false);
     }
@@ -54,15 +58,17 @@ export function AuthProvider({ children }) {
   ========================= */
   async function login({ token }) {
     localStorage.setItem("token", token);
-    const tier = await refreshSession(token);
-    redirectByTier(tier); // ✅ use returned tier, not stale state
+    const { tier, role } = await refreshSession(token);
+    redirectByTier(tier, role);
   }
 
   /* =========================
      REDIRECT
   ========================= */
-  function redirectByTier(tier) {
-    if (tier === "enterprise") {
+  function redirectByTier(tier, role) {
+    if (role === "admin") {
+      navigate("/admin", { replace: true });
+    } else if (tier === "enterprise") {
       navigate("/streams", { replace: true });
     } else if (tier === "pro") {
       navigate("/executions", { replace: true });
@@ -78,6 +84,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("token");
     setUser(null);
     setSubscription("free");
+    setRole("user");
     setLoading(false);
 
     if (redirect) navigate("/", { replace: true });
@@ -88,7 +95,8 @@ export function AuthProvider({ children }) {
       value={{
         user,
         subscription,
-        setSubscription, // ✅ expose setter
+        role,            // ✅ expose role
+        setSubscription,
         loading,
         login,
         logout,
