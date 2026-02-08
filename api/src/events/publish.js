@@ -1,8 +1,9 @@
+import { emitEvent, broadcastEvent } from "./stream.js";
+
 /**
  * Central event publisher
  * This must NEVER crash the server
  */
-
 const ALLOWED_EVENTS = new Set([
   // executions
   "execution.started",
@@ -23,24 +24,38 @@ const ALLOWED_EVENTS = new Set([
   "admin.override",
 ]);
 
-export async function publishEvent(event) {
-  if (!event?.type) {
-    console.warn("⚠️ Event missing type:", event);
+export async function publishEvent(executionId, event) {
+  if (!event?.event) {
+    console.warn("⚠️ Event missing 'event' field:", event);
     return;
   }
 
-  if (!ALLOWED_EVENTS.has(event.type)) {
-    console.warn(`⚠️ Event blocked: ${event.type}`);
+  if (!ALLOWED_EVENTS.has(event.event)) {
+    console.warn(`⚠️ Event blocked: ${event.event}`);
     return; // 🔑 DO NOT THROW
   }
 
   try {
-    // for now we just log — later this can push to Redis / WS / Kafka
-    console.log("📣 Event:", {
-      type: event.type,
-      payload: event.payload || {},
+    const enriched = {
+      ...event,
+      executionId,
       time: new Date().toISOString(),
-    });
+    };
+
+    // Log for audit
+    console.log("📣 Event:", enriched);
+
+    // 🔥 Emit to specific execution stream
+    if (executionId) {
+      emitEvent(executionId, enriched);
+    } else {
+      // 🔥 Broadcast to all clients if no executionId
+      broadcastEvent(enriched);
+    }
+
+    // Optional: forward to external bus (Redis/Kafka/RabbitMQ)
+    // await externalBus.publish(enriched);
+
   } catch (err) {
     console.error("❌ Event publish failed:", err.message);
   }

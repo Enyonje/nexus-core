@@ -10,15 +10,25 @@ export function registerClient(executionId, reply) {
     Connection: "keep-alive",
   });
 
-  reply.raw.write("\n");
+  // Initial ping so client knows stream is alive
+  reply.raw.write(":\n\n");
 
   if (!clients.has(executionId)) {
     clients.set(executionId, new Set());
   }
-
   clients.get(executionId).add(reply);
 
+  // Heartbeat every 15s to keep connection alive
+  const interval = setInterval(() => {
+    try {
+      reply.raw.write(":\n\n"); // comment line = SSE heartbeat
+    } catch {
+      clearInterval(interval);
+    }
+  }, 15000);
+
   reply.raw.on("close", () => {
+    clearInterval(interval);
     clients.get(executionId)?.delete(reply);
     if (clients.get(executionId)?.size === 0) {
       clients.delete(executionId);
@@ -33,7 +43,6 @@ export function emitEvent(executionId, payload) {
   const listeners = clients.get(executionId);
   if (!listeners) return;
 
-  // Always enrich payload with event + executionId
   const enriched = {
     event: payload.event,
     executionId,
@@ -41,7 +50,12 @@ export function emitEvent(executionId, payload) {
   };
 
   for (const reply of listeners) {
-    reply.raw.write(`data: ${JSON.stringify(enriched)}\n\n`);
+    try {
+      reply.raw.write(`event: ${payload.event}\n`);
+      reply.raw.write(`data: ${JSON.stringify(enriched)}\n\n`);
+    } catch (err) {
+      console.warn("SSE write failed:", err.message);
+    }
   }
 }
 
@@ -57,7 +71,12 @@ export function broadcastEvent(payload) {
     };
 
     for (const reply of listeners) {
-      reply.raw.write(`data: ${JSON.stringify(enriched)}\n\n`);
+      try {
+        reply.raw.write(`event: ${payload.event}\n`);
+        reply.raw.write(`data: ${JSON.stringify(enriched)}\n\n`);
+      } catch (err) {
+        console.warn("SSE broadcast failed:", err.message);
+      }
     }
   }
 }
