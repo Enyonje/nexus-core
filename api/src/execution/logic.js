@@ -1,6 +1,6 @@
 import OpenAI from "openai";
-import { publishEvent } from "../events/publish.js";
 import { db } from "../db/db.js";
+import { publishEvent } from "../execution/executions.js"; // use your in‑memory SSE bus
 
 /* =========================
    SAFE OPENAI CLIENT
@@ -51,7 +51,7 @@ async function runTestGoal(payload, executionId, cb) {
 async function runHttpGoal(payload, executionId, cb) {
   if (!payload?.url) throw new Error("Missing URL");
   await recordStep(executionId, "http_request", "completed");
-  cb?.({ name: "http_request", status: "completed" });
+  cb?.({ name: "http_request", status: "completed", result: { url: payload.url } });
   return {
     request: { url: payload.url, method: payload.method || "GET" },
     response: "Simulated HTTP response",
@@ -61,7 +61,7 @@ async function runHttpGoal(payload, executionId, cb) {
 async function runAnalysisGoal(payload, executionId, cb) {
   if (!payload?.data) throw new Error("Missing analysis data");
   await recordStep(executionId, "analysis", "completed");
-  cb?.({ name: "analysis", status: "completed" });
+  cb?.({ name: "analysis", status: "completed", result: { size: JSON.stringify(payload.data).length } });
   return { result: "Analysis complete", size: JSON.stringify(payload.data).length };
 }
 
@@ -157,7 +157,7 @@ async function streamWithEvents(stream, executionId, stepId, type, cb) {
 
     // Final flush
     await safePublish(executionId, stepId, text, "completed");
-    cb?.({ name: stepId, status: "completed" });
+    cb?.({ name: stepId, status: "completed", result: text });
 
     return { model: "openai:gpt-4o-mini", type, text };
   } catch (err) {
@@ -172,12 +172,12 @@ async function streamWithEvents(stream, executionId, stepId, type, cb) {
 ========================= */
 async function safePublish(executionId, stepId, partial, status) {
   try {
-    await publishEvent(
-      db,
-      { sub: "nexus-core", role: "service" },
-      "execution_progress",
-      { executionId, stepId, status, partial }
-    );
+    publishEvent(executionId, {
+      event: "execution_progress",
+      step: stepId,
+      status,
+      result: partial,
+    });
   } catch (err) {
     console.warn("Event publish skipped:", err.message);
   }
