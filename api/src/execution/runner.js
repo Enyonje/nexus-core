@@ -1,64 +1,35 @@
 import { db } from "../db/db.js";
 import { executeGoalLogic } from "./logic.js";
-import { checkAiQuota, incrementAiUsage } from "../usage/aiQuota.js";
+import { publishEvent } from "../routes/executions.js"; // SSE bus
+import { runSentinel } from "../agents/sentinel.js"; // now includes LLM reasoning
 
 /**
- * Run an execution and stream events via publishEvent
+ * Run an execution with real-time step validation
  */
-export async function runExecution(executionId, publishEvent) {
+export async function runExecution(executionId) {
   const { rows } = await db.query(
-    `
-    SELECT
-      e.id,
-      e.goal_id,
-      g.goal_type,
-      g.goal_payload,
-      u.id AS user_id,
-      u.subscription,
-      u.role
-    FROM executions e
-    JOIN goals g ON g.id = e.goal_id
-    JOIN users u ON u.id = g.user_id
-    WHERE e.id = $1
-    `,
+    `SELECT e.id, e.goal_id, g.goal_type, g.goal_payload, u.id AS user_id
+     FROM executions e
+     JOIN goals g ON g.id = e.goal_id
+     JOIN users u ON u.id = g.user_id
+     WHERE e.id = $1`,
     [executionId]
   );
 
-  if (!rows.length) {
-    throw new Error("Execution not found");
-  }
-
+  if (!rows.length) throw new Error("Execution not found");
   const execution = rows[0];
-  const user = {
-    id: execution.user_id,
-    subscription: execution.subscription,
-    role: execution.role,
-  };
 
   try {
-    /* =========================
-       QUOTA & PERMISSIONS
-    ========================= */
-    if (execution.goal_type.startsWith("ai_")) {
-      await checkAiQuota(user);
-    }
-
+    // Mark execution as running
     await db.query(
       `UPDATE executions SET status = 'running', started_at = NOW() WHERE id = $1`,
       [executionId]
     );
+    publishEvent(executionId, { event: "execution_started", goalType: execution.goal_type });
 
-    publishEvent(executionId, {
-      event: "execution_started",
-      goalType: execution.goal_type,
-    });
-
-    /* =========================
-       STEP-BY-STEP EXECUTION
-    ========================= */
     let completedSteps = 0;
-    const totalSteps = await countSteps(execution.goal_type, execution.goal_payload);
 
+    // Execute goal logic step-by-step
     const result = await executeGoalLogic(
       execution.goal_type,
       execution.goal_payload,
@@ -74,13 +45,13 @@ export async function runExecution(executionId, publishEvent) {
         const stepId = stepRows[0].id;
 
         try {
-          // 🔥 Run real step logic
+          // Run actual step logic
           const output = await runStep(stepInfo);
 
           // Mark step completed
           await db.query(
             `UPDATE execution_steps
-             SET status = 'completed', finished_at = NOW(), result = $2
+             SET status = 'completed', finished_at = NOW(), output = $2
              WHERE id = $1`,
             [stepId, JSON.stringify(output)]
           );
@@ -88,84 +59,62 @@ export async function runExecution(executionId, publishEvent) {
           completedSteps++;
           publishEvent(executionId, {
             event: "execution_progress",
-            completedSteps,
-            totalSteps,
+            stepId,
             step: stepInfo.name,
             result: output,
+            completedSteps,
           });
-        } catch (stepErr) {
+
+          // 🔎 Sentinel validation immediately after step completion
+          const verdict = await runSentinel(executionId);
+          if (!verdict) {
+            publishEvent(executionId, {
+              event: "sentinel_blocked",
+              stepId,
+              reason: "Governance agent rejected output",
+            });
+            throw new Error("Sentinel blocked execution");
+          }
+        } catch (err) {
           // Mark step failed
           await db.query(
             `UPDATE execution_steps
              SET status = 'failed', finished_at = NOW(), error = $2
              WHERE id = $1`,
-            [stepId, stepErr.message]
+            [stepId, err.message]
           );
 
           publishEvent(executionId, {
             event: "execution_progress",
-            completedSteps,
-            totalSteps,
+            stepId,
             step: stepInfo.name,
-            error: stepErr.message,
+            error: err.message,
           });
 
-          throw stepErr; // bubble up to fail the whole execution
+          throw err;
         }
       }
     );
 
-    /* =========================
-       QUOTA INCREMENT
-    ========================= */
-    if (execution.goal_type.startsWith("ai_")) {
-      await incrementAiUsage(user);
-    }
-
-    /* =========================
-       FINALIZE SUCCESS
-    ========================= */
+    // Finalize success
     await db.query(
       `UPDATE executions
-       SET status = 'completed',
-           finished_at = NOW(),
-           result = $2
+       SET status = 'completed', finished_at = NOW(), result = $2
        WHERE id = $1`,
       [executionId, JSON.stringify(result)]
     );
-
-    publishEvent(executionId, {
-      event: "execution_completed",
-      totalSteps,
-      result,
-    });
+    publishEvent(executionId, { event: "execution_completed", result });
   } catch (err) {
-    /* =========================
-       FINALIZE FAILURE
-    ========================= */
+    // Finalize failure
     await db.query(
       `UPDATE executions
-       SET status = 'failed',
-           finished_at = NOW(),
-           error = $2
+       SET status = 'failed', finished_at = NOW(), error = $2
        WHERE id = $1`,
       [executionId, err.message]
     );
-
-    publishEvent(executionId, {
-      event: "execution_failed",
-      error: err.message,
-    });
-
+    publishEvent(executionId, { event: "execution_failed", error: err.message });
     throw err;
   }
-}
-
-/* Utility: count steps based on goal type/payload */
-async function countSteps(goalType, payload) {
-  if (goalType.startsWith("ai_")) return 3;
-  if (payload?.tasks) return payload.tasks.length;
-  return 1;
 }
 
 /* 🔥 Real step runner */
@@ -174,14 +123,11 @@ async function runStep(stepInfo) {
     const res = await fetch("https://api.github.com/repos/vercel/vercel");
     return await res.json();
   }
-
   if (stepInfo.name === "processFile") {
     return { processed: true, file: stepInfo.filePath };
   }
-
   if (stepInfo.name === "ai_generate") {
     return { text: "AI-generated output" };
   }
-
   return { echo: stepInfo.payload };
 }
