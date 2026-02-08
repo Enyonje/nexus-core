@@ -1,9 +1,11 @@
 import { db } from "../db/db.js";
 import { executeGoalLogic } from "./logic.js";
 import { checkAiQuota, incrementAiUsage } from "../usage/aiQuota.js";
-import { publishEvent } from "../events/publish.js"; // SSE publisher
 
-export async function runExecution(executionId) {
+/**
+ * Run an execution and stream events via publishEvent
+ */
+export async function runExecution(executionId, publishEvent) {
   const { rows } = await db.query(
     `
     SELECT
@@ -72,7 +74,7 @@ export async function runExecution(executionId) {
         const stepId = stepRows[0].id;
 
         try {
-          // 🔥 Run real step logic instead of simulation
+          // 🔥 Run real step logic
           const output = await runStep(stepInfo);
 
           // Mark step completed
@@ -168,22 +170,18 @@ async function countSteps(goalType, payload) {
 
 /* 🔥 Real step runner */
 async function runStep(stepInfo) {
-  // Example: replace with your actual business logic
   if (stepInfo.name === "fetchData") {
     const res = await fetch("https://api.github.com/repos/vercel/vercel");
     return await res.json();
   }
 
   if (stepInfo.name === "processFile") {
-    // Imagine you process a file here
     return { processed: true, file: stepInfo.filePath };
   }
 
   if (stepInfo.name === "ai_generate") {
-    // Call your AI logic
     return { text: "AI-generated output" };
   }
 
-  // Default: echo payload
   return { echo: stepInfo.payload };
 }

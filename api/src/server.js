@@ -20,18 +20,23 @@ await app.register(cors, {
   origin: [
     "https://nexus-core-chi.vercel.app", // ✅ production frontend
     "http://localhost:3000",             // ✅ local dev frontend
+    "http://localhost:5173",             // ✅ vite dev frontend
   ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
 });
 
 await app.register(websocket);
 
 await app.register(fastifyPostgres, {
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
+/* =========================
+   RAW BODY HOOK
+========================= */
 app.addHook("onRequest", async (req, reply) => {
   req.rawBody = req.body;
 });

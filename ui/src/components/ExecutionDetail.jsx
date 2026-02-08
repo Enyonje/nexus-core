@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
 import LoadingSpinner from "./LoadingSpinner.jsx";
+import { useAuth } from "../context/AuthProvider.jsx";
 
 export default function ExecutionDetail() {
   const { id } = useParams();
@@ -10,6 +11,7 @@ export default function ExecutionDetail() {
   const [steps, setSteps] = useState([]);
   const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
+  const { role } = useAuth(); // ✅ check if admin
 
   useEffect(() => {
     async function loadExecution() {
@@ -35,21 +37,35 @@ export default function ExecutionDetail() {
       try {
         const data = JSON.parse(e.data);
 
-        if (data.event === "step_progress") {
-          setSteps((prev) =>
-            prev.map((s) =>
-              s.id === data.stepId ? { ...s, status: data.status } : s
-            )
-          );
+        if (data.event === "execution_started") {
+          addToast(`Execution ${id} started 🚀`, "info");
+          setExecution((prev) => ({ ...prev, status: "running" }));
+        }
+
+        if (data.event === "execution_progress") {
+          setSteps((prev) => [
+            ...prev,
+            {
+              id: `${id}-${data.step}`,
+              name: data.step,
+              status: data.error ? "failed" : "completed",
+              result: data.result,
+              error: data.error,
+              started_at: new Date().toISOString(),
+              finished_at: new Date().toISOString(),
+            },
+          ]);
         }
 
         if (data.event === "execution_completed") {
           addToast(`Execution ${id} completed 🎉`, "success");
+          setExecution((prev) => ({ ...prev, status: "completed" }));
           evtSource.close();
         }
 
         if (data.event === "execution_failed") {
           addToast(`Execution ${id} failed ❌`, "error");
+          setExecution((prev) => ({ ...prev, status: "failed" }));
           evtSource.close();
         }
       } catch {
@@ -62,13 +78,69 @@ export default function ExecutionDetail() {
     };
   }, [id]);
 
-  if (loading) return <LoadingSpinner label="Loading execution…" />;
+  async function runExecution() {
+    try {
+      await apiFetch(`/executions/${id}/run`, { method: "POST" });
+      addToast(`Execution ${id} triggered`, "info");
+    } catch {
+      addToast("Failed to start execution", "error");
+    }
+  }
 
+  // ✅ Admin-only actions
+  async function rerunExecution() {
+    try {
+      await apiFetch(`/admin/executions/${id}/rerun`, { method: "POST" });
+      addToast(`Execution ${id} rerun started`, "info");
+    } catch {
+      addToast("Failed to rerun execution", "error");
+    }
+  }
+
+  async function deleteExecution() {
+    if (!window.confirm("Delete this execution?")) return;
+    try {
+      await apiFetch(`/executions/${id}`, { method: "DELETE" });
+      addToast(`Execution ${id} deleted`, "success");
+    } catch {
+      addToast("Failed to delete execution", "error");
+    }
+  }
+
+  if (loading) return <LoadingSpinner label="Loading execution…" />;
   if (!execution) return <p>Execution not found</p>;
 
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Execution {execution.id}</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Execution {execution.id}</h1>
+        <div className="space-x-2">
+          <button
+            onClick={runExecution}
+            className="px-4 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700"
+          >
+            Run Execution
+          </button>
+
+          {role === "admin" && (
+            <>
+              <button
+                onClick={rerunExecution}
+                className="px-4 py-2 bg-yellow-600 text-white rounded shadow hover:bg-yellow-700"
+              >
+                Rerun (Admin)
+              </button>
+              <button
+                onClick={deleteExecution}
+                className="px-4 py-2 bg-red-600 text-white rounded shadow hover:bg-red-700"
+              >
+                Delete (Admin)
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
       <p>Status: {execution.status}</p>
 
       <div className="space-y-4">
@@ -100,6 +172,14 @@ export default function ExecutionDetail() {
                 {step.finished_at &&
                   ` | Finished: ${new Date(step.finished_at).toLocaleString()}`}
               </div>
+              {step.result && (
+                <pre className="text-xs bg-gray-100 dark:bg-gray-900 p-2 mt-2 rounded">
+                  {JSON.stringify(step.result, null, 2)}
+                </pre>
+              )}
+              {step.error && (
+                <p className="text-xs text-red-600 mt-2">Error: {step.error}</p>
+              )}
             </div>
           ))
         )}
