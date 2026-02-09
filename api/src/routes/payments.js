@@ -4,7 +4,7 @@ import { db } from "../db/db.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-export async function paymentRoutes(server) {
+export async function paymentsRoutes(server) {
   // Create a checkout session
   server.post("/create-checkout-session", async (req, reply) => {
     const { priceId, userId } = req.body; // priceId from Stripe dashboard
