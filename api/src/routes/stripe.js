@@ -2,7 +2,7 @@ import { stripe, getStripePriceId } from "../utils/stripe.js";
 
 export async function stripeRoutes(server) {
   server.post("/create-checkout-session", async (req, reply) => {
-    const { tier } = req.body;
+    const { tier, userId } = req.body; // ✅ read from body
 
     try {
       const priceId = getStripePriceId(tier);
@@ -12,7 +12,9 @@ export async function stripeRoutes(server) {
         line_items: [{ price: priceId, quantity: 1 }],
         success_url: `${process.env.FRONTEND_URL}/subscription?success=true`,
         cancel_url: `${process.env.FRONTEND_URL}/subscription?canceled=true`,
-        metadata: { userId: req.user.id },
+        metadata: {
+          userId: userId || "anonymous", // ✅ safe fallback
+        },
       });
 
       return { url: session.url };
