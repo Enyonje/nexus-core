@@ -1,6 +1,6 @@
 import { stripe, getStripePriceId } from "../utils/stripe.js";
 
-export default async function stripeRoutes(server) {
+export async function stripeRoutes(server) {
   server.post("/create-checkout-session", async (req, reply) => {
     const { tier } = req.body;
 
