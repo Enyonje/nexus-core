@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 export default function Subscription() {
   const [tier, setTier] = useState("free");
@@ -10,26 +10,21 @@ export default function Subscription() {
 
   const { addToast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
 
   /* =========================
-     LOAD SUBSCRIPTION (SAFE)
+     LOAD SUBSCRIPTION
   ========================= */
   async function loadSubscription() {
     setLoading(true);
-
     try {
       const data = await apiFetch("/auth/subscription");
-
-      // ✅ Always normalize response
       setTier(data?.tier ?? "free");
       setActive(Boolean(data?.active));
     } catch (err) {
       console.warn("Subscription load failed:", err.message);
-
-      // ✅ NEVER crash or parse HTML
       setTier("free");
       setActive(false);
-
       if (err.message.toLowerCase().includes("authorization")) {
         addToast("Please log in to view subscription", "error");
         navigate("/login", { replace: true });
@@ -46,28 +41,32 @@ export default function Subscription() {
   }, []);
 
   /* =========================
-     STRIPE UPGRADE (SAFE)
+     HANDLE RETURN FROM STRIPE
+  ========================= */
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("success")) {
+      addToast("Payment successful! Updating subscription…", "success");
+      loadSubscription(); // refresh from backend after webhook updates DB
+    }
+    if (params.get("canceled")) {
+      addToast("Checkout canceled", "error");
+    }
+  }, [location.search]);
+
+  /* =========================
+     STRIPE UPGRADE
   ========================= */
   async function handleUpgrade(targetTier) {
     try {
-      const res = await apiFetch("/auth/stripe/checkout", {
+      const res = await apiFetch("/create-checkout-session", {
         method: "POST",
         body: JSON.stringify({ tier: targetTier }),
       });
 
-      if (!res?.sessionId) {
-        throw new Error("Stripe session missing");
-      }
+      if (!res?.url) throw new Error("Stripe checkout URL missing");
 
-      if (!window.Stripe) {
-        throw new Error("Stripe not loaded");
-      }
-
-      const stripe = window.Stripe(
-        import.meta.env.VITE_STRIPE_PUBLIC_KEY
-      );
-
-      await stripe.redirectToCheckout({ sessionId: res.sessionId });
+      window.location.href = res.url;
     } catch (err) {
       console.error("Stripe error:", err);
       addToast(err.message || "Checkout failed", "error");
@@ -91,16 +90,11 @@ export default function Subscription() {
 
       <div className="mb-6 space-y-1">
         <div>
-          Current Plan:{" "}
-          <b className="capitalize">{tier}</b>
+          Current Plan: <b className="capitalize">{tier}</b>
         </div>
         <div>
           Status:{" "}
-          <span
-            className={
-              active ? "text-green-600" : "text-gray-500"
-            }
-          >
+          <span className={active ? "text-green-600" : "text-gray-500"}>
             {active ? "Active" : "Inactive"}
           </span>
         </div>
