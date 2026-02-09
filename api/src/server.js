@@ -7,6 +7,11 @@ import { authRoutes } from "./routes/auth.js";
 import { goalsRoutes } from "./routes/goals.js";
 import { adminRoutes } from "./routes/admin.js";
 import { executionsRoutes } from "./routes/executions.js";
+import { auditRoutes } from "./routes/audit.js";
+import { billingRoutes } from "./routes/billing.js";
+import { paymentsRoutes } from "./routes/payments.js";
+import { streamRoutes } from "./routes/stream.js";
+import { stripeRoutes } from "./routes/stripe.js"; // ✅ create-checkout-session
 
 const app = Fastify({
   logger: true,
@@ -58,6 +63,11 @@ app.register(authRoutes, { prefix: "/auth" });
 app.register(goalsRoutes, { prefix: "/goals" });
 app.register(adminRoutes, { prefix: "/admin" });
 app.register(executionsRoutes, { prefix: "/executions" });
+app.register(auditRoutes, { prefix: "/audit" });
+app.register(billingRoutes, { prefix: "/billing" });
+app.register(paymentsRoutes, { prefix: "/payments" });
+app.register(streamRoutes, { prefix: "/stream" });
+app.register(stripeRoutes); // ✅ now /create-checkout-session exists
 
 /* =========================
    ERROR HANDLER
