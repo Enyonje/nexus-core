@@ -66,6 +66,7 @@ export default function Subscription() {
 
       if (!res?.url) throw new Error("Stripe checkout URL missing");
 
+      // Redirect user to Stripe Checkout
       window.location.href = res.url;
     } catch (err) {
       console.error("Stripe error:", err);
