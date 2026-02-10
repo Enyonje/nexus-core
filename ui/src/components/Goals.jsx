@@ -29,30 +29,34 @@ export default function Goals() {
   }, []);
 
   /* CREATE GOAL */
-  async function createGoal(e) {
-    e.preventDefault();
-    if (!title.trim()) return;
+async function createGoal(e) {
+  e.preventDefault();
+  if (!title.trim()) return;
 
-    setCreating(true);
-    try {
-      const goal = await apiFetch("/goals", {
-        method: "POST",
-        body: JSON.stringify({
-          goalType: "analysis",
-          payload: { title, description },
-        }),
-      });
+  setCreating(true);
+  try {
+    // ✅ Backend expects { goalType, payload }
+    const goal = await apiFetch("/goals", {
+      method: "POST",
+      body: JSON.stringify({
+        goalType: "analysis", // matches your Zod schema
+        payload: {
+          title,
+          description,
+        },
+      }),
+    });
 
-      setGoals((g) => [goal, ...g]);
-      setTitle("");
-      setDescription("");
-      addToast("Goal created", "success");
-    } catch {
-      addToast("Failed to create goal", "error");
-    } finally {
-      setCreating(false);
-    }
+    setGoals((g) => [goal, ...g]);
+    setTitle("");
+    setDescription("");
+    addToast("Goal created", "success");
+  } catch (err) {
+    addToast(err.message || "Failed to create goal", "error");
+  } finally {
+    setCreating(false);
   }
+}
 
   /* RUN GOAL + STREAM */
   async function runGoal(goalId) {
