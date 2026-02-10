@@ -5,7 +5,6 @@ export async function stripeRoutes(server) {
     const { tier, userId } = req.body;
 
     try {
-      // getStripePriceId must return a valid Stripe Price ID (e.g. "price_abc123")
       const priceId = getStripePriceId(tier);
 
       if (!priceId) {
@@ -14,12 +13,7 @@ export async function stripeRoutes(server) {
 
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",
-        line_items: [
-          {
-            price: priceId,   // ✅ must be a valid Stripe Price ID
-            quantity: 1,
-          },
-        ],
+        line_items: [{ price: priceId, quantity: 1 }],
         success_url: `${process.env.FRONTEND_URL}/subscription?success=true`,
         cancel_url: `${process.env.FRONTEND_URL}/subscription?canceled=true`,
         metadata: { userId: userId || "anonymous" },
