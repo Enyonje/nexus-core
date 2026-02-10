@@ -32,7 +32,7 @@ export default function LandingPage() {
         <div className="group p-6 rounded-xl bg-white dark:bg-gray-900 shadow hover:shadow-xl transition">
           <h2 className="text-3xl font-bold mb-4 text-blue-600 dark:text-blue-400">The Problem</h2>
           <p className="text-gray-700 dark:text-gray-300">
-            Rigid workflows slow your business. Zapier/Make force you to think in “if-this-then-that” chains.
+            Rigid workflows slow your business, others force you to think in “if-this-then-that” chains.
           </p>
         </div>
         <div className="group p-6 rounded-xl bg-white dark:bg-gray-900 shadow hover:shadow-xl transition">
