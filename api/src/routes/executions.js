@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { runExecution } from "../execution/runner.js";
 
 /* ===============================
-   SIMPLE EVENT BUS (SSE PUB/SUB)
+   EVENT BUS (SSE PUB/SUB)
 =============================== */
 const subscribers = new Map(); // executionId -> Set of callbacks
 
@@ -10,7 +10,12 @@ export function publishEvent(executionId, event) {
   const subs = subscribers.get(executionId);
   if (subs) {
     for (const cb of subs) {
-      cb(event);
+      try {
+        cb(event);
+      } catch (err) {
+        // Drop broken subscribers
+        subs.delete(cb);
+      }
     }
   }
 }
@@ -102,8 +107,9 @@ export async function executionsRoutes(app) {
       }
 
       // Fire async runner with SSE publishing
-      runExecution(id, publishEvent).catch((err) => {
+      runExecution(id).catch((err) => {
         req.log.error("Runner failed:", err);
+        publishEvent(id, { event: "execution_failed", error: err.message });
       });
 
       return execRes.rows[0];
@@ -149,10 +155,11 @@ export async function executionsRoutes(app) {
       reply.raw.setHeader("Access-Control-Allow-Credentials", "true");
     }
 
-    reply.raw.setHeader("Content-Type", "text/event-stream");
-    reply.raw.setHeader("Cache-Control", "no-cache");
-    reply.raw.setHeader("Connection", "keep-alive");
-    reply.raw.flushHeaders();
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
 
     // Subscribe
     const cb = (event) => {
@@ -193,8 +200,9 @@ export async function executionsRoutes(app) {
   app.post("/admin/:id/rerun", { preHandler: requireAdmin }, async (req, reply) => {
     try {
       const { id } = req.params;
-      runExecution(id, publishEvent).catch((err) => {
+      runExecution(id).catch((err) => {
         req.log.error("Admin rerun failed:", err);
+        publishEvent(id, { event: "execution_failed", error: err.message });
       });
       return { success: true, message: `Execution ${id} rerun started` };
     } catch (err) {

@@ -1,10 +1,10 @@
 import { db } from "../db/db.js";
 import { executeGoalLogic } from "./logic.js";
 import { publishEvent } from "../routes/executions.js"; // SSE bus
-import { runSentinel } from "../agents/sentinel.js"; // now includes LLM reasoning
+import { runSentinel } from "../agents/sentinel.js"; // governance agent
 
 /**
- * Run an execution with real-time step validation
+ * Run an execution with real-time step publishing and Sentinel validation
  */
 export async function runExecution(executionId) {
   const { rows } = await db.query(
@@ -25,7 +25,10 @@ export async function runExecution(executionId) {
       `UPDATE executions SET status = 'running', started_at = NOW() WHERE id = $1`,
       [executionId]
     );
-    publishEvent(executionId, { event: "execution_started", goalType: execution.goal_type });
+    publishEvent(executionId, {
+      event: "execution_started",
+      goalType: execution.goal_type,
+    });
 
     let completedSteps = 0;
 
@@ -65,13 +68,13 @@ export async function runExecution(executionId) {
             completedSteps,
           });
 
-          // 🔎 Sentinel validation immediately after step completion
-          const verdict = await runSentinel(executionId);
-          if (!verdict) {
+          // Sentinel validation immediately after step completion
+          const verdict = await runSentinel(executionId, stepInfo, output);
+          if (!verdict?.allowed) {
             publishEvent(executionId, {
               event: "sentinel_blocked",
               stepId,
-              reason: "Governance agent rejected output",
+              reason: verdict?.reason || "Governance agent rejected output",
             });
             throw new Error("Sentinel blocked execution");
           }
@@ -119,15 +122,16 @@ export async function runExecution(executionId) {
 
 /* 🔥 Real step runner */
 async function runStep(stepInfo) {
-  if (stepInfo.name === "fetchData") {
-    const res = await fetch("https://api.github.com/repos/vercel/vercel");
-    return await res.json();
+  switch (stepInfo.name) {
+    case "fetchData": {
+      const res = await fetch("https://api.github.com/repos/vercel/vercel");
+      return await res.json();
+    }
+    case "processFile":
+      return { processed: true, file: stepInfo.filePath };
+    case "ai_generate":
+      return { text: "AI-generated output" };
+    default:
+      return { echo: stepInfo.payload };
   }
-  if (stepInfo.name === "processFile") {
-    return { processed: true, file: stepInfo.filePath };
-  }
-  if (stepInfo.name === "ai_generate") {
-    return { text: "AI-generated output" };
-  }
-  return { echo: stepInfo.payload };
 }
