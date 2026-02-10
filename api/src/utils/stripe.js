@@ -1,21 +1,21 @@
 import Stripe from "stripe";
 
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2023-10-16",
+  apiVersion: "2022-11-15",
 });
 
 /**
- * Map app subscription tiers to Stripe Price IDs.
+ * Map tier names to Stripe Price IDs from environment variables.
+ * @param {string} tier - e.g. "pro" or "enterprise"
+ * @returns {string|undefined} Stripe Price ID
  */
 export function getStripePriceId(tier) {
-  switch (tier) {
-    case "pro":
-      return process.env.STRIPE_PRICE_PRO;
-    case "enterprise":
-      return process.env.STRIPE_PRICE_ENTERPRISE;
-    default:
-      throw new Error(`Unknown subscription tier: ${tier}`);
-  }
+  const prices = {
+    pro: process.env.STRIPE_PRO_PRICE_ID,
+    enterprise: process.env.STRIPE_ENTERPRISE_PRICE_ID,
+  };
+
+  return prices[tier];
 }
 
 /**

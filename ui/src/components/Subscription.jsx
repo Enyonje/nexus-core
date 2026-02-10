@@ -12,9 +12,6 @@ export default function Subscription() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  /* =========================
-     LOAD SUBSCRIPTION
-  ========================= */
   async function loadSubscription() {
     setLoading(true);
     try {
@@ -40,33 +37,27 @@ export default function Subscription() {
     loadSubscription();
   }, []);
 
-  /* =========================
-     HANDLE RETURN FROM STRIPE
-  ========================= */
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get("success")) {
       addToast("Payment successful! Updating subscription…", "success");
-      loadSubscription(); // refresh from backend after webhook updates DB
+      loadSubscription();
     }
     if (params.get("canceled")) {
       addToast("Checkout canceled", "error");
     }
   }, [location.search]);
 
-  /* =========================
-     STRIPE UPGRADE
-  ========================= */
   async function handleUpgrade(targetTier) {
     try {
-      const res = await apiFetch("/create-checkout-session", {
+      // ✅ Ensure the path matches your backend mount
+      const res = await apiFetch("/payments/create-checkout-session", {
         method: "POST",
         body: JSON.stringify({ tier: targetTier }),
       });
 
       if (!res?.url) throw new Error("Stripe checkout URL missing");
 
-      // Redirect user to Stripe Checkout
       window.location.href = res.url;
     } catch (err) {
       console.error("Stripe error:", err);
@@ -74,9 +65,6 @@ export default function Subscription() {
     }
   }
 
-  /* =========================
-     UI STATES
-  ========================= */
   if (loading) {
     return (
       <div className="p-6 text-gray-500 dark:text-gray-400">
