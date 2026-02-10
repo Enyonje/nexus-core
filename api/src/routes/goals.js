@@ -23,6 +23,7 @@ const schemasByType = {
   analysis: z.object({
     title: z.string().min(1, "title is required"),
     description: z.string().min(1, "description is required"),
+    website: z.string().url("Valid organization website required").optional(), // ✅ new field
   }),
   automation: z.object({
     steps: z.array(z.string().min(1)).min(1, "At least one step required"),
@@ -43,12 +44,14 @@ export async function goalsRoutes(app) {
   app.post("/", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.identity.sub;
-      const orgId = req.identity.org_id; // ✅ make sure your auth middleware sets this
+      const orgId = req.identity.org_id; // ✅ must be set by auth middleware
       const { goalType, payload } = req.body;
 
       const baseParse = baseGoalSchema.safeParse(req.body);
       if (!baseParse.success) {
-        return reply.code(400).send({ error: baseParse.error.errors.map(e => e.message) });
+        return reply
+          .code(400)
+          .send({ error: baseParse.error.errors.map((e) => e.message) });
       }
 
       const schema = schemasByType[goalType];
@@ -57,7 +60,9 @@ export async function goalsRoutes(app) {
       }
       const payloadParse = schema.safeParse(payload);
       if (!payloadParse.success) {
-        return reply.code(400).send({ error: payloadParse.error.errors.map(e => e.message) });
+        return reply
+          .code(400)
+          .send({ error: payloadParse.error.errors.map((e) => e.message) });
       }
 
       const result = await app.pg.query(
@@ -70,7 +75,9 @@ export async function goalsRoutes(app) {
       return reply.code(201).send(result.rows[0]);
     } catch (err) {
       app.log.error("Create goal failed:", err.message);
-      return reply.code(500).send({ error: "Failed to create goal", detail: err.message });
+      return reply
+        .code(500)
+        .send({ error: "Failed to create goal", detail: err.message });
     }
   });
 
@@ -88,7 +95,9 @@ export async function goalsRoutes(app) {
       return reply.send(result.rows);
     } catch (err) {
       app.log.error("Fetch goals failed:", err.message);
-      return reply.code(500).send({ error: "Failed to load goals", detail: err.message });
+      return reply
+        .code(500)
+        .send({ error: "Failed to load goals", detail: err.message });
     }
   });
 
@@ -111,7 +120,9 @@ export async function goalsRoutes(app) {
       return reply.send(result.rows[0]);
     } catch (err) {
       app.log.error("Fetch goal failed:", err.message);
-      return reply.code(500).send({ error: "Failed to load goal", detail: err.message });
+      return reply
+        .code(500)
+        .send({ error: "Failed to load goal", detail: err.message });
     }
   });
 }

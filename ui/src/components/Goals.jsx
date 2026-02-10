@@ -6,6 +6,8 @@ export default function Goals() {
   const [goals, setGoals] = useState([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [website, setWebsite] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [running, setRunning] = useState(null);
@@ -29,51 +31,61 @@ export default function Goals() {
   }, []);
 
   /* CREATE GOAL */
-async function createGoal(e) {
-  e.preventDefault();
-  if (!title.trim()) return;
+  async function createGoal(e) {
+    e.preventDefault();
+    if (!title.trim()) return;
 
-  setCreating(true);
-  try {
-    // ✅ Backend expects { goalType, payload }
-    const goal = await apiFetch("/goals", {
-      method: "POST",
-      body: JSON.stringify({
-        goalType: "analysis", // matches your Zod schema
-        payload: {
-          title,
-          description,
-        },
-      }),
-    });
+    setCreating(true);
+    setErrorMessage("");
+    try {
+      const goal = await apiFetch("/goals", {
+        method: "POST",
+        body: JSON.stringify({
+          goalType: "analysis",
+          payload: { title, description, website },
+        }),
+      });
 
-    setGoals((g) => [goal, ...g]);
-    setTitle("");
-    setDescription("");
-    addToast("Goal created", "success");
-  } catch (err) {
-    addToast(err.message || "Failed to create goal", "error");
-  } finally {
-    setCreating(false);
+      setGoals((g) => [goal, ...g]);
+      setTitle("");
+      setDescription("");
+      setWebsite("");
+      addToast("Goal created", "success");
+    } catch (err) {
+      if (err?.error) {
+        setErrorMessage(Array.isArray(err.error) ? err.error.join(", ") : err.error);
+      } else {
+        setErrorMessage("Failed to create goal");
+      }
+      addToast("Failed to create goal", "error");
+    } finally {
+      setCreating(false);
+    }
   }
-}
+
+  /* DELETE GOAL */
+  async function deleteGoal(goalId) {
+    try {
+      await apiFetch(`/goals/${goalId}`, { method: "DELETE" });
+      setGoals((g) => g.filter((goal) => goal.id !== goalId));
+      addToast("Goal deleted", "success");
+    } catch (err) {
+      addToast(err.message || "Failed to delete goal", "error");
+    }
+  }
 
   /* RUN GOAL + STREAM */
   async function runGoal(goalId) {
     setRunning(goalId);
     try {
-      // STEP 1 — create execution
       const execution = await apiFetch("/executions", {
         method: "POST",
         body: JSON.stringify({ goalId }),
       });
 
-      // STEP 2 — run execution
       await apiFetch(`/executions/${execution.id}/run`, { method: "POST" });
-
       addToast("Execution started", "success");
 
-      // STEP 3 — subscribe to stream
       const evtSource = new EventSource(`/executions/${execution.id}/stream`, {
         withCredentials: true,
       });
@@ -98,7 +110,6 @@ async function createGoal(e) {
               },
             }));
 
-            // Handle failed step inline
             if (data.error) {
               setProgress((prev) => ({
                 ...prev,
@@ -179,6 +190,17 @@ async function createGoal(e) {
           placeholder="Description"
           className="w-full p-3 border rounded-lg focus:ring focus:ring-blue-300"
         />
+        <input
+          value={website}
+          onChange={(e) => setWebsite(e.target.value)}
+          placeholder="Organization website (https://example.com)"
+          className="w-full p-3 border rounded-lg focus:ring focus:ring-blue-300"
+        />
+
+        {errorMessage && (
+          <div className="text-sm text-red-600">{errorMessage}</div>
+        )}
+
         <button
           type="submit"
           disabled={creating}
@@ -207,15 +229,28 @@ async function createGoal(e) {
                   <div className="text-xs text-gray-500">
                     {new Date(goal.created_at).toLocaleString()}
                   </div>
+                  {goal.goal_payload?.website && (
+                    <div className="text-xs text-blue-600 mt-1">
+                      🌐 {goal.goal_payload.website}
+                    </div>
+                  )}
                 </div>
 
-                <button
-                  onClick={() => runGoal(goal.id)}
-                  disabled={running === goal.id}
-                  className="text-sm text-blue-600 hover:underline"
-                >
-                  {running === goal.id ? "Running…" : "Run →"}
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => runGoal(goal.id)}
+                    disabled={running === goal.id}
+                    className="text-sm text-blue-600 hover:underline"
+                  >
+                    {running === goal.id ? "Running…" : "Run →"}
+                  </button>
+                  <button
+                    onClick={() => deleteGoal(goal.id)}
+                    className="text-sm text-red-600 hover:underline"
+                  >
+                    Delete ✖
+                  </button>
+                </div>
               </div>
 
               {prog && (
@@ -238,8 +273,6 @@ async function createGoal(e) {
                     {prog.status === "completed" && "Completed ✅"}
                     {prog.status === "failed" && "Failed ❌"}
                   </div>
-
-                  {/* Inline failed step details */}
                   {prog.status === "failed" && prog.failedStep && (
                     <div className="text-xs text-red-600 mt-1">
                       ❌ Step "{prog.failedStep}" failed: {prog.error}
