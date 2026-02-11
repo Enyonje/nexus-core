@@ -62,7 +62,7 @@ export default function Login() {
             placeholder="Email address"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
+            className="w-half px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
             required
           />
           <input
@@ -70,7 +70,7 @@ export default function Login() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
+            className="w-half px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
             required
           />
         </div>
@@ -87,7 +87,7 @@ export default function Login() {
         {/* Centered sign-in button */}
         <button
           type="submit"
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition disabled:opacity-60"
+          className="w-half bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition disabled:opacity-60"
           disabled={loading}
         >
           {loading ? "Signing in…" : "Sign In"}

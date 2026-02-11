@@ -42,7 +42,7 @@ export default function Register() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-black px-4">
       <form
         onSubmit={handleRegister}
-        className="w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-lg p-8 space-y-6"
+        className="w-half max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-lg p-8 space-y-6"
       >
         <div className="text-center space-y-1">
           <h2 className="text-2xl font-bold">Create your account</h2>
@@ -57,7 +57,7 @@ export default function Register() {
             placeholder="Email address"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
+            className="w-half px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
             required
           />
           <input
@@ -65,7 +65,7 @@ export default function Register() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
+            className="w-half px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
             required
           />
           <input
@@ -73,14 +73,14 @@ export default function Register() {
             placeholder="Organization name"
             value={orgName}
             onChange={(e) => setOrgName(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
+            className="w-half px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
             required
           />
         </div>
 
         <button
           type="submit"
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition disabled:opacity-60"
+          className="w-half bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition disabled:opacity-60"
           disabled={loading}
         >
           {loading ? "Signing up…" : "Sign Up"}
