@@ -55,6 +55,7 @@ export default function Login() {
           </p>
         </div>
 
+        {/* Centered input fields */}
         <div className="space-y-4">
           <input
             type="email"
@@ -74,7 +75,7 @@ export default function Login() {
           />
         </div>
 
-        <div className="text-right">
+        <div className="text-center">
           <Link
             to="/forgot-password"
             className="text-sm text-blue-600 hover:underline"
@@ -83,6 +84,7 @@ export default function Login() {
           </Link>
         </div>
 
+        {/* Centered sign-in button */}
         <button
           type="submit"
           className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition disabled:opacity-60"

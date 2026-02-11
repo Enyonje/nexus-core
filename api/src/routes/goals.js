@@ -125,4 +125,26 @@ export async function goalsRoutes(app) {
         .send({ error: "Failed to load goal", detail: err.message });
     }
   });
+
+  /* DELETE GOAL */
+app.delete("/:id", { preHandler: requireAuth }, async (req, reply) => {
+  try {
+    const userId = req.identity.sub;
+    const { id } = req.params;
+
+    const result = await app.pg.query(
+      `DELETE FROM goals WHERE id = $1 AND user_id = $2 RETURNING id`,
+      [id, userId]
+    );
+
+    if (!result.rows.length) {
+      return reply.code(404).send({ error: "Goal not found or not owned by user" });
+    }
+
+    return { success: true, message: `Goal ${id} deleted` };
+  } catch (err) {
+    app.log.error("Delete goal failed:", err.message);
+    return reply.code(500).send({ error: "Failed to delete goal", detail: err.message });
+  }
+});
 }

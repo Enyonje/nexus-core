@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthProvider";
 export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [orgName, setOrgName] = useState(""); // ✅ new field for organization name
   const [loading, setLoading] = useState(false);
   const { addToast } = useToast();
   const { login } = useAuth();
@@ -17,7 +18,11 @@ export default function Register() {
     try {
       const res = await apiFetch("/auth/register", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email,
+          password,
+          orgName, // ✅ send org name so backend can generate org_id
+        }),
       });
 
       if (!res.token || !res.user) {
@@ -60,6 +65,14 @@ export default function Register() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
+            required
+          />
+          <input
+            type="text"
+            placeholder="Organization name"
+            value={orgName}
+            onChange={(e) => setOrgName(e.target.value)}
             className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
             required
           />
