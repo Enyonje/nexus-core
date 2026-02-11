@@ -73,15 +73,52 @@ export default function Login() {
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2 pr-12 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
+              className="w-full px-4 py-2 pr-10 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
               required
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-3 flex items-center text-sm text-blue-600 hover:underline focus:outline-none"
+              className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-blue-600 focus:outline-none"
             >
-              {showPassword ? "Hide" : "Show"}
+              {/* ✅ Eye icon toggle */}
+              {showPassword ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13.875 18.825A10.05 10.05 0 0112 19c-5.523 0-10-4.477-10-10 0-1.05.162-2.06.462-3.002m3.05-3.05A9.956 9.956 0 0112 3c5.523 0 10 4.477 10 10 0 1.05-.162 2.06-.462 3.002m-3.05 3.05A9.956 9.956 0 0112 21c-5.523 0-10-4.477-10-10"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 3l18 18M10.477 10.477A3 3 0 0113.523 13.523M9.88 9.88a3 3 0 014.24 4.24M12 5c4.418 0 8 3.582 8 8 0 1.05-.162 2.06-.462 3.002m-3.05 3.05A9.956 9.956 0 0112 21c-5.523 0-10-4.477-10-10 0-1.05.162-2.06.462-3.002m3.05-3.05A9.956 9.956 0 0112 3"
+                  />
+                </svg>
+              )}
             </button>
           </div>
         </div>
