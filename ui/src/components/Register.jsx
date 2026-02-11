@@ -57,7 +57,7 @@ export default function Register() {
             placeholder="Email address"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-half px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
+            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
             required
           />
           <input
@@ -65,7 +65,7 @@ export default function Register() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-half px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
+            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
             required
           />
           <input
@@ -73,14 +73,14 @@ export default function Register() {
             placeholder="Organization name"
             value={orgName}
             onChange={(e) => setOrgName(e.target.value)}
-            className="w-half px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
+            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
             required
           />
         </div>
 
         <button
           type="submit"
-          className="w-half bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition disabled:opacity-60"
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition disabled:opacity-60"
           disabled={loading}
         >
           {loading ? "Signing up…" : "Sign Up"}

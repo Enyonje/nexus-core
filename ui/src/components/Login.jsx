@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthProvider";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false); // ✅ toggle state
   const [loading, setLoading] = useState(false);
 
   const { addToast } = useToast();
@@ -46,7 +47,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-black px-4">
       <form
         onSubmit={handleLogin}
-        className="w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-lg p-8 space-y-6"
+        className="w-half max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-lg p-8 space-y-6"
       >
         <div className="text-center space-y-1">
           <h2 className="text-2xl font-bold">Sign in to Nexus Core</h2>
@@ -62,17 +63,27 @@ export default function Login() {
             placeholder="Email address"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-half px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
+            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
             required
           />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-half px-4 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
-            required
-          />
+
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"} // ✅ toggle type
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-2 pr-12 border rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute inset-y-0 right-3 flex items-center text-sm text-blue-600 hover:underline focus:outline-none"
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
         </div>
 
         <div className="text-center">
@@ -87,7 +98,7 @@ export default function Login() {
         {/* Centered sign-in button */}
         <button
           type="submit"
-          className="w-half bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition disabled:opacity-60"
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition disabled:opacity-60"
           disabled={loading}
         >
           {loading ? "Signing in…" : "Sign In"}
