@@ -27,116 +27,118 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="p-10 text-gray-500 dark:text-gray-400 animate-pulse">
-        Preparing your workspace…
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+        <div className="text-gray-500 dark:text-gray-400 animate-pulse">
+          Preparing your workspace…
+        </div>
       </div>
     );
   }
 
   return (
-  <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
-    <div className="w-full max-w-6xl mx-auto p-8 space-y-12">
-      
-      {/* Header */}
-      <header className="text-center space-y-3">
-        <h1 className="text-4xl font-extrabold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
-          Welcome back
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          You’re on the <b className="capitalize">{subscription}</b> plan
-        </p>
-        {subscription === "free" && (
-          <Link
-            to="/subscription"
-            className="inline-block mt-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2 rounded-lg shadow hover:opacity-90 transition"
-          >
-            Upgrade → Unlock Power
-          </Link>
-        )}
-      </header>
-
-      {/* System Overview */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <StatCard label="System Status" value={health?.status === "ok" ? "Healthy" : "Issues"} />
-        <StatCard label="Goals Created" value={goals.length} />
-        <StatCard
-          label="Executions"
-          value={subscription === "free" ? "Locked" : executions.length}
-          locked={subscription === "free"}
-        />
-      </section>
-
-      {/* Primary Actions */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <ActionCard
-          title="Submit a Goal"
-          description="Define what you want Nexus to accomplish."
-          to="/goals"
-          primary
-        />
-        <ActionCard
-          title="Run Execution"
-          description="Execute autonomous workflows."
-          to={subscription === "free" ? "/subscription" : "/executions"}
-          locked={subscription === "free"}
-        />
-        <ActionCard
-          title="Live Streams"
-          description="Real-time agent orchestration."
-          to={subscription === "enterprise" ? "/streams" : "/subscription"}
-          locked={subscription !== "enterprise"}
-        />
-      </section>
-
-      {/* Recent Executions */}
-      {subscription !== "free" && (
-        <section className="bg-white dark:bg-gray-900 rounded-xl shadow-lg p-8">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-semibold">Recent Executions</h3>
-            <Link to="/executions" className="text-blue-600 hover:underline">
-              View all →
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+      <div className="w-full max-w-5xl mx-auto p-10 space-y-12 text-center">
+        
+        {/* Header */}
+        <header className="space-y-3">
+          <h1 className="text-4xl font-extrabold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
+            Welcome back
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            You’re on the <b className="capitalize">{subscription}</b> plan
+          </p>
+          {subscription === "free" && (
+            <Link
+              to="/subscription"
+              className="inline-block mt-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2 rounded-lg shadow hover:opacity-90 transition"
+            >
+              Upgrade → Unlock Power
             </Link>
-          </div>
-          {executions.length === 0 ? (
-            <p className="text-sm text-gray-500">No executions yet.</p>
-          ) : (
-            <ul className="divide-y dark:divide-gray-800">
-              {executions.slice(0, 5).map((e) => (
-                <li key={e.id} className="py-4 flex justify-between items-center">
-                  <div>
-                    <p className="font-medium">{e.goal_type || "Execution"}</p>
-                    <p className="text-xs text-gray-500">
-                      Started {formatDate(e.started_at)}
-                    </p>
-                  </div>
-                  <StatusBadge status={e.status} />
-                </li>
-              ))}
-            </ul>
           )}
-        </section>
-      )}
+        </header>
 
-      {/* Growth CTA */}
-      {subscription !== "enterprise" && (
-        <section className="bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-xl p-8 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div>
-            <h4 className="text-lg font-semibold">Ready to scale?</h4>
-            <p className="text-sm opacity-90">
-              Unlock advanced orchestration, streams, and audit logs.
-            </p>
-          </div>
-          <Link
-            to="/subscription"
-            className="bg-white text-blue-600 px-5 py-2 rounded-lg font-medium shadow hover:bg-gray-100 transition"
-          >
-            Upgrade Plan →
-          </Link>
+        {/* System Overview */}
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <StatCard label="System Status" value={health?.status === "ok" ? "Healthy" : "Issues"} />
+          <StatCard label="Goals Created" value={goals.length} />
+          <StatCard
+            label="Executions"
+            value={subscription === "free" ? "Locked" : executions.length}
+            locked={subscription === "free"}
+          />
         </section>
-      )}
+
+        {/* Primary Actions */}
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <ActionCard
+            title="Submit a Goal"
+            description="Define what you want Nexus to accomplish."
+            to="/goals"
+            primary
+          />
+          <ActionCard
+            title="Run Execution"
+            description="Execute autonomous workflows."
+            to={subscription === "free" ? "/subscription" : "/executions"}
+            locked={subscription === "free"}
+          />
+          <ActionCard
+            title="Live Streams"
+            description="Real-time agent orchestration."
+            to={subscription === "enterprise" ? "/streams" : "/subscription"}
+            locked={subscription !== "enterprise"}
+          />
+        </section>
+
+        {/* Recent Executions */}
+        {subscription !== "free" && (
+          <section className="bg-white dark:bg-gray-900 rounded-xl shadow-lg p-8 text-left">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-semibold">Recent Executions</h3>
+              <Link to="/executions" className="text-blue-600 hover:underline">
+                View all →
+              </Link>
+            </div>
+            {executions.length === 0 ? (
+              <p className="text-sm text-gray-500">No executions yet.</p>
+            ) : (
+              <ul className="divide-y dark:divide-gray-800">
+                {executions.slice(0, 5).map((e) => (
+                  <li key={e.id} className="py-4 flex justify-between items-center">
+                    <div>
+                      <p className="font-medium">{e.goal_type || "Execution"}</p>
+                      <p className="text-xs text-gray-500">
+                        Started {formatDate(e.started_at)}
+                      </p>
+                    </div>
+                    <StatusBadge status={e.status} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {/* Growth CTA */}
+        {subscription !== "enterprise" && (
+          <section className="bg-gradient-to-r from-purple-500 to-blue-600 text-white rounded-xl p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div>
+              <h4 className="text-lg font-semibold">Ready to scale?</h4>
+              <p className="text-sm opacity-90">
+                Unlock advanced orchestration, streams, and audit logs.
+              </p>
+            </div>
+            <Link
+              to="/subscription"
+              className="bg-white text-blue-600 px-5 py-2 rounded-lg font-medium shadow hover:bg-gray-100 transition"
+            >
+              Upgrade Plan →
+            </Link>
+          </section>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
 }
 
 /* =======================
