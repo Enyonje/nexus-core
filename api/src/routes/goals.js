@@ -1,6 +1,6 @@
-// src/routes/goals.js
 import { requireAuth } from "./auth.js";
 import { z } from "zod";
+import { v4 as uuidv4 } from "uuid";
 
 /* ======================================================
    Goal Type Schemas
@@ -23,7 +23,7 @@ const schemasByType = {
   analysis: z.object({
     title: z.string().min(1, "title is required"),
     description: z.string().min(1, "description is required"),
-    website: z.string().url("Valid organization website required").optional(), // ✅ new field
+    website: z.string().url("Valid organization website required").optional(),
   }),
   automation: z.object({
     steps: z.array(z.string().min(1)).min(1, "At least one step required"),
@@ -43,9 +43,13 @@ export async function goalsRoutes(app) {
   /* CREATE GOAL */
   app.post("/", { preHandler: requireAuth }, async (req, reply) => {
     try {
-      const userId = req.identity.sub;
-      const orgId = req.identity.org_id; // ✅ must be set by auth middleware
+      const userId = req.identity?.sub;
+      const orgId = req.identity?.org_id;
       const { goalType, payload } = req.body;
+
+      if (!userId || !orgId) {
+        return reply.code(400).send({ error: "Missing userId or orgId in token" });
+      }
 
       const baseParse = baseGoalSchema.safeParse(req.body);
       if (!baseParse.success) {
@@ -58,6 +62,7 @@ export async function goalsRoutes(app) {
       if (!schema) {
         return reply.code(400).send({ error: `Unsupported goalType: ${goalType}` });
       }
+
       const payloadParse = schema.safeParse(payload);
       if (!payloadParse.success) {
         return reply
@@ -66,10 +71,10 @@ export async function goalsRoutes(app) {
       }
 
       const result = await app.pg.query(
-        `INSERT INTO goals (org_id, user_id, goal_type, goal_payload, created_at)
-         VALUES ($1, $2, $3, $4, NOW())
+        `INSERT INTO goals (id, org_id, user_id, goal_type, goal_payload, created_at)
+         VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
          RETURNING id, goal_type, goal_payload, created_at`,
-        [orgId, userId, goalType, payload]
+        [uuidv4(), orgId, userId, goalType, JSON.stringify(payload)]
       );
 
       return reply.code(201).send(result.rows[0]);
@@ -127,24 +132,24 @@ export async function goalsRoutes(app) {
   });
 
   /* DELETE GOAL */
-app.delete("/:id", { preHandler: requireAuth }, async (req, reply) => {
-  try {
-    const userId = req.identity.sub;
-    const { id } = req.params;
+  app.delete("/:id", { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      const userId = req.identity.sub;
+      const { id } = req.params;
 
-    const result = await app.pg.query(
-      `DELETE FROM goals WHERE id = $1 AND user_id = $2 RETURNING id`,
-      [id, userId]
-    );
+      const result = await app.pg.query(
+        `DELETE FROM goals WHERE id = $1 AND user_id = $2 RETURNING id`,
+        [id, userId]
+      );
 
-    if (!result.rows.length) {
-      return reply.code(404).send({ error: "Goal not found or not owned by user" });
+      if (!result.rows.length) {
+        return reply.code(404).send({ error: "Goal not found or not owned by user" });
+      }
+
+      return { success: true, message: `Goal ${id} deleted` };
+    } catch (err) {
+      app.log.error("Delete goal failed:", err.message);
+      return reply.code(500).send({ error: "Failed to delete goal", detail: err.message });
     }
-
-    return { success: true, message: `Goal ${id} deleted` };
-  } catch (err) {
-    app.log.error("Delete goal failed:", err.message);
-    return reply.code(500).send({ error: "Failed to delete goal", detail: err.message });
-  }
-});
+  });
 }
