@@ -107,6 +107,19 @@ export async function authRoutes(server) {
         return reply.code(401).send({ error: "Invalid credentials" });
       }
 
+      // Ensure org_id exists; if missing, create a default org
+      let orgId = user.org_id;
+      if (!orgId) {
+        orgId = uuidv4();
+        await db.query(
+          `INSERT INTO organizations (id, name, created_at)
+           VALUES ($1, $2, NOW())`,
+          [orgId, "Default Org"]
+        );
+        await db.query(`UPDATE users SET org_id = $1 WHERE id = $2`, [orgId, user.id]);
+        user.org_id = orgId;
+      }
+
       const token = jwt.sign(
         { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
         JWT_SECRET,
