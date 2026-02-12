@@ -194,7 +194,7 @@ export default function Goals() {
   if (loading) return <div className="p-6">Loading goals…</div>;
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-8">
+    <div className="min-w-5xl mx-auto px-6 py-10 space-y-8">
       <h1 className="text-3xl font-bold">Goals</h1>
 
       {/* Create Goal Form */}
