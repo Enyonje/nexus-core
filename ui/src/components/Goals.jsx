@@ -4,15 +4,13 @@ import { useToast } from "./ToastContext.jsx";
 
 export default function Goals() {
   const [goals, setGoals] = useState([]);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [website, setWebsite] = useState("");
+  const [goalType, setGoalType] = useState("analysis");
+  const [payload, setPayload] = useState({ title: "", description: "", website: "" });
   const [errorMessage, setErrorMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [running, setRunning] = useState(null);
   const [progress, setProgress] = useState({});
-
   const { addToast } = useToast();
 
   /* LOAD GOALS */
@@ -33,137 +31,163 @@ export default function Goals() {
   /* CREATE GOAL */
   async function createGoal(e) {
     e.preventDefault();
-    if (!title.trim()) return;
-
     setCreating(true);
     setErrorMessage("");
     try {
       const goal = await apiFetch("/goals", {
         method: "POST",
-        body: JSON.stringify({
-          goalType: "analysis",
-          payload: { title, description, website },
-        }),
+        body: JSON.stringify({ goalType, payload }),
       });
-
       setGoals((g) => [goal, ...g]);
-      setTitle("");
-      setDescription("");
-      setWebsite("");
+      resetPayload(goalType);
       addToast("Goal created", "success");
     } catch (err) {
-      if (err?.error) {
-        setErrorMessage(Array.isArray(err.error) ? err.error.join(", ") : err.error);
-      } else {
-        setErrorMessage("Failed to create goal");
-      }
+      setErrorMessage(err?.error || "Failed to create goal");
       addToast("Failed to create goal", "error");
     } finally {
       setCreating(false);
     }
   }
 
-  /* DELETE GOAL */
-  async function deleteGoal(goalId) {
-    try {
-      await apiFetch(`/goals/${goalId}`, { method: "DELETE" });
-      setGoals((g) => g.filter((goal) => goal.id !== goalId));
-      addToast("Goal deleted", "success");
-    } catch (err) {
-      addToast(err.message || "Failed to delete goal", "error");
-    }
+  /* Reset payload when switching goal type */
+  function resetPayload(type) {
+    if (type === "analysis") setPayload({ title: "", description: "", website: "" });
+    else if (type === "test") setPayload({ message: "" });
+    else if (type === "automation") setPayload({ steps: [""] });
+    else if (type === "http_request") setPayload({ url: "", method: "GET", headers: {}, body: "" });
+    else if (type === "ai_analysis") setPayload({ prompt: "" });
+    else if (type === "ai_summary") setPayload({ text: "" });
+    else if (type === "ai_plan") setPayload({ objective: "" });
+    else setPayload({});
   }
 
-  /* RUN GOAL + STREAM */
-  async function runGoal(goalId) {
-    setRunning(goalId);
-    try {
-      const execution = await apiFetch("/executions", {
-        method: "POST",
-        body: JSON.stringify({ goalId }),
-      });
-
-      await apiFetch(`/executions/${execution.id}/run`, { method: "POST" });
-      addToast("Execution started", "success");
-
-      const evtSource = new EventSource(`/executions/${execution.id}/stream`, {
-        withCredentials: true,
-      });
-
-      evtSource.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-
-          if (data.event === "execution_progress") {
-            const { completedSteps, totalSteps } = data;
-            const percent =
-              totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
-
-            setProgress((prev) => ({
-              ...prev,
-              [execution.id]: {
-                ...prev[execution.id],
-                percent,
-                status: "running",
-                completedSteps,
-                totalSteps,
-              },
-            }));
-
-            if (data.error) {
-              setProgress((prev) => ({
-                ...prev,
-                [execution.id]: {
-                  ...prev[execution.id],
-                  status: "failed",
-                  failedStep: data.step,
-                  error: data.error,
-                },
-              }));
-            }
-          }
-
-          if (data.event === "execution_completed") {
-            setProgress((prev) => ({
-              ...prev,
-              [execution.id]: {
-                percent: 100,
-                status: "completed",
-                completedSteps: data.totalSteps,
-                totalSteps: data.totalSteps,
-              },
-            }));
-            addToast(`Execution ${execution.id} completed 🎉`, "success");
-            evtSource.close();
-          }
-
-          if (data.event === "execution_failed") {
-            setProgress((prev) => ({
-              ...prev,
-              [execution.id]: {
-                percent: 0,
-                status: "failed",
-                completedSteps: 0,
-                totalSteps: data.totalSteps || 0,
-                error: data.error,
-              },
-            }));
-            addToast(`Execution ${execution.id} failed ❌`, "error");
-            evtSource.close();
-          }
-        } catch {
-          console.warn("Bad stream event", e.data);
-        }
-      };
-
-      evtSource.onerror = () => {
-        addToast("Stream connection lost", "error");
-        evtSource.close();
-      };
-    } catch (err) {
-      addToast(err.message || "Execution failed", "error");
-    } finally {
-      setRunning(null);
+  /* Dynamic payload fields */
+  function renderPayloadFields() {
+    switch (goalType) {
+      case "analysis":
+        return (
+          <>
+            <input
+              value={payload.title}
+              onChange={(e) => setPayload({ ...payload, title: e.target.value })}
+              placeholder="Goal title"
+              className="w-full p-3 border rounded-lg"
+            />
+            <textarea
+              value={payload.description}
+              onChange={(e) => setPayload({ ...payload, description: e.target.value })}
+              placeholder="Description"
+              className="w-full p-3 border rounded-lg"
+            />
+            <input
+              value={payload.website}
+              onChange={(e) => setPayload({ ...payload, website: e.target.value })}
+              placeholder="Organization website"
+              className="w-full p-3 border rounded-lg"
+            />
+          </>
+        );
+      case "test":
+        return (
+          <input
+            value={payload.message}
+            onChange={(e) => setPayload({ message: e.target.value })}
+            placeholder="Message"
+            className="w-full p-3 border rounded-lg"
+          />
+        );
+      case "automation":
+        return (
+          <div className="space-y-2">
+            {payload.steps.map((step, idx) => (
+              <div key={idx} className="flex gap-2">
+                <input
+                  value={step}
+                  onChange={(e) => {
+                    const newSteps = [...payload.steps];
+                    newSteps[idx] = e.target.value;
+                    setPayload({ steps: newSteps });
+                  }}
+                  placeholder={`Step ${idx + 1}`}
+                  className="flex-1 p-2 border rounded-lg"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newSteps = payload.steps.filter((_, i) => i !== idx);
+                    setPayload({ steps: newSteps });
+                  }}
+                  className="px-2 text-red-600"
+                >
+                  ✖
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setPayload({ steps: [...payload.steps, ""] })}
+              className="text-sm text-blue-600 hover:underline"
+            >
+              + Add Step
+            </button>
+          </div>
+        );
+      case "http_request":
+        return (
+          <>
+            <input
+              value={payload.url}
+              onChange={(e) => setPayload({ ...payload, url: e.target.value })}
+              placeholder="Request URL"
+              className="w-full p-3 border rounded-lg"
+            />
+            <select
+              value={payload.method}
+              onChange={(e) => setPayload({ ...payload, method: e.target.value })}
+              className="w-full p-3 border rounded-lg"
+            >
+              <option>GET</option>
+              <option>POST</option>
+              <option>PUT</option>
+              <option>DELETE</option>
+            </select>
+            <textarea
+              value={payload.body}
+              onChange={(e) => setPayload({ ...payload, body: e.target.value })}
+              placeholder="Request body"
+              className="w-full p-3 border rounded-lg"
+            />
+          </>
+        );
+      case "ai_analysis":
+        return (
+          <textarea
+            value={payload.prompt}
+            onChange={(e) => setPayload({ prompt: e.target.value })}
+            placeholder="Prompt"
+            className="w-full p-3 border rounded-lg"
+          />
+        );
+      case "ai_summary":
+        return (
+          <textarea
+            value={payload.text}
+            onChange={(e) => setPayload({ text: e.target.value })}
+            placeholder="Text to summarize"
+            className="w-full p-3 border rounded-lg"
+          />
+        );
+      case "ai_plan":
+        return (
+          <input
+            value={payload.objective}
+            onChange={(e) => setPayload({ objective: e.target.value })}
+            placeholder="Objective"
+            className="w-full p-3 border rounded-lg"
+          />
+        );
+      default:
+        return null;
     }
   }
 
@@ -171,40 +195,38 @@ export default function Goals() {
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-10 space-y-8">
-      <h1 className="text-3xl font-bold tracking-tight">Goals</h1>
+      <h1 className="text-3xl font-bold">Goals</h1>
 
       {/* Create Goal Form */}
-      <form
-        onSubmit={createGoal}
-        className="space-y-4 bg-gray-50 dark:bg-gray-900 p-6 rounded-xl shadow"
-      >
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Goal title"
-          className="w-full p-3 border rounded-lg focus:ring focus:ring-blue-300"
-        />
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Description"
-          className="w-full p-3 border rounded-lg focus:ring focus:ring-blue-300"
-        />
-        <input
-          value={website}
-          onChange={(e) => setWebsite(e.target.value)}
-          placeholder="Organization website (https://example.com)"
-          className="w-full p-3 border rounded-lg focus:ring focus:ring-blue-300"
-        />
+      <form onSubmit={createGoal} className="space-y-4 bg-gray-50 p-6 rounded-xl shadow">
+        <label>
+          Goal Type:
+          <select
+            value={goalType}
+            onChange={(e) => {
+              setGoalType(e.target.value);
+              resetPayload(e.target.value);
+            }}
+            className="ml-2 p-2 border rounded-lg"
+          >
+            <option value="analysis">Analysis</option>
+            <option value="test">Test</option>
+            <option value="automation">Automation</option>
+            <option value="http_request">HTTP Request</option>
+            <option value="ai_analysis">AI Analysis</option>
+            <option value="ai_summary">AI Summary</option>
+            <option value="ai_plan">AI Plan</option>
+          </select>
+        </label>
 
-        {errorMessage && (
-          <div className="text-sm text-red-600">{errorMessage}</div>
-        )}
+        {renderPayloadFields()}
+
+        {errorMessage && <div className="text-sm text-red-600">{errorMessage}</div>}
 
         <button
           type="submit"
           disabled={creating}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg shadow hover:bg-blue-700 transition"
+          className="bg-blue-600 text-white px-6 py-2 rounded-lg shadow hover:bg-blue-700"
         >
           {creating ? "Creating…" : "Create Goal"}
         </button>
@@ -212,77 +234,19 @@ export default function Goals() {
 
       {/* Goals Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {goals.map((goal) => {
-          const prog = progress[goal.id];
-          return (
-            <div
-              key={goal.id}
-              className="p-6 bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition space-y-4"
-            >
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="font-semibold text-lg">
-                    {goal.goal_payload?.title ||
-                      goal.goal_payload?.message ||
-                      "Untitled"}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {new Date(goal.created_at).toLocaleString()}
-                  </div>
-                  {goal.goal_payload?.website && (
-                    <div className="text-xs text-blue-600 mt-1">
-                      🌐 {goal.goal_payload.website}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => runGoal(goal.id)}
-                    disabled={running === goal.id}
-                    className="text-sm text-blue-600 hover:underline"
-                  >
-                    {running === goal.id ? "Running…" : "Run →"}
-                  </button>
-                  <button
-                    onClick={() => deleteGoal(goal.id)}
-                    className="text-sm text-red-600 hover:underline"
-                  >
-                    Delete ✖
-                  </button>
-                </div>
-              </div>
-
-              {prog && (
-                <div className="space-y-2">
-                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded h-2">
-                    <div
-                      className={`h-2 rounded transition-all duration-300 ${
-                        prog.status === "completed"
-                          ? "bg-green-600"
-                          : prog.status === "failed"
-                          ? "bg-red-600"
-                          : "bg-blue-600"
-                      }`}
-                      style={{ width: `${prog.percent}%` }}
-                    ></div>
-                  </div>
-                  <div className="text-xs text-gray-600">
-                    {prog.status === "running" &&
-                      `Step ${prog.completedSteps} of ${prog.totalSteps}`}
-                    {prog.status === "completed" && "Completed ✅"}
-                    {prog.status === "failed" && "Failed ❌"}
-                  </div>
-                  {prog.status === "failed" && prog.failedStep && (
-                    <div className="text-xs text-red-600 mt-1">
-                      ❌ Step "{prog.failedStep}" failed: {prog.error}
-                    </div>
-                  )}
-                </div>
-              )}
+        {goals.map((goal) => (
+          <div key={goal.id} className="p-6 bg-white rounded-xl shadow-md space-y-4">
+            <div className="font-semibold text-lg">
+              {goal.goal_payload?.title ||
+                goal.goal_payload?.message ||
+                goal.goal_payload?.objective ||
+                "Untitled"}
             </div>
-          );
-        })}
+            <div className="text-xs text-gray-500">
+              {new Date(goal.created_at).toLocaleString()}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
