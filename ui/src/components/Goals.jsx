@@ -263,44 +263,71 @@ export default function Goals() {
           </button>
         </form>
 
-                {/* Goals Grid */}
+                                {/* Goals Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {goals.map((goal) => (
-            <div
-              key={goal.id}
-              className="p-6 bg-white rounded-xl shadow-md space-y-4"
-            >
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="font-semibold text-lg">
-                    {goal.goal_payload?.title ||
-                      goal.goal_payload?.message ||
-                      goal.goal_payload?.objective ||
-                      "Untitled"}
+          {goals.map((goal) => {
+            const prog = progress[goal.id];
+            return (
+              <div
+                key={goal.id}
+                className="p-6 bg-white rounded-xl shadow-md space-y-4"
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="font-semibold text-lg">
+                      {goal.goal_payload?.title ||
+                        goal.goal_payload?.message ||
+                        goal.goal_payload?.objective ||
+                        "Untitled"}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {new Date(goal.created_at).toLocaleString()}
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-500">
-                    {new Date(goal.created_at).toLocaleString()}
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => runGoal(goal.id)}
+                      disabled={running === goal.id}
+                      className="text-sm text-blue-600 hover:underline"
+                    >
+                      {running === goal.id ? "Running…" : "Run →"}
+                    </button>
+                    <button
+                      onClick={() => deleteGoal(goal.id)}
+                      className="text-sm text-red-600 hover:underline"
+                    >
+                      Delete ✖
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => runGoal(goal.id)}
-                    disabled={running === goal.id}
-                    className="text-sm text-blue-600 hover:underline"
-                  >
-                    {running === goal.id ? "Running…" : "Run →"}
-                  </button>
-                  <button
-                    onClick={() => deleteGoal(goal.id)}
-                    className="text-sm text-red-600 hover:underline"
-                  >
-                    Delete ✖
-                  </button>
-                </div>
+                {/* Progress Indicator */}
+                {prog && (
+                  <div className="mt-2">
+                    <div className="h-2 w-full bg-gray-200 rounded">
+                      <div
+                        className={`h-2 rounded ${
+                          prog.status === "failed"
+                            ? "bg-red-500"
+                            : prog.status === "completed"
+                            ? "bg-green-500"
+                            : "bg-blue-500"
+                        }`}
+                        style={{ width: `${prog.percent || 0}%` }}
+                      ></div>
+                    </div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      {prog.status === "running" &&
+                        `Running: ${prog.completedSteps}/${prog.totalSteps}`}
+                      {prog.status === "completed" && "Completed ✔"}
+                      {prog.status === "failed" && `Failed: ${prog.error || ""}`}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
