@@ -10,7 +10,6 @@ export default function Goals() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [running, setRunning] = useState(null);
-  const [progress, setProgress] = useState({});
   const { addToast } = useToast();
 
   /* LOAD GOALS */
@@ -46,6 +45,34 @@ export default function Goals() {
       addToast("Failed to create goal", "error");
     } finally {
       setCreating(false);
+    }
+  }
+
+  /* DELETE GOAL */
+  async function deleteGoal(goalId) {
+    try {
+      await apiFetch(`/goals/${goalId}`, { method: "DELETE" });
+      setGoals((g) => g.filter((goal) => goal.id !== goalId));
+      addToast("Goal deleted", "success");
+    } catch (err) {
+      addToast(err.message || "Failed to delete goal", "error");
+    }
+  }
+
+  /* RUN GOAL */
+  async function runGoal(goalId) {
+    setRunning(goalId);
+    try {
+      const execution = await apiFetch("/executions", {
+        method: "POST",
+        body: JSON.stringify({ goalId }),
+      });
+      await apiFetch(`/executions/${execution.id}/run`, { method: "POST" });
+      addToast("Execution started", "success");
+    } catch (err) {
+      addToast(err.message || "Execution failed", "error");
+    } finally {
+      setRunning(null);
     }
   }
 
@@ -191,62 +218,90 @@ export default function Goals() {
     }
   }
 
-  if (loading) return <div className="p-6">Loading goals…</div>;
+  if (loading) return <div className="p-6 text-center">Loading goals…</div>;
 
   return (
-    <div className="min-w-5xl mx-auto px-6 py-10 space-y-8">
-      <h1 className="text-3xl font-bold">Goals</h1>
+    <div className="flex justify-center px-6 py-10">
+      <div className="w-full max-w-4xl space-y-8">
+        <h1 className="text-3xl font-bold text-center">Goals</h1>
 
-      {/* Create Goal Form */}
-      <form onSubmit={createGoal} className="space-y-4 bg-gray-50 p-6 rounded-xl shadow">
-        <label>
-          Goal Type:
-          <select
-            value={goalType}
-            onChange={(e) => {
-              setGoalType(e.target.value);
-              resetPayload(e.target.value);
-            }}
-            className="ml-2 p-2 border rounded-lg"
-          >
-            <option value="analysis">Analysis</option>
-            <option value="test">Test</option>
-            <option value="automation">Automation</option>
-            <option value="http_request">HTTP Request</option>
-            <option value="ai_analysis">AI Analysis</option>
-            <option value="ai_summary">AI Summary</option>
-            <option value="ai_plan">AI Plan</option>
-          </select>
-        </label>
-
-        {renderPayloadFields()}
-
-        {errorMessage && <div className="text-sm text-red-600">{errorMessage}</div>}
-
-        <button
-          type="submit"
-          disabled={creating}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg shadow hover:bg-blue-700"
+        {/* Create Goal Form */}
+        <form
+          onSubmit={createGoal}
+          className="space-y-4 bg-gray-50 p-6 rounded-xl shadow"
         >
-          {creating ? "Creating…" : "Create Goal"}
-        </button>
-      </form>
+          <label>
+            Goal Type:
+            <select
+              value={goalType}
+              onChange={(e) => {
+                setGoalType(e.target.value);
+                resetPayload(e.target.value);
+              }}
+              className="ml-2 p-2 border rounded-lg"
+            >
+              <option value="analysis">Analysis</option>
+              <option value="test">Test</option>
+              <option value="automation">Automation</option>
+              <option value="http_request">HTTP Request</option>
+              <option value="ai_analysis">AI Analysis</option>
+              <option value="ai_summary">AI Summary</option>
+              <option value="ai_plan">AI Plan</option>
+            </select>
+          </label>
 
-      {/* Goals Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {goals.map((goal) => (
-          <div key={goal.id} className="p-6 bg-white rounded-xl shadow-md space-y-4">
-            <div className="font-semibold text-lg">
-              {goal.goal_payload?.title ||
-                goal.goal_payload?.message ||
-                goal.goal_payload?.objective ||
-                "Untitled"}
+          {renderPayloadFields()}
+
+          {errorMessage && <div className="text-sm text-red-600">{errorMessage}</div>}
+
+          <button
+            type="submit"
+            disabled={creating}
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg shadow hover:bg-blue-700"
+          >
+            {creating ? "Creating…" : "Create Goal"}
+          </button>
+        </form>
+
+                {/* Goals Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {goals.map((goal) => (
+            <div
+              key={goal.id}
+              className="p-6 bg-white rounded-xl shadow-md space-y-4"
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="font-semibold text-lg">
+                    {goal.goal_payload?.title ||
+                      goal.goal_payload?.message ||
+                      goal.goal_payload?.objective ||
+                      "Untitled"}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {new Date(goal.created_at).toLocaleString()}
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => runGoal(goal.id)}
+                    disabled={running === goal.id}
+                    className="text-sm text-blue-600 hover:underline"
+                  >
+                    {running === goal.id ? "Running…" : "Run →"}
+                  </button>
+                  <button
+                    onClick={() => deleteGoal(goal.id)}
+                    className="text-sm text-red-600 hover:underline"
+                  >
+                    Delete ✖
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="text-xs text-gray-500">
-              {new Date(goal.created_at).toLocaleString()}
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );
