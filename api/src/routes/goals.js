@@ -53,9 +53,7 @@ export async function goalsRoutes(app) {
 
       const baseParse = baseGoalSchema.safeParse(req.body);
       if (!baseParse.success) {
-        return reply
-          .code(400)
-          .send({ error: baseParse.error.errors.map((e) => e.message) });
+        return reply.code(400).send({ error: baseParse.error.errors.map((e) => e.message) });
       }
 
       const schema = schemasByType[goalType];
@@ -65,9 +63,7 @@ export async function goalsRoutes(app) {
 
       const payloadParse = schema.safeParse(payload);
       if (!payloadParse.success) {
-        return reply
-          .code(400)
-          .send({ error: payloadParse.error.errors.map((e) => e.message) });
+        return reply.code(400).send({ error: payloadParse.error.errors.map((e) => e.message) });
       }
 
       const result = await app.pg.query(
@@ -79,10 +75,12 @@ export async function goalsRoutes(app) {
 
       return reply.code(201).send(result.rows[0]);
     } catch (err) {
-      app.log.error("Create goal failed:", err.message);
-      return reply
-        .code(500)
-        .send({ error: "Failed to create goal", detail: err.message });
+      // Log full error object, not just message
+      app.log.error({ err }, "Create goal failed");
+      return reply.code(500).send({
+        error: "Failed to create goal",
+        detail: err.message,
+      });
     }
   });
 
@@ -99,10 +97,8 @@ export async function goalsRoutes(app) {
       );
       return reply.send(result.rows);
     } catch (err) {
-      app.log.error("Fetch goals failed:", err.message);
-      return reply
-        .code(500)
-        .send({ error: "Failed to load goals", detail: err.message });
+      app.log.error({ err }, "Fetch goals failed");
+      return reply.code(500).send({ error: "Failed to load goals", detail: err.message });
     }
   });
 
@@ -124,10 +120,8 @@ export async function goalsRoutes(app) {
 
       return reply.send(result.rows[0]);
     } catch (err) {
-      app.log.error("Fetch goal failed:", err.message);
-      return reply
-        .code(500)
-        .send({ error: "Failed to load goal", detail: err.message });
+      app.log.error({ err }, "Fetch goal failed");
+      return reply.code(500).send({ error: "Failed to load goal", detail: err.message });
     }
   });
 
@@ -148,7 +142,7 @@ export async function goalsRoutes(app) {
 
       return { success: true, message: `Goal ${id} deleted` };
     } catch (err) {
-      app.log.error("Delete goal failed:", err.message);
+      app.log.error({ err }, "Delete goal failed");
       return reply.code(500).send({ error: "Failed to delete goal", detail: err.message });
     }
   });
