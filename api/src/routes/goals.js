@@ -53,7 +53,8 @@ export async function goalsRoutes(app) {
 
       const baseParse = baseGoalSchema.safeParse(req.body);
       if (!baseParse.success) {
-        return reply.code(400).send({ error: baseParse.error.errors.map((e) => e.message) });
+        const messages = baseParse.error?.errors?.map((e) => e.message) || ["Invalid request"];
+        return reply.code(400).send({ error: messages });
       }
 
       const schema = schemasByType[goalType];
@@ -63,7 +64,8 @@ export async function goalsRoutes(app) {
 
       const payloadParse = schema.safeParse(payload);
       if (!payloadParse.success) {
-        return reply.code(400).send({ error: payloadParse.error.errors.map((e) => e.message) });
+        const messages = payloadParse.error?.errors?.map((e) => e.message) || ["Invalid payload"];
+        return reply.code(400).send({ error: messages });
       }
 
       const result = await app.pg.query(
