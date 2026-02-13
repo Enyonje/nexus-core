@@ -38,7 +38,6 @@ export async function runExecution(executionId) {
       execution.goal_payload,
       executionId,
       async (stepInfo) => {
-        // Insert step start
         const { rows: stepRows } = await db.query(
           `INSERT INTO execution_steps (execution_id, name, status, started_at)
            VALUES ($1, $2, 'running', NOW())
@@ -48,10 +47,8 @@ export async function runExecution(executionId) {
         const stepId = stepRows[0].id;
 
         try {
-          // Run actual step logic
           const output = await runStep(stepInfo);
 
-          // Mark step completed
           await db.query(
             `UPDATE execution_steps
              SET status = 'completed', finished_at = NOW(), output = $2
@@ -68,7 +65,7 @@ export async function runExecution(executionId) {
             completedSteps,
           });
 
-          // Sentinel validation immediately after step completion
+          // Sentinel validation
           const verdict = await runSentinel(executionId, stepInfo, output);
           if (!verdict?.allowed) {
             publishEvent(executionId, {
@@ -79,7 +76,6 @@ export async function runExecution(executionId) {
             throw new Error("Sentinel blocked execution");
           }
         } catch (err) {
-          // Mark step failed
           await db.query(
             `UPDATE execution_steps
              SET status = 'failed', finished_at = NOW(), error = $2
@@ -120,7 +116,7 @@ export async function runExecution(executionId) {
   }
 }
 
-/* 🔥 Real step runner */
+/*  Real step runner */
 async function runStep(stepInfo) {
   switch (stepInfo.name) {
     case "fetchData": {

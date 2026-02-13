@@ -32,20 +32,30 @@ function requireAdmin(req, reply, next) {
 
 export async function executionsRoutes(app) {
   /* ===============================
-     LIST EXECUTIONS
-  =============================== */
-  app.get("/", async (req, reply) => {
-    try {
-      const { rows } = await app.pg.query(`
-        SELECT * FROM executions
-        ORDER BY started_at DESC NULLS LAST
-      `);
-      return { executions: rows };
-    } catch (err) {
-      req.log.error(err);
-      return reply.code(500).send({ error: "Failed to fetch executions" });
+  /* ===============================
+   LIST EXECUTIONS
+=============================== */
+app.get("/", async (req, reply) => {
+  try {
+    if (!req.user) {
+      return reply.code(401).send({ error: "Unauthorized" });
     }
-  });
+
+    const { rows } = await app.pg.query(
+      `
+      SELECT * FROM executions
+      WHERE user_id = $1
+      ORDER BY started_at DESC NULLS LAST
+      `,
+      [req.user.id]
+    );
+
+    return { executions: rows };
+  } catch (err) {
+    req.log.error(err);
+    return reply.code(500).send({ error: "Failed to fetch executions" });
+  }
+});
 
   /* ===============================
      CREATE EXECUTION
