@@ -11,6 +11,7 @@ export default function Goals() {
   const [creating, setCreating] = useState(false);
   const [running, setRunning] = useState(null);
   const { addToast } = useToast();
+  const [progress, setProgress] = useState({});
 
   /* LOAD GOALS */
   useEffect(() => {
@@ -263,7 +264,7 @@ export default function Goals() {
           </button>
         </form>
 
-                                {/* Goals Grid */}
+                                        {/* Goals Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {goals.map((goal) => {
             const prog = progress[goal.id];
