@@ -3,12 +3,6 @@ import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import fastifyPostgres from "@fastify/postgres";
 import fastifyJwt from "@fastify/jwt";
-import fastifyStatic from "@fastify/static";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 import { authRoutes } from "./routes/auth.js";
 import { goalsRoutes } from "./routes/goals.js";
@@ -22,7 +16,7 @@ import { stripeRoutes } from "./routes/stripe.js";
 
 const app = Fastify({
   logger: true,
-  bodyLimit: 1048576,
+  bodyLimit: 1048576, // 1MB
 });
 
 /* =========================
@@ -58,20 +52,6 @@ app.register(billingRoutes, { prefix: "/api/billing" });
 app.register(paymentsRoutes, { prefix: "/api/payments" });
 app.register(streamRoutes, { prefix: "/api/stream" });
 app.register(stripeRoutes, { prefix: "/api" });
-
-/* =========================
-   FRONTEND STATIC FILES
-========================= */
-// Serve React build files
-await app.register(fastifyStatic, {
-  root: path.join(__dirname, "../client/dist"), // adjust to your React build output
-  prefix: "/", // serve at root
-});
-
-// Catch-all route: send index.html for SPA routes
-app.get("/*", async (req, reply) => {
-  return reply.sendFile("index.html");
-});
 
 /* =========================
    ERROR HANDLER
