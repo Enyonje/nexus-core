@@ -1,5 +1,4 @@
-const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:3001";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 export async function apiFetch(path, options = {}) {
   const token = localStorage.getItem("token");
@@ -9,14 +8,18 @@ export async function apiFetch(path, options = {}) {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
-  // Only set Content-Type if body exists
+  // Only set Content-Type if body exists and not FormData
   if (options.body && !(options.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }
 
-  const res = await fetch(`${API_URL}${path}`, {
+  // ✅ Ensure all paths go through /api
+  const apiPath = path.startsWith("/api") ? path : `/api${path}`;
+
+  const res = await fetch(`${API_URL}${apiPath}`, {
     ...options,
     headers,
+    credentials: "include", // keep cookies/session if needed
   });
 
   // Auto-logout on auth failure
