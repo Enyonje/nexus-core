@@ -54,6 +54,16 @@ app.register(streamRoutes, { prefix: "/api/stream" });
 app.register(stripeRoutes, { prefix: "/api" });
 
 /* =========================
+   HEALTH CHECK
+========================= */
+app.get("/api/health", async () => {
+  const client = await app.pg.connect();
+  const result = await client.query("SELECT 1");
+  client.release();
+  return { status: "ok", db: result.rowCount === 1 };
+});
+
+/* =========================
    ERROR HANDLER
 ========================= */
 app.setErrorHandler((error, request, reply) => {
