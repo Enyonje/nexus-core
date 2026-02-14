@@ -5,9 +5,17 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    proxy: {
+      // ✅ Proxy API calls during local dev
+      "/api": {
+        target: "http://localhost:3001", // Fastify backend
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   build: {
-    outDir: "dist",        // ensures Vercel serves from dist
+    outDir: "dist",        // ensures Vercel/Render serves from dist
     emptyOutDir: true,     // clears old files before building
   },
   preview: {
