@@ -8,10 +8,10 @@ import { runSentinel } from "../agents/sentinel.js"; // governance agent
  */
 export async function runExecution(executionId) {
   const { rows } = await db.query(
-    `SELECT e.id, e.goal_id, g.goal_type, g.goal_payload, u.id AS user_id
+    `SELECT e.id, e.goal_id, e.user_id, e.org_id,
+            g.goal_type, g.goal_payload
      FROM executions e
      JOIN goals g ON g.id = e.goal_id
-     JOIN users u ON u.id = g.user_id
      WHERE e.id = $1`,
     [executionId]
   );
@@ -39,10 +39,10 @@ export async function runExecution(executionId) {
       executionId,
       async (stepInfo) => {
         const { rows: stepRows } = await db.query(
-          `INSERT INTO execution_steps (execution_id, name, status, started_at)
-           VALUES ($1, $2, 'running', NOW())
+          `INSERT INTO execution_steps (execution_id, user_id, org_id, name, status, started_at)
+           VALUES ($1, $2, $3, $4, 'running', NOW())
            RETURNING id`,
-          [executionId, stepInfo.name]
+          [executionId, execution.user_id, execution.org_id, stepInfo.name]
         );
         const stepId = stepRows[0].id;
 
@@ -116,7 +116,7 @@ export async function runExecution(executionId) {
   }
 }
 
-/*  Real step runner */
+/* 🔥 Real step runner */
 async function runStep(stepInfo) {
   switch (stepInfo.name) {
     case "fetchData": {

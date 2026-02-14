@@ -1,5 +1,5 @@
 // src/execution/stepExecutor.js
-import { publishEvent } from "../events/publish.js";
+import { publishEvent } from "../routes/executions.js"; // use same SSE bus
 import { db } from "../db/db.js";
 import fetch from "node-fetch"; // for http_request steps
 import OpenAI from "openai";
@@ -18,12 +18,14 @@ export async function executeStep(executionId, step) {
   try {
     // Mark step as started in DB
     await db.query(
-      `UPDATE execution_steps SET status = 'running', started_at = NOW() WHERE id = $1`,
+      `UPDATE execution_steps 
+       SET status = 'running', started_at = NOW() 
+       WHERE id = $1`,
       [step.id]
     );
 
-    await publishEvent(db, SYSTEM_IDENTITY, "EXECUTION_STEP_STARTED", {
-      executionId,
+    publishEvent(executionId, {
+      event: "execution_step_started",
       stepId: step.id,
       stepType: step.step_type,
     });
@@ -33,12 +35,14 @@ export async function executeStep(executionId, step) {
 
     // Mark step as completed
     await db.query(
-      `UPDATE execution_steps SET status = 'completed', finished_at = NOW(), output = $2 WHERE id = $1`,
+      `UPDATE execution_steps 
+       SET status = 'completed', finished_at = NOW(), output = $2 
+       WHERE id = $1`,
       [step.id, JSON.stringify(result)]
     );
 
-    await publishEvent(db, SYSTEM_IDENTITY, "EXECUTION_STEP_COMPLETED", {
-      executionId,
+    publishEvent(executionId, {
+      event: "execution_step_completed",
       stepId: step.id,
       output: result,
     });
@@ -47,12 +51,14 @@ export async function executeStep(executionId, step) {
   } catch (err) {
     // Mark step as failed
     await db.query(
-      `UPDATE execution_steps SET status = 'failed', finished_at = NOW(), error = $2 WHERE id = $1`,
+      `UPDATE execution_steps 
+       SET status = 'failed', finished_at = NOW(), error = $2 
+       WHERE id = $1`,
       [step.id, err.message]
     );
 
-    await publishEvent(db, SYSTEM_IDENTITY, "EXECUTION_STEP_FAILED", {
-      executionId,
+    publishEvent(executionId, {
+      event: "execution_step_failed",
       stepId: step.id,
       error: err.message,
     });
@@ -108,8 +114,8 @@ async function runAiStep(step, systemPrompt) {
     text += delta;
 
     // Publish streaming progress
-    await publishEvent(db, SYSTEM_IDENTITY, "EXECUTION_STEP_PROGRESS", {
-      executionId: step.execution_id,
+    publishEvent(step.execution_id, {
+      event: "execution_step_progress",
       stepId: step.id,
       partial: text,
     });

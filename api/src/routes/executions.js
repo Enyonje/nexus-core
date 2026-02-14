@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { runExecution } from "../execution/runner.js";
+import { requireAuth } from "./auth.js";
 
 /* ===============================
    EVENT BUS (SSE PUB/SUB)
@@ -13,8 +14,7 @@ export function publishEvent(executionId, event) {
       try {
         cb(event);
       } catch (err) {
-        // Drop broken subscribers
-        subs.delete(cb);
+        subs.delete(cb); // Drop broken subscribers
       }
     }
   }
@@ -24,7 +24,7 @@ export function publishEvent(executionId, event) {
    ADMIN GUARD
 =============================== */
 function requireAdmin(req, reply, next) {
-  if (!req.user || req.user.role !== "admin") {
+  if (!req.identity || req.identity.role !== "admin") {
     return reply.code(403).send({ error: "Admin access required" });
   }
   next();
@@ -32,64 +32,57 @@ function requireAdmin(req, reply, next) {
 
 export async function executionsRoutes(app) {
   /* ===============================
-  /* ===============================
-   LIST EXECUTIONS
-=============================== */
-app.get("/", async (req, reply) => {
-  try {
-    if (!req.user) {
-      return reply.code(401).send({ error: "Unauthorized" });
+     LIST EXECUTIONS (user-scoped)
+  =============================== */
+  app.get("/", { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      const userId = req.identity.sub;
+      const { rows } = await app.pg.query(
+        `SELECT * FROM executions
+         WHERE user_id = $1
+         ORDER BY started_at DESC NULLS LAST`,
+        [userId]
+      );
+      return { executions: rows };
+    } catch (err) {
+      req.log.error(err, "Failed to fetch executions");
+      return reply.code(500).send({ error: "Failed to fetch executions" });
     }
-
-    const { rows } = await app.pg.query(
-      `
-      SELECT * FROM executions
-      WHERE user_id = $1
-      ORDER BY started_at DESC NULLS LAST
-      `,
-      [req.user.id]
-    );
-
-    return { executions: rows };
-  } catch (err) {
-    req.log.error(err);
-    return reply.code(500).send({ error: "Failed to fetch executions" });
-  }
-});
+  });
 
   /* ===============================
      CREATE EXECUTION
   =============================== */
-  app.post("/", async (req, reply) => {
+  app.post("/", { preHandler: requireAuth }, async (req, reply) => {
     try {
+      const userId = req.identity.sub;
+      const orgId = req.identity.org_id;
       const { goalId } = req.body;
       if (!goalId) return reply.code(400).send({ error: "goalId is required" });
 
       const goalRes = await app.pg.query(
-        `SELECT id, goal_type FROM goals WHERE id = $1`,
-        [goalId]
+        `SELECT id, goal_type FROM goals WHERE id = $1 AND user_id = $2`,
+        [goalId, userId]
       );
       if (goalRes.rows.length === 0) {
-        return reply.code(404).send({ error: "Goal not found" });
+        return reply.code(404).send({ error: "Goal not found or not owned by user" });
       }
 
       const goal = goalRes.rows[0];
       const executionId = uuidv4();
 
       const execRes = await app.pg.query(
-        `
-        INSERT INTO executions (
-          id, goal_id, goal_type, version, status, started_at
-        )
-        VALUES ($1, $2, $3, 1, 'pending', NOW())
-        RETURNING *
-        `,
-        [executionId, goal.id, goal.goal_type]
+        `INSERT INTO executions (
+           id, goal_id, goal_type, user_id, org_id, version, status, started_at
+         )
+         VALUES ($1, $2, $3, $4, $5, 1, 'pending', NOW())
+         RETURNING *`,
+        [executionId, goal.id, goal.goal_type, userId, orgId]
       );
 
       return reply.code(201).send(execRes.rows[0]);
     } catch (err) {
-      req.log.error(err);
+      req.log.error(err, "Failed to create execution");
       return reply.code(500).send({ error: "Failed to create execution" });
     }
   });
@@ -97,34 +90,32 @@ app.get("/", async (req, reply) => {
   /* ===============================
      RUN EXECUTION
   =============================== */
-  app.post("/:id/run", async (req, reply) => {
+  app.post("/:id/run", { preHandler: requireAuth }, async (req, reply) => {
     try {
+      const userId = req.identity.sub;
       const { id } = req.params;
 
       const execRes = await app.pg.query(
-        `
-        UPDATE executions
-        SET status = 'running',
-            started_at = COALESCE(started_at, NOW())
-        WHERE id = $1
-        RETURNING *
-        `,
-        [id]
+        `UPDATE executions
+         SET status = 'running',
+             started_at = COALESCE(started_at, NOW())
+         WHERE id = $1 AND user_id = $2
+         RETURNING *`,
+        [id, userId]
       );
 
       if (execRes.rows.length === 0) {
-        return reply.code(404).send({ error: "Execution not found" });
+        return reply.code(404).send({ error: "Execution not found or not owned by user" });
       }
 
-      // Fire async runner with SSE publishing
       runExecution(id).catch((err) => {
-        req.log.error("Runner failed:", err);
+        req.log.error(err, "Runner failed");
         publishEvent(id, { event: "execution_failed", error: err.message });
       });
 
       return execRes.rows[0];
     } catch (err) {
-      req.log.error(err);
+      req.log.error(err, "Failed to run execution");
       return reply.code(500).send({ error: "Failed to run execution" });
     }
   });
@@ -132,19 +123,20 @@ app.get("/", async (req, reply) => {
   /* ===============================
      GET SINGLE EXECUTION
   =============================== */
-  app.get("/:id", async (req, reply) => {
+  app.get("/:id", { preHandler: requireAuth }, async (req, reply) => {
     try {
+      const userId = req.identity.sub;
       const { id } = req.params;
       const execRes = await app.pg.query(
-        `SELECT * FROM executions WHERE id = $1`,
-        [id]
+        `SELECT * FROM executions WHERE id = $1 AND user_id = $2`,
+        [id, userId]
       );
       if (execRes.rows.length === 0) {
-        return reply.code(404).send({ error: "Execution not found" });
+        return reply.code(404).send({ error: "Execution not found or not owned by user" });
       }
       return execRes.rows[0];
     } catch (err) {
-      req.log.error(err);
+      req.log.error(err, "Failed to fetch execution");
       return reply.code(500).send({ error: "Failed to fetch execution" });
     }
   });
@@ -152,10 +144,9 @@ app.get("/", async (req, reply) => {
   /* ===============================
      STREAM EXECUTION EVENTS (SSE)
   =============================== */
-  app.get("/:id/stream", async (req, reply) => {
+  app.get("/:id/stream", { preHandler: requireAuth }, async (req, reply) => {
     const { id } = req.params;
 
-    // Explicit CORS headers for SSE
     const origin = req.headers.origin;
     if (
       origin === "https://nexus-core-chi.vercel.app" ||
@@ -171,17 +162,14 @@ app.get("/", async (req, reply) => {
       Connection: "keep-alive",
     });
 
-    // Subscribe
     const cb = (event) => {
       reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
     };
     if (!subscribers.has(id)) subscribers.set(id, new Set());
     subscribers.get(id).add(cb);
 
-    // Initial event
     cb({ event: "connected", executionId: id });
 
-    // Cleanup
     req.raw.on("close", () => {
       subscribers.get(id)?.delete(cb);
       reply.raw.end();
@@ -189,17 +177,47 @@ app.get("/", async (req, reply) => {
   });
 
   /* ===============================
+     GET EXECUTION LOGS
+  =============================== */
+  app.get("/:id/logs", { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      const userId = req.identity.sub;
+      const { id } = req.params;
+
+      const execRes = await app.pg.query(
+        `SELECT id FROM executions WHERE id = $1 AND user_id = $2`,
+        [id, userId]
+      );
+      if (!execRes.rows.length) {
+        return reply.code(404).send({ error: "Execution not found or not owned by user" });
+      }
+
+      const { rows } = await app.pg.query(
+        `SELECT id, name, status, started_at, finished_at, output, error
+         FROM execution_steps
+         WHERE execution_id = $1
+         ORDER BY started_at ASC`,
+        [id]
+      );
+
+      return { logs: rows };
+    } catch (err) {
+      req.log.error(err, "Fetch execution logs failed");
+      return reply.code(500).send({ error: "Failed to fetch execution logs", detail: err.message });
+    }
+  });
+
+  /* ===============================
      ADMIN OVERRIDE DASHBOARD
   =============================== */
   app.get("/admin/override", { preHandler: requireAdmin }, async (req, reply) => {
     try {
-      const { rows } = await app.pg.query(`
-        SELECT * FROM executions
-        ORDER BY started_at DESC NULLS LAST
-      `);
+      const { rows } = await app.pg.query(
+        `SELECT * FROM executions ORDER BY started_at DESC NULLS LAST`
+      );
       return { adminExecutions: rows };
     } catch (err) {
-      req.log.error(err);
+      req.log.error(err, "Admin fetch failed");
       return reply.code(500).send({ error: "Admin fetch failed" });
     }
   });
@@ -211,12 +229,12 @@ app.get("/", async (req, reply) => {
     try {
       const { id } = req.params;
       runExecution(id).catch((err) => {
-        req.log.error("Admin rerun failed:", err);
+        req.log.error(err, "Admin rerun failed");
         publishEvent(id, { event: "execution_failed", error: err.message });
       });
       return { success: true, message: `Execution ${id} rerun started` };
     } catch (err) {
-      req.log.error(err);
+      req.log.error(err, "Failed to rerun execution");
       return reply.code(500).send({ error: "Failed to rerun execution" });
     }
   });
@@ -230,7 +248,7 @@ app.get("/", async (req, reply) => {
       await app.pg.query(`DELETE FROM executions WHERE id = $1`, [id]);
       return { success: true, message: `Execution ${id} deleted` };
     } catch (err) {
-      req.log.error(err);
+      req.log.error(err, "Failed to delete execution");
       return reply.code(500).send({ error: "Failed to delete execution" });
     }
   });

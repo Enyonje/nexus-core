@@ -5,7 +5,7 @@ import Stripe from "stripe";
 import { v4 as uuidv4 } from "uuid";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
-const FRONTEND_URL = process.env.FRONTEND_URL;
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2022-11-15",
@@ -17,7 +17,6 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 export function requireAuth(req, reply, done) {
   try {
     const auth = req.headers.authorization;
-
     if (!auth || !auth.startsWith("Bearer ")) {
       return reply.code(401).send({ error: "Missing Authorization header" });
     }
@@ -40,7 +39,6 @@ export async function authRoutes(server) {
   server.post("/register", async (req, reply) => {
     try {
       const { email, password, orgName } = req.body;
-
       if (!email || !password || !orgName) {
         return reply.code(400).send({ error: "Email, password, and orgName required" });
       }
@@ -51,19 +49,15 @@ export async function authRoutes(server) {
       }
 
       const hash = await bcrypt.hash(password, 10);
-
-      // Generate UUIDs
       const userId = uuidv4();
       const orgId = uuidv4();
 
-      // Insert organization
       await db.query(
         `INSERT INTO organizations (id, name, created_at)
          VALUES ($1, $2, NOW())`,
         [orgId, orgName]
       );
 
-      // Insert user linked to org
       const result = await db.query(
         `INSERT INTO users (id, email, password_hash, role, subscription, org_id, created_at)
          VALUES ($1, $2, $3, 'user', 'free', $4, NOW())
@@ -72,8 +66,6 @@ export async function authRoutes(server) {
       );
 
       const user = result.rows[0];
-
-      // Generate JWT with org_id included
       const token = jwt.sign(
         { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
         JWT_SECRET,
@@ -91,7 +83,6 @@ export async function authRoutes(server) {
   server.post("/login", async (req, reply) => {
     try {
       const { email, password } = req.body;
-
       if (!email || !password) {
         return reply.code(400).send({ error: "Email and password required" });
       }
@@ -107,7 +98,7 @@ export async function authRoutes(server) {
         return reply.code(401).send({ error: "Invalid credentials" });
       }
 
-      // Ensure org_id exists; if missing, create a default org
+      // Ensure org_id exists
       let orgId = user.org_id;
       if (!orgId) {
         orgId = uuidv4();

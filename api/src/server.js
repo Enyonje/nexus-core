@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import fastifyPostgres from "@fastify/postgres";
+import fastifyJwt from "@fastify/jwt";
 
 import { authRoutes } from "./routes/auth.js";
 import { goalsRoutes } from "./routes/goals.js";
@@ -39,11 +40,30 @@ await app.register(fastifyPostgres, {
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
+// Register JWT plugin
+await app.register(fastifyJwt, {
+  secret: process.env.JWT_SECRET || "super-secret-key", // use env var in production
+});
+
 /* =========================
    RAW BODY HOOK
 ========================= */
 app.addHook("onRequest", async (req, reply) => {
   req.rawBody = req.body;
+});
+
+/* =========================
+   AUTH HOOK
+========================= */
+app.addHook("preHandler", async (req, reply) => {
+  // Allow health check without auth
+  if (req.routerPath === "/health") return;
+
+  try {
+    await req.jwtVerify(); // verifies token and sets req.user
+  } catch (err) {
+    return reply.code(401).send({ error: "Unauthorized" });
+  }
 });
 
 /* =========================

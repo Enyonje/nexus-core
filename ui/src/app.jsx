@@ -9,7 +9,7 @@ import ExecutionList from "./components/ExecutionList.jsx";
 import ExecutionDetail from "./components/ExecutionDetail.jsx";
 import Subscription from "./components/Subscription.jsx";
 import Goals from "./components/Goals.jsx";
-
+import ExecutionLogsStreamModal from "./components/ExecutionLogsStreamModal.jsx";
 import Login from "./components/Login.jsx";
 import Register from "./components/Register.jsx";
 import ForgotPassword from "./components/ForgotPassword.jsx";
@@ -24,6 +24,8 @@ import { AuthProvider } from "./context/AuthProvider.jsx";
 export default function App() {
   const [isDark, setIsDark] = useState(false);
   const theme = isDark ? darkTheme : lightTheme;
+
+  const [selectedExecutionId, setSelectedExecutionId] = useState(null);
 
   return (
     <AuthProvider>
@@ -71,7 +73,7 @@ export default function App() {
               path="/executions"
               element={
                 <ProtectedRoute allowed={["pro", "enterprise"]}>
-                  <ExecutionList />
+                  <ExecutionList setSelectedExecutionId={setSelectedExecutionId} />
                 </ProtectedRoute>
               }
             />
@@ -79,7 +81,7 @@ export default function App() {
               path="/executions/:id"
               element={
                 <ProtectedRoute allowed={["pro", "enterprise"]}>
-                  <ExecutionDetail />
+                  <ExecutionDetail setSelectedExecutionId={setSelectedExecutionId} />
                 </ProtectedRoute>
               }
             />
@@ -103,6 +105,14 @@ export default function App() {
           ======================= */}
           <Route path="*" element={<LandingPage />} />
         </Routes>
+
+        {/* ✅ Render modal globally */}
+        {selectedExecutionId && (
+          <ExecutionLogsStreamModal
+            executionId={selectedExecutionId}
+            onClose={() => setSelectedExecutionId(null)}
+          />
+        )}
       </div>
     </AuthProvider>
   );

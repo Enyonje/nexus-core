@@ -138,31 +138,62 @@ async function runAiPlan(payload, executionId, cb) {
 /* =========================
    STREAM HANDLER
 ========================= */
-async function streamWithEvents(stream, executionId, stepId, type, cb) {
+async function streamWithEvents(stream, executionId, stepName, type, cb) {
   let text = "";
   let lastSent = 0;
 
   try {
+    // Mark step as started
+    await recordStep(executionId, stepName, "running");
+
     for await (const chunk of stream) {
       const delta = chunk.choices?.[0]?.delta?.content;
       if (!delta) continue;
       text += delta;
 
       if (Date.now() - lastSent > 500) {
-        await safePublish(executionId, stepId, text, "streaming");
-        cb?.({ name: stepId, status: "streaming", partial: text });
+        publishEvent(executionId, {
+          event: "execution_step_progress",
+          step: stepName,
+          status: "streaming",
+          partial: text,
+        });
+        cb?.({ name: stepName, status: "streaming", partial: text });
         lastSent = Date.now();
       }
     }
 
-    // Final flush
-    await safePublish(executionId, stepId, text, "completed");
-    cb?.({ name: stepId, status: "completed", result: text });
+    // Final flush: mark completed in DB
+    await db.query(
+      `UPDATE execution_steps
+       SET status = 'completed', finished_at = NOW(), output = $2
+       WHERE execution_id = $1 AND name = $3`,
+      [executionId, JSON.stringify({ model: "openai:gpt-4o-mini", type, text }), stepName]
+    );
+
+    publishEvent(executionId, {
+      event: "execution_step_completed",
+      step: stepName,
+      result: text,
+    });
+    cb?.({ name: stepName, status: "completed", result: text });
 
     return { model: "openai:gpt-4o-mini", type, text };
   } catch (err) {
-    await safePublish(executionId, stepId, err.message, "failed");
-    cb?.({ name: stepId, status: "failed", error: err.message });
+    // Mark failed in DB
+    await db.query(
+      `UPDATE execution_steps
+       SET status = 'failed', finished_at = NOW(), error = $2
+       WHERE execution_id = $1 AND name = $3`,
+      [executionId, err.message, stepName]
+    );
+
+    publishEvent(executionId, {
+      event: "execution_step_failed",
+      step: stepName,
+      error: err.message,
+    });
+    cb?.({ name: stepName, status: "failed", error: err.message });
     throw err;
   }
 }
@@ -186,11 +217,21 @@ async function safePublish(executionId, stepId, partial, status) {
 /* =========================
    DB STEP RECORDING
 ========================= */
-async function recordStep(executionId, name, status) {
+async function recordStep(executionId, name, status, output = null, error = null) {
+  // Fetch user/org from parent execution
+  const { rows } = await db.query(
+    `SELECT user_id, org_id FROM executions WHERE id = $1`,
+    [executionId]
+  );
+  if (!rows.length) return;
+  const { user_id, org_id } = rows[0];
+
   await db.query(
-    `INSERT INTO execution_steps (execution_id, name, status, started_at, finished_at)
-     VALUES ($1, $2, $3, NOW(), NOW())`,
-    [executionId, name, status]
+    `INSERT INTO execution_steps (
+       execution_id, user_id, org_id, name, status, started_at, finished_at, output, error
+     )
+     VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), $6, $7)`,
+    [executionId, user_id, org_id, name, status, output ? JSON.stringify(output) : null, error]
   );
 }
 

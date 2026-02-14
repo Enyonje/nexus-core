@@ -5,7 +5,7 @@ import { useToast } from "./ToastContext.jsx";
 import LoadingSpinner from "./LoadingSpinner.jsx";
 import { useAuth } from "../context/AuthProvider.jsx";
 
-export default function ExecutionDetail() {
+export default function ExecutionDetail({ setSelectedExecutionId }) {
   const { id } = useParams();
   const [execution, setExecution] = useState(null);
   const [steps, setSteps] = useState([]);
@@ -144,7 +144,7 @@ export default function ExecutionDetail() {
   const progressPercent =
     totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0;
 
-  // ETA calculation (average step duration)
+  // ETA calculation
   const avgDurationMs = useMemo(() => {
     const durations = steps
       .filter((s) => s.started_at && s.finished_at)
@@ -175,6 +175,14 @@ export default function ExecutionDetail() {
             className="px-4 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700"
           >
             Run Execution
+          </button>
+
+          {/* ✅ New View Logs button */}
+          <button
+            onClick={() => setSelectedExecutionId(execution.id)}
+            className="px-4 py-2 bg-indigo-600 text-white rounded shadow hover:bg-indigo-700"
+          >
+            View Logs
           </button>
 
           {role === "admin" && (
@@ -214,6 +222,7 @@ export default function ExecutionDetail() {
         {etaMinutes !== null && ` | ETA: ~${etaMinutes} min`}
       </p>
 
+      {/* Steps grouped by status */}
       {["running", "completed", "failed", "blocked"].map((status) => (
         <div key={status}>
           <h2 className="text-lg font-semibold capitalize mt-4">
@@ -249,7 +258,7 @@ export default function ExecutionDetail() {
                   {step.finished_at &&
                     ` | Finished: ${new Date(step.finished_at).toLocaleString()}`}
                 </div>
-                {step.result && (
+                                {step.result && (
                   <pre className="text-xs bg-gray-100 dark:bg-gray-900 p-2 mt-2 rounded">
                     {JSON.stringify(step.result, null, 2)}
                   </pre>

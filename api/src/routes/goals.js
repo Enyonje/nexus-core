@@ -77,7 +77,6 @@ export async function goalsRoutes(app) {
 
       return reply.code(201).send(result.rows[0]);
     } catch (err) {
-      // Log full error object, not just message
       app.log.error({ err }, "Create goal failed");
       return reply.code(500).send({
         error: "Failed to create goal",
