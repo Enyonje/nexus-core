@@ -16,14 +16,28 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 ========================= */
 export function requireAuth(req, reply, done) {
   try {
-    const auth = req.headers.authorization;
-    if (!auth || !auth.startsWith("Bearer ")) {
-      return reply.code(401).send({ error: "Missing Authorization header" });
+    let token;
+
+    // 1. Authorization header
+    if (req.headers.authorization?.startsWith("Bearer ")) {
+      token = req.headers.authorization.split(" ")[1];
     }
 
-    const token = auth.replace("Bearer ", "");
-    const payload = jwt.verify(token, JWT_SECRET);
+    // 2. Cookie (if using cookie-based auth)
+    if (!token && req.cookies?.authToken) {
+      token = req.cookies.authToken;
+    }
 
+    // 3. Query param (for EventSource connections)
+    if (!token && req.query?.token) {
+      token = req.query.token;
+    }
+
+    if (!token) {
+      return reply.code(401).send({ error: "Unauthorized: missing token" });
+    }
+
+    const payload = jwt.verify(token, JWT_SECRET);
     req.identity = payload;
     done();
   } catch (err) {

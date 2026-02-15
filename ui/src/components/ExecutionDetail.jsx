@@ -13,7 +13,7 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
   const { addToast } = useToast();
   const { role } = useAuth();
 
-  // New: configurable payload fields
+  // Configurable payload fields
   const [analysisText, setAnalysisText] = useState("");
   const [threshold, setThreshold] = useState(0.75);
   const [mode, setMode] = useState("fast");
@@ -32,8 +32,10 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
     }
     loadExecution();
 
+    // ✅ Append token to SSE URL
+    const token = localStorage.getItem("authToken");
     const evtSource = new EventSource(
-      `${import.meta.env.VITE_API_URL}/api/executions/${id}/stream`,
+      `${import.meta.env.VITE_API_URL}/api/executions/${id}/stream?token=${token}`,
       { withCredentials: true }
     );
 
@@ -109,10 +111,10 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
             text: analysisText || "Default analysis input",
             parameters: {
               threshold: parseFloat(threshold),
-              mode
-            }
-          }
-        })
+              mode,
+            },
+          },
+        }),
       });
       addToast(`Execution ${id} triggered`, "info");
     } catch {
