@@ -27,8 +27,9 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
     }
     loadExecution();
 
+    // ✅ Corrected EventSource URL to include /api
     const evtSource = new EventSource(
-      `${import.meta.env.VITE_API_URL}/executions/${id}/stream`,
+      `${import.meta.env.VITE_API_URL}/api/executions/${id}/stream`,
       { withCredentials: true }
     );
 
@@ -101,7 +102,7 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
 
   async function runExecution() {
     try {
-      await apiFetch(`/api/executions/${id}/run`, { method: "POST" });
+      await apiFetch(`/executions/${id}/run`, { method: "POST" });
       addToast(`Execution ${id} triggered`, "info");
     } catch {
       addToast("Failed to start execution", "error");
@@ -110,7 +111,7 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
 
   async function rerunExecution() {
     try {
-      await apiFetch(`/api/executions/${id}/rerun`, { method: "POST" });
+      await apiFetch(`/executions/${id}/rerun`, { method: "POST" });
       addToast(`Execution ${id} rerun started`, "info");
     } catch {
       addToast("Failed to rerun execution", "error");
@@ -120,7 +121,7 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
   async function deleteExecution() {
     if (!window.confirm("Delete this execution?")) return;
     try {
-      await apiFetch(`/api/executions/${id}`, { method: "DELETE" });
+      await apiFetch(`/executions/${id}`, { method: "DELETE" });
       addToast(`Execution ${id} deleted`, "success");
     } catch {
       addToast("Failed to delete execution", "error");
@@ -177,7 +178,6 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
             Run Execution
           </button>
 
-          {/* ✅ New View Logs button */}
           <button
             onClick={() => setSelectedExecutionId(execution.id)}
             className="px-4 py-2 bg-indigo-600 text-white rounded shadow hover:bg-indigo-700"
@@ -206,7 +206,6 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
 
       <p>Status: {execution.status}</p>
 
-      {/* Progress bar */}
       {totalSteps > 0 && (
         <div className="w-full bg-gray-200 rounded h-4 overflow-hidden">
           <div
@@ -222,7 +221,6 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
         {etaMinutes !== null && ` | ETA: ~${etaMinutes} min`}
       </p>
 
-      {/* Steps grouped by status */}
       {["running", "completed", "failed", "blocked"].map((status) => (
         <div key={status}>
           <h2 className="text-lg font-semibold capitalize mt-4">
@@ -258,13 +256,15 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
                   {step.finished_at &&
                     ` | Finished: ${new Date(step.finished_at).toLocaleString()}`}
                 </div>
-                                {step.result && (
+                {step.result && (
                   <pre className="text-xs bg-gray-100 dark:bg-gray-900 p-2 mt-2 rounded">
                     {JSON.stringify(step.result, null, 2)}
                   </pre>
                 )}
                 {step.error && (
-                  <p className="text-xs text-red-600 mt-2">Error: {step.error}</p>
+                  <p className="text-red-600 text-xs mt-2">
+                    Error: {step.error}
+                  </p>
                 )}
               </div>
             ))
@@ -273,4 +273,6 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
       ))}
     </div>
   );
-}
+};
+
+export default ExecutionDetail;
