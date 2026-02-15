@@ -21,7 +21,7 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
   useEffect(() => {
     async function loadExecution() {
       try {
-        const res = await apiFetch(`api/executions/${id}`);
+        const res = await apiFetch(`/api/executions/${id}`);
         setExecution(res);
         setSteps(res.steps || []);
       } catch {
@@ -32,14 +32,15 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
     }
     loadExecution();
 
-    // ✅ Append token to SSE URL
+    // ✅ Append token to SSE URL safely
     const token = localStorage.getItem("authToken");
-       if (!token) {
-        addToast("No auth token found, please log in", "error");
-       return;
+    if (!token) {
+      addToast("No auth token found, please log in", "error");
+      return;
     }
+
     const evtSource = new EventSource(
-      `${import.meta.env.VITE_API_URL}/api/executions/${id}/stream?token=${token}`,
+      `${import.meta.env.VITE_API_URL}/api/executions/${id}/stream?token=${encodeURIComponent(token)}`,
       { withCredentials: true }
     );
 
@@ -260,53 +261,37 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
         {etaMinutes !== null && ` | ETA: ~${etaMinutes} min`}
       </p>
 
-      {["running", "completed", "failed", "blocked"].map((status) => (
+            {["running", "completed", "failed", "blocked"].map((status) => (
         <div key={status}>
           <h2 className="text-lg font-semibold capitalize mt-4">
             {status} steps
           </h2>
-                    {groupedSteps[status].length === 0 ? (
-            <p className="text-gray-500 text-sm">No {status} steps</p>
+          {groupedSteps[status].length === 0 ? (
+            <p className="text-sm text-gray-500">No {status} steps</p>
           ) : (
-            groupedSteps[status].map((step) => (
-              <div
-                key={step.id}
-                className="p-3 bg-white dark:bg-gray-800 rounded shadow mt-2"
-              >
-                <div className="flex justify-between">
-                  <span>{step.name}</span>
-                  <span
-                    className={`text-sm ${
-                      status === "completed"
-                        ? "text-green-600"
-                        : status === "failed"
-                        ? "text-red-600"
-                        : status === "blocked"
-                        ? "text-yellow-600"
-                        : "text-blue-600"
-                    }`}
-                  >
-                    {status}
-                  </span>
-                </div>
-                <div className="text-xs text-gray-500">
-                  {step.started_at &&
-                    `Started: ${new Date(step.started_at).toLocaleString()}`}
-                  {step.finished_at &&
-                    ` | Finished: ${new Date(step.finished_at).toLocaleString()}`}
-                </div>
-                {step.result && (
-                  <pre className="text-xs bg-gray-100 dark:bg-gray-900 p-2 mt-2 rounded">
-                    {JSON.stringify(step.result, null, 2)}
-                  </pre>
-                )}
-                {step.error && (
-                  <p className="text-red-600 text-xs mt-2">
-                    Error: {step.error}
-                  </p>
-                )}
-              </div>
-            ))
+            <ul className="space-y-2">
+              {groupedSteps[status].map((s) => (
+                <li
+                  key={s.id}
+                  className="border rounded p-2 bg-gray-50 dark:bg-gray-800"
+                >
+                  <div className="flex justify-between">
+                    <span className="font-medium">{s.name}</span>
+                    <span className="text-xs text-gray-500">
+                      {s.status}
+                    </span>
+                  </div>
+                  {s.result && (
+                    <pre className="text-xs bg-gray-100 dark:bg-gray-900 p-2 rounded mt-1 overflow-x-auto">
+                      {JSON.stringify(s.result, null, 2)}
+                    </pre>
+                  )}
+                  {s.error && (
+                    <p className="text-xs text-red-600 mt-1">{s.error}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       ))}
