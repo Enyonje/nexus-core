@@ -7,8 +7,9 @@ import { useAuth } from "../context/AuthProvider";
 export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [orgName, setOrgName] = useState(""); // ✅ new field for organization name
+  const [orgName, setOrgName] = useState(""); // ✅ organization name
   const [loading, setLoading] = useState(false);
+
   const { addToast } = useToast();
   const { login } = useAuth();
 
@@ -21,7 +22,7 @@ export default function Register() {
         body: JSON.stringify({
           email,
           password,
-          orgName, // ✅ send org name so backend can generate org_id
+          orgName,
         }),
       });
 
@@ -29,9 +30,19 @@ export default function Register() {
         throw new Error("Invalid registration response");
       }
 
+      // ✅ Store token consistently
+      localStorage.setItem("authToken", res.token);
+      localStorage.setItem("user", JSON.stringify(res.user));
+
+      // Update auth context
+      login({
+        user: res.user,
+        token: res.token,
+      });
+
       addToast("Registration successful!", "success");
-      login({ ...res.user, token: res.token });
     } catch (err) {
+      console.error("Registration error:", err);
       addToast(err.message || "Registration failed", "error");
     } finally {
       setLoading(false);

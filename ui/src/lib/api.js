@@ -1,7 +1,8 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 export async function apiFetch(path, options = {}) {
-  const token = localStorage.getItem("token");
+  // ✅ Use consistent key
+  const token = localStorage.getItem("authToken");
 
   const headers = {
     ...(options.headers || {}),
@@ -24,7 +25,8 @@ export async function apiFetch(path, options = {}) {
 
   // Auto-logout on auth failure
   if (res.status === 401) {
-    localStorage.removeItem("token");
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("user");
   }
 
   if (!res.ok) {
@@ -32,7 +34,9 @@ export async function apiFetch(path, options = {}) {
     try {
       const data = await res.json();
       msg = data.error || msg;
-    } catch {}
+    } catch {
+      // ignore parse errors
+    }
     throw new Error(msg);
   }
 

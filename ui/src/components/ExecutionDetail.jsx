@@ -34,6 +34,10 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
 
     // ✅ Append token to SSE URL
     const token = localStorage.getItem("authToken");
+       if (!token) {
+        addToast("No auth token found, please log in", "error");
+       return;
+    }
     const evtSource = new EventSource(
       `${import.meta.env.VITE_API_URL}/api/executions/${id}/stream?token=${token}`,
       { withCredentials: true }

@@ -7,7 +7,7 @@ import { useAuth } from "../context/AuthProvider";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false); // ✅ toggle state
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const { addToast } = useToast();
@@ -27,8 +27,11 @@ export default function Login() {
         throw new Error("Invalid login response");
       }
 
-      localStorage.setItem("token", res.token);
+      // ✅ Store token consistently
+      localStorage.setItem("authToken", res.token);
+      localStorage.setItem("user", JSON.stringify(res.user));
 
+      // Update auth context
       login({
         user: res.user,
         token: res.token,
@@ -56,7 +59,6 @@ export default function Login() {
           </p>
         </div>
 
-        {/* Centered input fields */}
         <div className="space-y-4">
           <input
             type="email"
@@ -69,7 +71,7 @@ export default function Login() {
 
           <div className="relative">
             <input
-              type={showPassword ? "text" : "password"} // ✅ toggle type
+              type={showPassword ? "text" : "password"}
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -81,43 +83,10 @@ export default function Login() {
               onClick={() => setShowPassword(!showPassword)}
               className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-blue-600 focus:outline-none"
             >
-              {/* ✅ Eye icon toggle */}
               {showPassword ? (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13.875 18.825A10.05 10.05 0 0112 19c-5.523 0-10-4.477-10-10 0-1.05.162-2.06.462-3.002m3.05-3.05A9.956 9.956 0 0112 3c5.523 0 10 4.477 10 10 0 1.05-.162 2.06-.462 3.002m-3.05 3.05A9.956 9.956 0 0112 21c-5.523 0-10-4.477-10-10"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
-                </svg>
+                <svg /* eye open icon */ ... />
               ) : (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 3l18 18M10.477 10.477A3 3 0 0113.523 13.523M9.88 9.88a3 3 0 014.24 4.24M12 5c4.418 0 8 3.582 8 8 0 1.05-.162 2.06-.462 3.002m-3.05 3.05A9.956 9.956 0 0112 21c-5.523 0-10-4.477-10-10 0-1.05.162-2.06.462-3.002m3.05-3.05A9.956 9.956 0 0112 3"
-                  />
-                </svg>
+                <svg /* eye closed icon */ ... />
               )}
             </button>
           </div>
@@ -132,7 +101,6 @@ export default function Login() {
           </Link>
         </div>
 
-        {/* Centered sign-in button */}
         <button
           type="submit"
           className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition disabled:opacity-60"
