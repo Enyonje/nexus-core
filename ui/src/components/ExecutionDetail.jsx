@@ -101,7 +101,7 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
 
   async function runExecution() {
     try {
-      await apiFetch(`/executions/${id}/run`, { method: "POST" });
+      await apiFetch(`/api/executions/${id}/run`, { method: "POST" });
       addToast(`Execution ${id} triggered`, "info");
     } catch {
       addToast("Failed to start execution", "error");
@@ -110,7 +110,7 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
 
   async function rerunExecution() {
     try {
-      await apiFetch(`/admin/executions/${id}/rerun`, { method: "POST" });
+      await apiFetch(`/api/executions/${id}/rerun`, { method: "POST" });
       addToast(`Execution ${id} rerun started`, "info");
     } catch {
       addToast("Failed to rerun execution", "error");
@@ -120,7 +120,7 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
   async function deleteExecution() {
     if (!window.confirm("Delete this execution?")) return;
     try {
-      await apiFetch(`/executions/${id}`, { method: "DELETE" });
+      await apiFetch(`/api/executions/${id}`, { method: "DELETE" });
       addToast(`Execution ${id} deleted`, "success");
     } catch {
       addToast("Failed to delete execution", "error");
