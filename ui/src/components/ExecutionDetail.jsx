@@ -21,7 +21,7 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
   useEffect(() => {
     async function loadExecution() {
       try {
-        const res = await apiFetch(`/executions/${id}`);
+        const res = await apiFetch(`api/executions/${id}`);
         setExecution(res);
         setSteps(res.steps || []);
       } catch {
@@ -108,7 +108,7 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
 
   async function runExecution() {
     try {
-      await apiFetch(`/executions/${id}/run`, {
+      await apiFetch(`/api/executions/${id}/run`, {
         method: "POST",
         body: JSON.stringify({
           data: {
@@ -128,7 +128,7 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
 
   async function rerunExecution() {
     try {
-      await apiFetch(`/executions/${id}/rerun`, { method: "POST" });
+      await apiFetch(`/api/executions/${id}/rerun`, { method: "POST" });
       addToast(`Execution ${id} rerun started`, "info");
     } catch {
       addToast("Failed to rerun execution", "error");
@@ -138,7 +138,7 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
   async function deleteExecution() {
     if (!window.confirm("Delete this execution?")) return;
     try {
-      await apiFetch(`/executions/${id}`, { method: "DELETE" });
+      await apiFetch(`/api/executions/${id}`, { method: "DELETE" });
       addToast(`Execution ${id} deleted`, "success");
     } catch {
       addToast("Failed to delete execution", "error");

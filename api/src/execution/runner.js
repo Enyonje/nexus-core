@@ -20,9 +20,17 @@ export async function runExecution(executionId, payloadOverride = null) {
   const execution = rows[0];
 
   // ✅ Merge override payload if provided
-  const payload = payloadOverride
+  let payload = payloadOverride
     ? { ...execution.goal_payload, ...payloadOverride }
     : execution.goal_payload;
+
+  // ✅ Validate payload before running
+  if (!payload || !payload.text) {
+    throw new Error("Missing analysis data: payload.text is required");
+  }
+  if (!payload.parameters) {
+    payload.parameters = { threshold: 0.75, mode: "fast" }; // sensible defaults
+  }
 
   try {
     // Mark execution as running
