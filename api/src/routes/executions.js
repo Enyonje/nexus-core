@@ -17,6 +17,9 @@ export function publishEvent(executionId, event) {
         subs.delete(cb); // Drop broken subscribers
       }
     }
+    if (subs.size === 0) {
+      subscribers.delete(executionId);
+    }
   }
 }
 
@@ -147,6 +150,7 @@ export async function executionsRoutes(app) {
   app.get("/:id/stream", { preHandler: requireAuth }, async (req, reply) => {
     const { id } = req.params;
 
+    // Allow CORS for your frontend origins
     const origin = req.headers.origin;
     if (
       origin === "https://nexus-core-chi.vercel.app" ||
@@ -156,22 +160,30 @@ export async function executionsRoutes(app) {
       reply.raw.setHeader("Access-Control-Allow-Credentials", "true");
     }
 
+    // SSE headers
     reply.raw.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
     });
 
+    // Callback to push events
     const cb = (event) => {
       reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
     };
+
     if (!subscribers.has(id)) subscribers.set(id, new Set());
     subscribers.get(id).add(cb);
 
+    // Initial handshake event
     cb({ event: "connected", executionId: id });
 
+    // Handle disconnect
     req.raw.on("close", () => {
       subscribers.get(id)?.delete(cb);
+      if (subscribers.get(id)?.size === 0) {
+        subscribers.delete(id);
+      }
       reply.raw.end();
     });
   });
@@ -239,7 +251,7 @@ export async function executionsRoutes(app) {
     }
   });
 
-  /* ===============================
+    /* ===============================
      ADMIN DELETE EXECUTION
   =============================== */
   app.delete("/admin/:id", { preHandler: requireAdmin }, async (req, reply) => {
