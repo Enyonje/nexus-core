@@ -111,7 +111,10 @@ export async function executionsRoutes(app) {
         return reply.code(404).send({ error: "Execution not found or not owned by user" });
       }
 
-      runExecution(id).catch((err) => {
+      // ✅ Pass request body into runner
+      const payloadOverride = req.body || {};
+
+      runExecution(id, payloadOverride).catch((err) => {
         req.log.error(err, "Runner failed");
         publishEvent(id, { event: "execution_failed", error: err.message });
       });

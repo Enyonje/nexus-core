@@ -6,7 +6,7 @@ import { runSentinel } from "../agents/sentinel.js"; // governance agent
 /**
  * Run an execution with real-time step publishing and Sentinel validation
  */
-export async function runExecution(executionId) {
+export async function runExecution(executionId, payloadOverride = null) {
   const { rows } = await db.query(
     `SELECT e.id, e.goal_id, e.user_id, e.org_id,
             g.goal_type, g.goal_payload
@@ -18,6 +18,11 @@ export async function runExecution(executionId) {
 
   if (!rows.length) throw new Error("Execution not found");
   const execution = rows[0];
+
+  // ✅ Merge override payload if provided
+  const payload = payloadOverride
+    ? { ...execution.goal_payload, ...payloadOverride }
+    : execution.goal_payload;
 
   try {
     // Mark execution as running
@@ -35,7 +40,7 @@ export async function runExecution(executionId) {
     // Execute goal logic step-by-step
     const result = await executeGoalLogic(
       execution.goal_type,
-      execution.goal_payload,
+      payload,
       executionId,
       async (stepInfo) => {
         const { rows: stepRows } = await db.query(

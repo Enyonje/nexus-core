@@ -13,6 +13,11 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
   const { addToast } = useToast();
   const { role } = useAuth();
 
+  // New: configurable payload fields
+  const [analysisText, setAnalysisText] = useState("");
+  const [threshold, setThreshold] = useState(0.75);
+  const [mode, setMode] = useState("fast");
+
   useEffect(() => {
     async function loadExecution() {
       try {
@@ -27,7 +32,6 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
     }
     loadExecution();
 
-    // ✅ Corrected EventSource URL to include /api
     const evtSource = new EventSource(
       `${import.meta.env.VITE_API_URL}/api/executions/${id}/stream`,
       { withCredentials: true }
@@ -42,7 +46,6 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
             addToast(`Execution ${id} started 🚀`, "info");
             setExecution((prev) => ({ ...prev, status: "running" }));
             break;
-
           case "execution_progress":
             setSteps((prev) => [
               ...prev,
@@ -57,7 +60,6 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
               },
             ]);
             break;
-
           case "sentinel_blocked":
             addToast(`Sentinel blocked step ${data.stepId}`, "error");
             setSteps((prev) => [
@@ -72,13 +74,11 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
               },
             ]);
             break;
-
           case "execution_completed":
             addToast(`Execution ${id} completed 🎉`, "success");
             setExecution((prev) => ({ ...prev, status: "completed" }));
             evtSource.close();
             break;
-
           case "execution_failed":
             addToast(`Execution ${id} failed ❌`, "error");
             setExecution((prev) => ({ ...prev, status: "failed" }));
@@ -102,7 +102,18 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
 
   async function runExecution() {
     try {
-      await apiFetch(`/executions/${id}/run`, { method: "POST" });
+      await apiFetch(`/executions/${id}/run`, {
+        method: "POST",
+        body: JSON.stringify({
+          data: {
+            text: analysisText || "Default analysis input",
+            parameters: {
+              threshold: parseFloat(threshold),
+              mode
+            }
+          }
+        })
+      });
       addToast(`Execution ${id} triggered`, "info");
     } catch {
       addToast("Failed to start execution", "error");
@@ -128,7 +139,6 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
     }
   }
 
-  // Group steps by status
   const groupedSteps = useMemo(() => {
     const groups = { running: [], completed: [], failed: [], blocked: [] };
     steps.forEach((s) => {
@@ -137,7 +147,6 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
     return groups;
   }, [steps]);
 
-  // Progress calculation
   const totalSteps = steps.length;
   const completedCount = groupedSteps.completed.length;
   const failedCount = groupedSteps.failed.length;
@@ -145,7 +154,6 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
   const progressPercent =
     totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0;
 
-  // ETA calculation
   const avgDurationMs = useMemo(() => {
     const durations = steps
       .filter((s) => s.started_at && s.finished_at)
@@ -171,6 +179,31 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Execution {execution.id}</h1>
         <div className="space-x-2">
+          {/* Configurable payload form */}
+          <input
+            type="text"
+            value={analysisText}
+            onChange={(e) => setAnalysisText(e.target.value)}
+            placeholder="Enter analysis text..."
+            className="border rounded px-2 py-1 mr-2"
+          />
+          <input
+            type="number"
+            step="0.01"
+            value={threshold}
+            onChange={(e) => setThreshold(e.target.value)}
+            placeholder="Threshold"
+            className="border rounded px-2 py-1 mr-2 w-24"
+          />
+          <select
+            value={mode}
+            onChange={(e) => setMode(e.target.value)}
+            className="border rounded px-2 py-1 mr-2"
+          >
+            <option value="fast">Fast</option>
+            <option value="deep">Deep</option>
+          </select>
+
           <button
             onClick={runExecution}
             className="px-4 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700"
@@ -226,7 +259,7 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
           <h2 className="text-lg font-semibold capitalize mt-4">
             {status} steps
           </h2>
-          {groupedSteps[status].length === 0 ? (
+                    {groupedSteps[status].length === 0 ? (
             <p className="text-gray-500 text-sm">No {status} steps</p>
           ) : (
             groupedSteps[status].map((step) => (
@@ -273,6 +306,4 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
       ))}
     </div>
   );
-};
-
-export default ExecutionDetail;
+}
