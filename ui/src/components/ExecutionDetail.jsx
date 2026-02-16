@@ -112,17 +112,16 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
       await apiFetch(`/api/executions/${id}/run`, {
         method: "POST",
         body: JSON.stringify({
-          data: {
-            text: analysisText || "Default analysis input",
-            parameters: {
-              threshold: parseFloat(threshold),
-              mode,
-            },
+          text: analysisText || "Default analysis input",
+          parameters: {
+            threshold: parseFloat(threshold),
+            mode,
           },
         }),
       });
       addToast(`Execution ${id} triggered`, "info");
     } catch {
+      console.error("Run execution error:", err);
       addToast("Failed to start execution", "error");
     }
   }
