@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { db } from "../db/db.js";
-import { publishEvent } from "../routes/executions.js"; // use your in‑memory SSE bus
+import { publishEvent } from "../routes/executions.js"; // in‑memory SSE bus
 
 /* =========================
    SAFE OPENAI CLIENT
@@ -14,28 +14,52 @@ function getOpenAIClient() {
    ENTRY POINT
 ========================= */
 export async function executeGoalLogic(goalType, payload, executionId, stepCallback) {
-  switch (goalType) {
-    case "test":
-      return runTestGoal(payload, executionId, stepCallback);
-    case "http_request":
-      return runHttpGoal(payload, executionId, stepCallback);
-    case "analysis":
-      return runAnalysisGoal(payload, executionId, stepCallback);
-    case "automation":
-      return runAutomationGoal(payload, executionId, stepCallback);
+  try {
+    if (goalType === "analysis") {
+      const normalized = {
+        text: payload?.text || (payload?.data ? String(payload.data) : null),
+        parameters: payload?.parameters || { threshold: 0.75, mode: "fast" },
+      };
+      console.log(`[Execution ${executionId}] Starting analysis goal with payload:`, normalized);
+      const result = await runAnalysisGoal(normalized, executionId, stepCallback);
+      console.log(`[Execution ${executionId}] Goal "analysis" completed successfully`, { result });
+      return result;
+    }
 
-    /* =========================
-       AI GOALS
-    ========================= */
-    case "ai_analysis":
-      return runAiAnalysis(payload, executionId, stepCallback);
-    case "ai_summary":
-      return runAiSummary(payload, executionId, stepCallback);
-    case "ai_plan":
-      return runAiPlan(payload, executionId, stepCallback);
+    console.log(`[Execution ${executionId}] Starting goal type: ${goalType}`, payload);
 
-    default:
-      throw new Error(`Unsupported goal type: ${goalType}`);
+    let result;
+    switch (goalType) {
+      case "test":
+        result = await runTestGoal(payload, executionId, stepCallback);
+        break;
+      case "http_request":
+        result = await runHttpGoal(payload, executionId, stepCallback);
+        break;
+      case "automation":
+        result = await runAutomationGoal(payload, executionId, stepCallback);
+        break;
+      case "ai_analysis":
+        result = await runAiAnalysis(payload, executionId, stepCallback);
+        break;
+      case "ai_summary":
+        result = await runAiSummary(payload, executionId, stepCallback);
+        break;
+      case "ai_plan":
+        result = await runAiPlan(payload, executionId, stepCallback);
+        break;
+      default:
+        throw new Error(`Unsupported goal type: ${goalType}`);
+    }
+
+    console.log(`[Execution ${executionId}] Goal "${goalType}" completed successfully`, { result });
+    return result;
+  } catch (err) {
+    console.error(`[Execution ${executionId}] Goal "${goalType}" failed: ${err.message}`, {
+      payload,
+      stack: err.stack,
+    });
+    throw err;
   }
 }
 
@@ -59,10 +83,19 @@ async function runHttpGoal(payload, executionId, cb) {
 }
 
 async function runAnalysisGoal(payload, executionId, cb) {
-  if (!payload?.data) throw new Error("Missing analysis data");
+  const text = payload?.text || (payload?.data ? String(payload.data) : null);
+  const parameters = payload?.parameters || { threshold: 0.75, mode: "fast" };
+
+  if (!text) throw new Error("Missing analysis data: text is required");
+
   await recordStep(executionId, "analysis", "completed");
-  cb?.({ name: "analysis", status: "completed", result: { size: JSON.stringify(payload.data).length } });
-  return { result: "Analysis complete", size: JSON.stringify(payload.data).length };
+  cb?.({
+    name: "analysis",
+    status: "completed",
+    result: { length: text.length, parameters },
+  });
+
+  return { result: "Analysis complete", length: text.length, parameters };
 }
 
 async function runAutomationGoal(payload, executionId, cb) {
@@ -143,8 +176,8 @@ async function streamWithEvents(stream, executionId, stepName, type, cb) {
   let lastSent = 0;
 
   try {
-    // Mark step as started
     await recordStep(executionId, stepName, "running");
+    console.log(`[Execution ${executionId}] Step "${stepName}" started`);
 
     for await (const chunk of stream) {
       const delta = chunk.choices?.[0]?.delta?.content;
@@ -152,6 +185,9 @@ async function streamWithEvents(stream, executionId, stepName, type, cb) {
       text += delta;
 
       if (Date.now() - lastSent > 500) {
+        console.log(`[Execution ${executionId}] Step "${stepName}" streaming progress`, {
+          partialLength: text.length,
+        });
         publishEvent(executionId, {
           event: "execution_step_progress",
           step: stepName,
@@ -163,13 +199,16 @@ async function streamWithEvents(stream, executionId, stepName, type, cb) {
       }
     }
 
-    // Final flush: mark completed in DB
     await db.query(
       `UPDATE execution_steps
        SET status = 'completed', finished_at = NOW(), output = $2
        WHERE execution_id = $1 AND name = $3`,
       [executionId, JSON.stringify({ model: "openai:gpt-4o-mini", type, text }), stepName]
     );
+
+    console.log(`[Execution ${executionId}] Step "${stepName}" completed successfully`, {
+      length: text.length,
+    });
 
     publishEvent(executionId, {
       event: "execution_step_completed",
@@ -180,13 +219,16 @@ async function streamWithEvents(stream, executionId, stepName, type, cb) {
 
     return { model: "openai:gpt-4o-mini", type, text };
   } catch (err) {
-    // Mark failed in DB
     await db.query(
       `UPDATE execution_steps
        SET status = 'failed', finished_at = NOW(), error = $2
        WHERE execution_id = $1 AND name = $3`,
       [executionId, err.message, stepName]
     );
+
+    console.error(`[Execution ${executionId}] Step "${stepName}" failed: ${err.message}`, {
+      stack: err.stack,
+    });
 
     publishEvent(executionId, {
       event: "execution_step_failed",
@@ -209,8 +251,13 @@ async function safePublish(executionId, stepId, partial, status) {
       status,
       result: partial,
     });
+    console.log(`[Execution ${executionId}] Event published`, {
+      step: stepId,
+      status,
+      preview: String(partial).slice(0, 100),
+    });
   } catch (err) {
-    console.warn("Event publish skipped:", err.message);
+    console.warn(`[Execution ${executionId}] Event publish skipped: ${err.message}`);
   }
 }
 
@@ -218,27 +265,54 @@ async function safePublish(executionId, stepId, partial, status) {
    DB STEP RECORDING
 ========================= */
 async function recordStep(executionId, name, status, output = null, error = null) {
-  // Fetch user/org from parent execution
-  const { rows } = await db.query(
-    `SELECT user_id, org_id FROM executions WHERE id = $1`,
-    [executionId]
-  );
-  if (!rows.length) return;
-  const { user_id, org_id } = rows[0];
+  try {
+    const { rows } = await db.query(
+      `SELECT user_id, org_id FROM executions WHERE id = $1`,
+      [executionId]
+    );
+    if (!rows.length) {
+      console.warn(`[Execution ${executionId}] recordStep skipped: no parent execution found`);
+      return;
+    }
+    const { user_id, org_id } = rows[0];
 
-  await db.query(
-    `INSERT INTO execution_steps (
-       execution_id, user_id, org_id, name, status, started_at, finished_at, output, error
-     )
-     VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), $6, $7)`,
-    [executionId, user_id, org_id, name, status, output ? JSON.stringify(output) : null, error]
-  );
+    await db.query(
+      `INSERT INTO execution_steps (
+         execution_id, user_id, org_id, name, status, started_at, finished_at, output, error
+       )
+       VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), $6, $7)`,
+      [
+        executionId,
+        user_id,
+        org_id,
+        name,
+        status,
+        output ? JSON.stringify(output) : null,
+        error,
+      ]
+    );
+
+    console.log(`[Execution ${executionId}] Step record inserted`, {
+      name,
+      status,
+      hasOutput: !!output,
+      hasError: !!error,
+    });
+  } catch (err) {
+    console.error(`[Execution ${executionId}] Failed to record step "${name}": ${err.message}`, {
+      status,
+      output,
+      error,
+      stack: err.stack,
+    });
+  }
 }
 
 /* =========================
    FALLBACK MODE
 ========================= */
 function fallback(type, input) {
+  console.warn(`Fallback triggered for type "${type}"`);
   return {
     model: "fallback",
     type,
