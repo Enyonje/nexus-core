@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
-import { apiFetch } from "../lib/api";
+import { apiFetch, safeApiFetch } from "../lib/api"; // ✅ import both
 import { useToast } from "./ToastContext.jsx";
 import LoadingSpinner from "./LoadingSpinner.jsx";
 import { useAuth } from "../context/AuthProvider.jsx";
@@ -107,50 +107,47 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
     };
   }, [id]);
 
+  // ✅ Fixed functions with safeApiFetch
   async function runExecution() {
-  try {
-    await safeApiFetch(
-      `/api/executions/${id}/run`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          text: analysisText || "Default analysis input",
-          parameters: {
-            threshold: parseFloat(threshold),
-            mode,
-          },
-        }),
-      },
-      addToast // ✅ pass toast handler into safeApiFetch
-    );
-    addToast(`Execution ${id} triggered`, "info");
-  } catch (err) {
-    // error already logged and toast shown by safeApiFetch
-    console.error("Run execution error:", err);
+    try {
+      await safeApiFetch(
+        `/api/executions/${id}/run`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            text: analysisText || "Default analysis input",
+            parameters: {
+              threshold: parseFloat(threshold),
+              mode,
+            },
+          }),
+        },
+        addToast
+      );
+      addToast(`Execution ${id} triggered`, "info");
+    } catch (err) {
+      console.error("Run execution error:", err);
+    }
   }
-}
 
-async function rerunExecution() {
-  try {
-    await safeApiFetch(`/api/executions/${id}/rerun`, { method: "POST" }, addToast);
-    addToast(`Execution ${id} rerun started`, "info");
-  } catch (err) {
-    console.error("Rerun execution error:", err);
-    addToast("Failed to rerun execution", "error");
+  async function rerunExecution() {
+    try {
+      await safeApiFetch(`/api/executions/${id}/rerun`, { method: "POST" }, addToast);
+      addToast(`Execution ${id} rerun started`, "info");
+    } catch (err) {
+      console.error("Rerun execution error:", err);
+    }
   }
-}
 
-async function deleteExecution() {
-  if (!window.confirm("Delete this execution?")) return;
-  try {
-    await apiFetch(`/api/executions/${id}`, { method: "DELETE" });
-    addToast(`Execution ${id} deleted`, "success");
-  } catch (err) {
-    console.error("Delete execution error:", err);
-    addToast("Failed to delete execution", "error");
+  async function deleteExecution() {
+    if (!window.confirm("Delete this execution?")) return;
+    try {
+      await safeApiFetch(`/api/executions/${id}`, { method: "DELETE" }, addToast);
+      addToast(`Execution ${id} deleted`, "success");
+    } catch (err) {
+      console.error("Delete execution error:", err);
+    }
   }
-}
-
 
   const groupedSteps = useMemo(() => {
     const groups = { running: [], completed: [], failed: [], blocked: [] };
@@ -260,14 +257,14 @@ async function deleteExecution() {
           />
         </div>
       )}
-      <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-600">
         Progress: {completedCount}/{totalSteps} steps completed
         {failedCount > 0 && ` | ${failedCount} failed`}
         {blockedCount > 0 && ` | ${blockedCount} blocked`}
         {etaMinutes !== null && ` | ETA: ~${etaMinutes} min`}
       </p>
 
-            {["running", "completed", "failed", "blocked"].map((status) => (
+      {["running", "completed", "failed", "blocked"].map((status) => (
         <div key={status}>
           <h2 className="text-lg font-semibold capitalize mt-4">
             {status} steps
@@ -283,9 +280,7 @@ async function deleteExecution() {
                 >
                   <div className="flex justify-between">
                     <span className="font-medium">{s.name}</span>
-                    <span className="text-xs text-gray-500">
-                      {s.status}
-                    </span>
+                    <span className="text-xs text-gray-500">{s.status}</span>
                   </div>
                   {s.result && (
                     <pre className="text-xs bg-gray-100 dark:bg-gray-900 p-2 rounded mt-1 overflow-x-auto">
