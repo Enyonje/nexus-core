@@ -194,33 +194,38 @@ export async function executionsRoutes(app) {
   /* ===============================
      GET EXECUTION LOGS
   =============================== */
-  app.get("/:id/logs", { preHandler: requireAuth }, async (req, reply) => {
-    try {
-      const userId = req.identity.sub;
-      const { id } = req.params;
+app.get("/api/executions/:id/logs", { preHandler: requireAuth }, async (req, reply) => {
+  try {
+    const userId = req.identity.sub;
+    const { id } = req.params;
 
-      const execRes = await app.pg.query(
-        `SELECT id FROM executions WHERE id = $1 AND user_id = $2`,
-        [id, userId]
-      );
-      if (!execRes.rows.length) {
-        return reply.code(404).send({ error: "Execution not found or not owned by user" });
-      }
-
-      const { rows } = await app.pg.query(
-        `SELECT id, name, status, started_at, finished_at, output, error
-         FROM execution_steps
-         WHERE execution_id = $1
-         ORDER BY started_at ASC`,
-        [id]
-      );
-
-      return { logs: rows };
-    } catch (err) {
-      req.log.error(err, "Fetch execution logs failed");
-      return reply.code(500).send({ error: "Failed to fetch execution logs", detail: err.message });
+    // Verify execution belongs to user
+    const execRes = await app.pg.query(
+      `SELECT id FROM executions WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+    if (!execRes.rows.length) {
+      return reply.code(404).send({ error: "Execution not found or not owned by user" });
     }
-  });
+
+    // Fetch logs from execution_steps
+    const { rows } = await app.pg.query(
+      `SELECT id, name, status, started_at, finished_at, output, error
+       FROM execution_steps
+       WHERE execution_id = $1
+       ORDER BY started_at ASC`,
+      [id]
+    );
+
+    return { logs: rows };
+  } catch (err) {
+    req.log.error(err, "Fetch execution logs failed");
+    return reply.code(500).send({
+      error: "Failed to fetch execution logs",
+      detail: err.message,
+    });
+  }
+});
 
   /* ===============================
      ADMIN OVERRIDE DASHBOARD
