@@ -1,7 +1,9 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
+/**
+ * Core API fetch function
+ */
 export async function apiFetch(path, options = {}) {
-  // ✅ Use consistent key
   const token = localStorage.getItem("authToken");
 
   const headers = {
@@ -44,4 +46,19 @@ export async function apiFetch(path, options = {}) {
   if (res.status === 204) return null;
 
   return res.json();
+}
+
+/**
+ * Safe wrapper around apiFetch with centralized error handling
+ */
+export async function safeApiFetch(path, options = {}, addToast) {
+  try {
+    return await apiFetch(path, options);
+  } catch (err) {
+    console.error(`API error on ${path}:`, err);
+    if (addToast) {
+      addToast(err.message || "Something went wrong with the request", "error");
+    }
+    throw err; // rethrow so caller can still handle if needed
+  }
 }

@@ -109,26 +109,30 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
 
   async function runExecution() {
   try {
-    await apiFetch(`/api/executions/${id}/run`, {
-      method: "POST",
-      body: JSON.stringify({
-        text: analysisText || "Default analysis input",
-        parameters: {
-          threshold: parseFloat(threshold),
-          mode,
-        },
-      }),
-    });
+    await safeApiFetch(
+      `/api/executions/${id}/run`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          text: analysisText || "Default analysis input",
+          parameters: {
+            threshold: parseFloat(threshold),
+            mode,
+          },
+        }),
+      },
+      addToast // ✅ pass toast handler into safeApiFetch
+    );
     addToast(`Execution ${id} triggered`, "info");
   } catch (err) {
+    // error already logged and toast shown by safeApiFetch
     console.error("Run execution error:", err);
-    addToast("Failed to start execution", "error");
   }
 }
 
 async function rerunExecution() {
   try {
-    await apiFetch(`/api/executions/${id}/rerun`, { method: "POST" });
+    await safeApiFetch(`/api/executions/${id}/rerun`, { method: "POST" }, addToast);
     addToast(`Execution ${id} rerun started`, "info");
   } catch (err) {
     console.error("Rerun execution error:", err);
