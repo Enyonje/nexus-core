@@ -46,7 +46,7 @@ await app.register(fastifyJwt, { secret: process.env.JWT_SECRET || "super-secret
 app.register(authRoutes, { prefix: "/api/auth" });
 app.register(goalsRoutes, { prefix: "/api/goals" });
 app.register(adminRoutes, { prefix: "/api/admin" });
-app.register(executionsRoutes, { prefix: "/api/executions" });
+app.register(executionsRoutes, { prefix: "/api/executions" }); // ✅ logs route now matches frontend
 app.register(auditRoutes, { prefix: "/api/audit" });
 app.register(billingRoutes, { prefix: "/api/billing" });
 app.register(paymentsRoutes, { prefix: "/api/payments" });
