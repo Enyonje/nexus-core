@@ -108,42 +108,45 @@ export default function ExecutionDetail({ setSelectedExecutionId }) {
   }, [id]);
 
   async function runExecution() {
-    try {
-      await apiFetch(`/api/executions/${id}/run`, {
-        method: "POST",
-        body: JSON.stringify({
-          text: analysisText || "Default analysis input",
-          parameters: {
-            threshold: parseFloat(threshold),
-            mode,
-          },
-        }),
-      });
-      addToast(`Execution ${id} triggered`, "info");
-    } catch {
-      console.error("Run execution error:", err);
-      addToast("Failed to start execution", "error");
-    }
+  try {
+    await apiFetch(`/api/executions/${id}/run`, {
+      method: "POST",
+      body: JSON.stringify({
+        text: analysisText || "Default analysis input",
+        parameters: {
+          threshold: parseFloat(threshold),
+          mode,
+        },
+      }),
+    });
+    addToast(`Execution ${id} triggered`, "info");
+  } catch (err) {
+    console.error("Run execution error:", err);
+    addToast("Failed to start execution", "error");
   }
+}
 
-  async function rerunExecution() {
-    try {
-      await apiFetch(`/api/executions/${id}/rerun`, { method: "POST" });
-      addToast(`Execution ${id} rerun started`, "info");
-    } catch {
-      addToast("Failed to rerun execution", "error");
-    }
+async function rerunExecution() {
+  try {
+    await apiFetch(`/api/executions/${id}/rerun`, { method: "POST" });
+    addToast(`Execution ${id} rerun started`, "info");
+  } catch (err) {
+    console.error("Rerun execution error:", err);
+    addToast("Failed to rerun execution", "error");
   }
+}
 
-  async function deleteExecution() {
-    if (!window.confirm("Delete this execution?")) return;
-    try {
-      await apiFetch(`/api/executions/${id}`, { method: "DELETE" });
-      addToast(`Execution ${id} deleted`, "success");
-    } catch {
-      addToast("Failed to delete execution", "error");
-    }
+async function deleteExecution() {
+  if (!window.confirm("Delete this execution?")) return;
+  try {
+    await apiFetch(`/api/executions/${id}`, { method: "DELETE" });
+    addToast(`Execution ${id} deleted`, "success");
+  } catch (err) {
+    console.error("Delete execution error:", err);
+    addToast("Failed to delete execution", "error");
   }
+}
+
 
   const groupedSteps = useMemo(() => {
     const groups = { running: [], completed: [], failed: [], blocked: [] };
