@@ -11,9 +11,8 @@ function validatePayload(goalType, payload) {
     throw new Error("Payload must be an object");
   }
 
-  // Common requirement
-  if (!payload.text) {
-    throw new Error("Missing analysis data: payload.text is required");
+  if (!payload.text || payload.text.trim().length === 0) {
+    throw new Error(`Missing or empty payload.text for goal: ${goalType}`);
   }
 
   // Goal-specific requirements
@@ -23,14 +22,13 @@ function validatePayload(goalType, payload) {
         throw new Error("Missing filePath in payload for processFile goal");
       }
       break;
-    case "fetchData":
-      // No extra requirements, but could enforce API key or params here
-      break;
-    case "ai_generate":
-      // Could enforce model parameters if needed
+    case "analysis":
+      if (payload.text.length < 5) {
+        throw new Error("Analysis text too short, must be descriptive");
+      }
       break;
     default:
-      // No strict requirements for generic goals
+      // Other goals can be more flexible
       break;
   }
 
@@ -81,6 +79,16 @@ function validateStepOutput(stepInfo, output) {
           valid: false,
           normalized: { text: "AI-generated output (default)" },
           reason: "ai_generate step requires 'text' field",
+        };
+      }
+      break;
+
+    case "analysis":
+      if (!output.text) {
+        return {
+          valid: false,
+          normalized: { text: "Default analysis output" },
+          reason: "analysis step requires 'text' field",
         };
       }
       break;
@@ -179,6 +187,12 @@ export async function runExecution(executionId, payloadOverride = null) {
             completedSteps,
           });
 
+          // Debug log before Sentinel
+          console.log("Sentinel check:", {
+            step: stepInfo.name,
+            output: normalized,
+          });
+
           // Sentinel validation
           const verdict = await runSentinel(executionId, stepInfo, normalized);
           if (!verdict?.allowed) {
@@ -244,6 +258,8 @@ async function runStep(stepInfo) {
       return { processed: true, file: stepInfo.filePath || "unknown" };
     case "ai_generate":
       return { text: "AI-generated output" };
+    case "analysis":
+      return { text: stepInfo.payload?.text || "Default analysis output" };
     default:
       return { echo: stepInfo.payload || "no payload provided" };
   }
