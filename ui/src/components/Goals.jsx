@@ -13,14 +13,13 @@ export default function Goals() {
   const { addToast } = useToast();
   const [progress, setProgress] = useState({});
 
-  /* LOAD GOALS */
   useEffect(() => {
     async function load() {
       try {
         const res = await apiFetch("/goals");
         setGoals(Array.isArray(res) ? res : res.goals || []);
       } catch {
-        addToast("Failed to load goals", "error");
+        addToast("Critical: Failed to load objectives", "error");
       } finally {
         setLoading(false);
       }
@@ -28,7 +27,6 @@ export default function Goals() {
     load();
   }, []);
 
-  /* CREATE GOAL */
   async function createGoal(e) {
     e.preventDefault();
     setCreating(true);
@@ -40,27 +38,25 @@ export default function Goals() {
       });
       setGoals((g) => [goal, ...g]);
       resetPayload(goalType);
-      addToast("Goal created", "success");
+      addToast("Objective Uploaded", "success");
     } catch (err) {
-      setErrorMessage(err?.error || "Failed to create goal");
-      addToast("Failed to create goal", "error");
+      setErrorMessage(err?.error || "Submission rejected");
+      addToast("Protocol Error", "error");
     } finally {
       setCreating(false);
     }
   }
 
-  /* DELETE GOAL */
   async function deleteGoal(goalId) {
     try {
       await apiFetch(`/goals/${goalId}`, { method: "DELETE" });
       setGoals((g) => g.filter((goal) => goal.id !== goalId));
-      addToast("Goal deleted", "success");
+      addToast("Objective Terminated", "success");
     } catch (err) {
-      addToast(err.message || "Failed to delete goal", "error");
+      addToast("Deletion Interrupted", "error");
     }
   }
 
-  /* RUN GOAL */
   async function runGoal(goalId) {
     setRunning(goalId);
     try {
@@ -69,15 +65,14 @@ export default function Goals() {
         body: JSON.stringify({ goalId }),
       });
       await apiFetch(`/executions/${execution.id}/run`, { method: "POST" });
-      addToast("Execution started", "success");
+      addToast("Swarm Dispatched", "success");
     } catch (err) {
-      addToast(err.message || "Execution failed", "error");
+      addToast("Dispatch Failed", "error");
     } finally {
       setRunning(null);
     }
   }
 
-  /* Reset payload when switching goal type */
   function resetPayload(type) {
     if (type === "analysis") setPayload({ title: "", description: "", website: "" });
     else if (type === "test") setPayload({ message: "" });
@@ -89,246 +84,125 @@ export default function Goals() {
     else setPayload({});
   }
 
-  /* Dynamic payload fields */
+  const inputClass = "w-full bg-slate-950/50 border-none text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all placeholder:text-slate-700";
+
   function renderPayloadFields() {
     switch (goalType) {
       case "analysis":
         return (
-          <>
-            <input
-              value={payload.title}
-              onChange={(e) => setPayload({ ...payload, title: e.target.value })}
-              placeholder="Goal title"
-              className="w-full p-3 border rounded-lg"
-            />
-            <textarea
-              value={payload.description}
-              onChange={(e) => setPayload({ ...payload, description: e.target.value })}
-              placeholder="Description"
-              className="w-full p-3 border rounded-lg"
-            />
-            <input
-              value={payload.website}
-              onChange={(e) => setPayload({ ...payload, website: e.target.value })}
-              placeholder="Organization website"
-              className="w-full p-3 border rounded-lg"
-            />
-          </>
-        );
-      case "test":
-        return (
-          <input
-            value={payload.message}
-            onChange={(e) => setPayload({ message: e.target.value })}
-            placeholder="Message"
-            className="w-full p-3 border rounded-lg"
-          />
+          <div className="space-y-4">
+            <input value={payload.title} onChange={(e) => setPayload({ ...payload, title: e.target.value })} placeholder="Mission Title" className={inputClass} />
+            <textarea value={payload.description} onChange={(e) => setPayload({ ...payload, description: e.target.value })} placeholder="Operational Description" className={inputClass} rows="3" />
+            <input value={payload.website} onChange={(e) => setPayload({ ...payload, website: e.target.value })} placeholder="Target URL" className={inputClass} />
+          </div>
         );
       case "automation":
         return (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {payload.steps.map((step, idx) => (
               <div key={idx} className="flex gap-2">
-                <input
-                  value={step}
-                  onChange={(e) => {
-                    const newSteps = [...payload.steps];
-                    newSteps[idx] = e.target.value;
-                    setPayload({ steps: newSteps });
-                  }}
-                  placeholder={`Step ${idx + 1}`}
-                  className="flex-1 p-2 border rounded-lg"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newSteps = payload.steps.filter((_, i) => i !== idx);
-                    setPayload({ steps: newSteps });
-                  }}
-                  className="px-2 text-red-600"
-                >
-                  ✖
-                </button>
+                <input value={step} onChange={(e) => {
+                  const newSteps = [...payload.steps];
+                  newSteps[idx] = e.target.value;
+                  setPayload({ steps: newSteps });
+                }} placeholder={`Step ${idx + 1}`} className={inputClass} />
+                <button type="button" onClick={() => setPayload({ steps: payload.steps.filter((_, i) => i !== idx) })} className="px-3 text-red-500 hover:bg-red-500/10 rounded-xl transition">✖</button>
               </div>
             ))}
-            <button
-              type="button"
-              onClick={() => setPayload({ steps: [...payload.steps, ""] })}
-              className="text-sm text-blue-600 hover:underline"
-            >
-              + Add Step
-            </button>
+            <button type="button" onClick={() => setPayload({ steps: [...payload.steps, ""] })} className="text-xs font-bold text-blue-400 uppercase tracking-widest">+ Add Sub-Process</button>
           </div>
         );
-      case "http_request":
-        return (
-          <>
-            <input
-              value={payload.url}
-              onChange={(e) => setPayload({ ...payload, url: e.target.value })}
-              placeholder="Request URL"
-              className="w-full p-3 border rounded-lg"
-            />
-            <select
-              value={payload.method}
-              onChange={(e) => setPayload({ ...payload, method: e.target.value })}
-              className="w-full p-3 border rounded-lg"
-            >
-              <option>GET</option>
-              <option>POST</option>
-              <option>PUT</option>
-              <option>DELETE</option>
-            </select>
-            <textarea
-              value={payload.body}
-              onChange={(e) => setPayload({ ...payload, body: e.target.value })}
-              placeholder="Request body"
-              className="w-full p-3 border rounded-lg"
-            />
-          </>
-        );
-      case "ai_analysis":
-        return (
-          <textarea
-            value={payload.prompt}
-            onChange={(e) => setPayload({ prompt: e.target.value })}
-            placeholder="Prompt"
-            className="w-full p-3 border rounded-lg"
-          />
-        );
-      case "ai_summary":
-        return (
-          <textarea
-            value={payload.text}
-            onChange={(e) => setPayload({ text: e.target.value })}
-            placeholder="Text to summarize"
-            className="w-full p-3 border rounded-lg"
-          />
-        );
-      case "ai_plan":
-        return (
-          <input
-            value={payload.objective}
-            onChange={(e) => setPayload({ objective: e.target.value })}
-            placeholder="Objective"
-            className="w-full p-3 border rounded-lg"
-          />
-        );
       default:
-        return null;
+        return <textarea value={payload.prompt || payload.text || payload.objective || ""} onChange={(e) => setPayload({ ...payload, [Object.keys(payload)[0]]: e.target.value })} placeholder="Configure Parameters..." className={inputClass} rows="4" />;
     }
   }
 
-  if (loading) return <div className="p-6 text-center">Loading goals…</div>;
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-[#020617]">
+      <div className="animate-pulse text-blue-500 font-mono tracking-widest uppercase">Initializing Core...</div>
+    </div>
+  );
 
   return (
-    <div className="flex justify-center px-6 py-10">
-      <div className="w-full max-w-4xl space-y-8">
-        <h1 className="text-3xl font-bold text-center">Goals</h1>
+    <div className="min-h-screen bg-[#020617] text-slate-200 py-12 px-6 relative overflow-hidden">
+      {/* Background Decor */}
+      <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-600/5 blur-[120px] rounded-full pointer-events-none" />
+      
+      <div className="max-w-6xl mx-auto relative z-10">
+        <header className="mb-12 text-center">
+          <h1 className="text-4xl font-black bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">MISSION CONTROL</h1>
+          <p className="text-slate-500 text-xs font-bold uppercase tracking-[0.4em] mt-2">Active Objective Management</p>
+        </header>
 
-        {/* Create Goal Form */}
-        <form
-          onSubmit={createGoal}
-          className="space-y-4 bg-gray-50 p-6 rounded-xl shadow"
-        >
-          <label>
-            Goal Type:
-            <select
-              value={goalType}
-              onChange={(e) => {
-                setGoalType(e.target.value);
-                resetPayload(e.target.value);
-              }}
-              className="ml-2 p-2 border rounded-lg"
-            >
-              <option value="analysis">Analysis</option>
-              <option value="test">Test</option>
-              <option value="automation">Automation</option>
-              <option value="http_request">HTTP Request</option>
-              <option value="ai_analysis">AI Analysis</option>
-              <option value="ai_summary">AI Summary</option>
-              <option value="ai_plan">AI Plan</option>
-            </select>
-          </label>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+          {/* Sidebar: Creation Form */}
+          <div className="lg:col-span-4">
+            <form onSubmit={createGoal} className="bg-slate-900/40 backdrop-blur-xl p-8 rounded-3xl shadow-2xl sticky top-8 space-y-6">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Protocol Type</label>
+                <select 
+                  value={goalType} 
+                  onChange={(e) => { setGoalType(e.target.value); resetPayload(e.target.value); }} 
+                  className="w-full bg-slate-950 text-blue-400 font-bold border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500/40 appearance-none"
+                >
+                  <option value="analysis">Neural Analysis</option>
+                  <option value="automation">Swarm Automation</option>
+                  <option value="http_request">Network Request</option>
+                  <option value="ai_plan">Strategic Planning</option>
+                </select>
+              </div>
 
-          {renderPayloadFields()}
+              {renderPayloadFields()}
 
-          {errorMessage && <div className="text-sm text-red-600">{errorMessage}</div>}
+              {errorMessage && <div className="text-[10px] font-bold text-red-400 uppercase tracking-tighter bg-red-400/10 p-2 rounded-lg text-center">{errorMessage}</div>}
 
-          <button
-            type="submit"
-            disabled={creating}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg shadow hover:bg-blue-700"
-          >
-            {creating ? "Creating…" : "Create Goal"}
-          </button>
-        </form>
+              <button type="submit" disabled={creating} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 py-4 rounded-xl font-black text-white uppercase tracking-widest text-xs hover:from-blue-500 transition-all shadow-[0_0_20px_rgba(37,99,235,0.2)]">
+                {creating ? "Syncing..." : "Deploy Objective"}
+              </button>
+            </form>
+          </div>
 
-                                        {/* Goals Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {goals.map((goal) => {
-            const prog = progress[goal.id];
-            return (
-              <div
-                key={goal.id}
-                className="p-6 bg-white rounded-xl shadow-md space-y-4"
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="font-semibold text-lg">
-                      {goal.goal_payload?.title ||
-                        goal.goal_payload?.message ||
-                        goal.goal_payload?.objective ||
-                        "Untitled"}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {new Date(goal.created_at).toLocaleString()}
-                    </div>
+          {/* Main Area: Objectives Grid */}
+          <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-4 h-fit">
+            {goals.map((goal) => (
+              <div key={goal.id} className="group relative bg-slate-900/20 backdrop-blur-md p-6 rounded-2xl border border-slate-800/50 hover:border-blue-500/30 transition-all duration-300">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-500/10 px-2 py-0.5 rounded-full">
+                      {goal.goal_type}
+                    </span>
+                    <h3 className="font-bold text-white truncate max-w-[150px]">
+                      {goal.goal_payload?.title || goal.goal_payload?.objective || "Standard Operation"}
+                    </h3>
                   </div>
-
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => runGoal(goal.id)}
-                      disabled={running === goal.id}
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      {running === goal.id ? "Running…" : "Run →"}
+                  <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => runGoal(goal.id)} disabled={running === goal.id} className="p-2 bg-blue-600/20 text-blue-400 rounded-lg hover:bg-blue-600 hover:text-white transition">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M4.512 1.512a.5.5 0 01.5.5v15a.5.5 0 01-1 0V2a.5.5 0 01.5-.5zM16.5 10l-10 6V4l10 6z" /></svg>
                     </button>
-                    <button
-                      onClick={() => deleteGoal(goal.id)}
-                      className="text-sm text-red-600 hover:underline"
-                    >
-                      Delete ✖
+                    <button onClick={() => deleteGoal(goal.id)} className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                     </button>
                   </div>
                 </div>
 
-                {/* Progress Indicator */}
-                {prog && (
-                  <div className="mt-2">
-                    <div className="h-2 w-full bg-gray-200 rounded">
-                      <div
-                        className={`h-2 rounded ${
-                          prog.status === "failed"
-                            ? "bg-red-500"
-                            : prog.status === "completed"
-                            ? "bg-green-500"
-                            : "bg-blue-500"
-                        }`}
-                        style={{ width: `${prog.percent || 0}%` }}
-                      ></div>
-                    </div>
-                    <div className="text-xs text-gray-600 mt-1">
-                      {prog.status === "running" &&
-                        `Running: ${prog.completedSteps}/${prog.totalSteps}`}
-                      {prog.status === "completed" && "Completed ✔"}
-                      {prog.status === "failed" && `Failed: ${prog.error || ""}`}
-                    </div>
+                {/* Status & Progress */}
+                <div className="space-y-3 pt-4 border-t border-slate-800/50">
+                  <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
+                    <span>Signal Strength</span>
+                    <span className={progress[goal.id]?.status === 'failed' ? 'text-red-400' : 'text-blue-400'}>
+                      {progress[goal.id]?.status || "Standby"}
+                    </span>
                   </div>
-                )}
+                  <div className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all duration-1000 shadow-[0_0_10px_rgba(59,130,246,0.5)] ${progress[goal.id]?.status === 'failed' ? 'bg-red-500' : 'bg-blue-500'}`}
+                      style={{ width: `${progress[goal.id]?.percent || 5}%` }}
+                    />
+                  </div>
+                </div>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
       </div>
     </div>
