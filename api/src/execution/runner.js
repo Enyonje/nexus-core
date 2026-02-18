@@ -28,7 +28,6 @@ function validatePayload(goalType, payload) {
       }
       break;
     default:
-      // Other goals can be more flexible
       break;
   }
 

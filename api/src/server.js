@@ -23,15 +23,22 @@ const app = Fastify({
    GLOBAL PLUGINS
 ========================= */
 await app.register(cors, {
-  origin: [
-    "https://nexus-core-chi.vercel.app", // production frontend
-    "http://localhost:3000",             // local dev
-    "http://localhost:5173",             // vite dev
-  ],
+  origin: (origin, cb) => {
+    const allowedOrigins = [
+      "https://nexus-core-chi.vercel.app", // production frontend
+      "http://localhost:3000",             // local dev
+      "http://localhost:5173",             // vite dev
+    ];
+    if (!origin || allowedOrigins.includes(origin)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Not allowed by CORS"), false);
+    }
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  preflightContinue: true, // ✅ ensures OPTIONS requests are handled
+  preflight: true, // ✅ ensures OPTIONS requests are auto-handled
 });
 
 await app.register(websocket);
