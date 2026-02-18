@@ -4,6 +4,101 @@ import { publishEvent } from "../routes/executions.js"; // SSE bus
 import { runSentinel } from "../agents/sentinel.js"; // governance agent
 
 /**
+ * Validate payload before execution starts
+ */
+function validatePayload(goalType, payload) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Payload must be an object");
+  }
+
+  // Common requirement
+  if (!payload.text) {
+    throw new Error("Missing analysis data: payload.text is required");
+  }
+
+  // Goal-specific requirements
+  switch (goalType) {
+    case "processFile":
+      if (!payload.filePath) {
+        throw new Error("Missing filePath in payload for processFile goal");
+      }
+      break;
+    case "fetchData":
+      // No extra requirements, but could enforce API key or params here
+      break;
+    case "ai_generate":
+      // Could enforce model parameters if needed
+      break;
+    default:
+      // No strict requirements for generic goals
+      break;
+  }
+
+  // Sensible defaults
+  if (!payload.parameters) {
+    payload.parameters = { threshold: 0.75, mode: "fast" };
+  }
+
+  return payload;
+}
+
+/**
+ * Validate and normalize step output before Sentinel checks it.
+ */
+function validateStepOutput(stepInfo, output) {
+  if (!output || typeof output !== "object") {
+    return {
+      valid: false,
+      normalized: { error: "Output missing or invalid" },
+      reason: "Output was null or not an object",
+    };
+  }
+
+  switch (stepInfo.name) {
+    case "fetchData":
+      if (!output.data) {
+        return {
+          valid: false,
+          normalized: { data: null, error: "No data returned" },
+          reason: "fetchData step requires 'data' field",
+        };
+      }
+      break;
+
+    case "processFile":
+      if (!output.file) {
+        return {
+          valid: false,
+          normalized: { processed: false, file: "unknown" },
+          reason: "processFile step requires 'file' field",
+        };
+      }
+      break;
+
+    case "ai_generate":
+      if (!output.text) {
+        return {
+          valid: false,
+          normalized: { text: "AI-generated output (default)" },
+          reason: "ai_generate step requires 'text' field",
+        };
+      }
+      break;
+
+    default:
+      if (!output.echo) {
+        return {
+          valid: false,
+          normalized: { echo: "no payload provided" },
+          reason: "default step requires 'echo' field",
+        };
+      }
+  }
+
+  return { valid: true, normalized: output };
+}
+
+/**
  * Run an execution with real-time step publishing and Sentinel validation
  */
 export async function runExecution(executionId, payloadOverride = null) {
@@ -25,12 +120,7 @@ export async function runExecution(executionId, payloadOverride = null) {
     : execution.goal_payload;
 
   // ✅ Validate payload before running
-  if (!payload || !payload.text) {
-    throw new Error("Missing analysis data: payload.text is required");
-  }
-  if (!payload.parameters) {
-    payload.parameters = { threshold: 0.75, mode: "fast" }; // sensible defaults
-  }
+  payload = validatePayload(execution.goal_type, payload);
 
   try {
     // Mark execution as running
@@ -60,13 +150,24 @@ export async function runExecution(executionId, payloadOverride = null) {
         const stepId = stepRows[0].id;
 
         try {
-          const output = await runStep(stepInfo);
+          const rawOutput = await runStep(stepInfo);
+          const { valid, normalized, reason } = validateStepOutput(stepInfo, rawOutput);
+
+          if (!valid) {
+            publishEvent(executionId, {
+              event: "execution_warning",
+              stepId,
+              step: stepInfo.name,
+              reason,
+              normalized,
+            });
+          }
 
           await db.query(
             `UPDATE execution_steps
              SET status = 'completed', finished_at = NOW(), output = $2
              WHERE id = $1`,
-            [stepId, JSON.stringify(output)]
+            [stepId, JSON.stringify(normalized)]
           );
 
           completedSteps++;
@@ -74,17 +175,18 @@ export async function runExecution(executionId, payloadOverride = null) {
             event: "execution_progress",
             stepId,
             step: stepInfo.name,
-            result: output,
+            result: normalized,
             completedSteps,
           });
 
           // Sentinel validation
-          const verdict = await runSentinel(executionId, stepInfo, output);
+          const verdict = await runSentinel(executionId, stepInfo, normalized);
           if (!verdict?.allowed) {
             publishEvent(executionId, {
               event: "sentinel_blocked",
               stepId,
               reason: verdict?.reason || "Governance agent rejected output",
+              output: normalized,
             });
             throw new Error("Sentinel blocked execution");
           }
@@ -134,13 +236,15 @@ async function runStep(stepInfo) {
   switch (stepInfo.name) {
     case "fetchData": {
       const res = await fetch("https://api.github.com/repos/vercel/vercel");
-      return await res.json();
+      if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+      const data = await res.json();
+      return { data };
     }
     case "processFile":
-      return { processed: true, file: stepInfo.filePath };
+      return { processed: true, file: stepInfo.filePath || "unknown" };
     case "ai_generate":
       return { text: "AI-generated output" };
     default:
-      return { echo: stepInfo.payload };
+      return { echo: stepInfo.payload || "no payload provided" };
   }
 }
