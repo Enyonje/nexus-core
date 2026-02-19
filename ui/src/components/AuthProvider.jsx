@@ -7,24 +7,30 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [subscription, setSubscription] = useState("free");
-  const [role, setRole] = useState("user"); // ✅ track role separately
+  const [role, setRole] = useState("user");
   const [loading, setLoading] = useState(true);
+  const [initializing, setInitializing] = useState(true); // ✅ Block UI until auth is resolved
   const navigate = useNavigate();
 
   /* =========================
-     INIT SESSION
+      INIT SESSION & PING
   ========================= */
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    // 1. "Poke" the Render backend immediately to handle cold starts
+    fetch(`${API_URL}/health`).catch(() => console.log("Backend waking up..."));
+
+    // 2. Resolve authentication
+    const token = localStorage.getItem("authToken"); // Consistent with api.js key
     if (token) {
       refreshSession(token);
     } else {
       setLoading(false);
+      setInitializing(false);
     }
   }, []);
 
   /* =========================
-     REFRESH SESSION
+      REFRESH SESSION
   ========================= */
   async function refreshSession(token) {
     try {
@@ -38,7 +44,6 @@ export function AuthProvider({ children }) {
 
       const data = await res.json();
 
-      // ✅ store user, role, subscription
       setUser({ token, email: data.email, id: data.id });
       setSubscription(data.tier || "free");
       setRole(data.role || "user");
@@ -50,21 +55,22 @@ export function AuthProvider({ children }) {
       return { tier: "free", role: "user" };
     } finally {
       setLoading(false);
+      setInitializing(false); // ✅ Release the UI guard
     }
   }
 
   /* =========================
-     LOGIN
+      LOGIN
   ========================= */
   async function login({ token }) {
-    localStorage.setItem("token", token);
+    localStorage.setItem("authToken", token); // Store key as 'authToken'
     const { tier, role } = await refreshSession(token);
     redirectByTier(tier, role);
   }
 
   /* =========================
-     REDIRECT
-  ========================= */
+      REDIRECT
+  ======================== */
   function redirectByTier(tier, role) {
     if (role === "admin") {
       navigate("/admin", { replace: true });
@@ -78,14 +84,15 @@ export function AuthProvider({ children }) {
   }
 
   /* =========================
-     LOGOUT
+      LOGOUT
   ========================= */
   function logout(redirect = true) {
-    localStorage.removeItem("token");
+    localStorage.removeItem("authToken");
     setUser(null);
     setSubscription("free");
     setRole("user");
     setLoading(false);
+    setInitializing(false);
 
     if (redirect) navigate("/", { replace: true });
   }
@@ -95,9 +102,10 @@ export function AuthProvider({ children }) {
       value={{
         user,
         subscription,
-        role,            // ✅ expose role
+        role,
         setSubscription,
         loading,
+        initializing, // ✅ Expose initializing to protect Dashboard fetches
         login,
         logout,
       }}
