@@ -38,15 +38,26 @@ await app.register(cors, {
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  preflight: true, // ✅ ensures OPTIONS requests are auto-handled
+  preflight: true,
 });
 
 await app.register(websocket);
+
+// ✅ Postgres plugin with SSL handling
 await app.register(fastifyPostgres, {
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+  ssl:
+    process.env.NODE_ENV === "production"
+      ? {
+          ca: process.env.PG_CA_CERT, // CA cert stored in Render env variable
+          rejectUnauthorized: true,   // enforce validation
+        }
+      : false, // no SSL locally
 });
-await app.register(fastifyJwt, { secret: process.env.JWT_SECRET || "super-secret-key" });
+
+await app.register(fastifyJwt, {
+  secret: process.env.JWT_SECRET || "super-secret-key",
+});
 
 /* =========================
    API ROUTES
