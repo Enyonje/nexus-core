@@ -4,6 +4,11 @@ import { apiFetch } from "../lib/api";
 import { useAuth } from "../context/AuthProvider";
 import { formatDate } from "../lib/utils";
 
+/* 🛡️ Helper: Safe string slicing */
+function safeSlice(value, length = 8) {
+  return String(value || "").slice(0, length);
+}
+
 export default function AdminDashboard() {
   const { role, initializing } = useAuth();
   const [usage, setUsage] = useState(null);
@@ -63,7 +68,9 @@ export default function AdminDashboard() {
         {usage && usage.users && (
           <section className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Usage Metrics — {usage.month}</h2>
+              <h2 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">
+                Usage Metrics — {usage.month}
+              </h2>
               <span className="text-[10px] font-mono text-slate-600 bg-white/5 px-3 py-1 rounded-full border border-white/5">
                 {usage.users.length} Total Intelligence Units
               </span>
@@ -84,13 +91,18 @@ export default function AdminDashboard() {
                     <tr key={u.id} className="hover:bg-white/[0.01] transition-colors group">
                       <td className="p-5">
                         <p className="text-sm font-bold text-slate-200">{u.email}</p>
-                        {/* 🛡️ FIX: String conversion for safe slicing */}
                         <p className="text-[9px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">
-                          ID: {String(u.id || "").slice(0, 8)}
+                          ID: {safeSlice(u.id)}
                         </p>
                       </td>
                       <td className="p-5">
-                        <span className={`text-[9px] font-black px-3 py-1 rounded-lg border uppercase tracking-widest ${u.subscription === 'enterprise' ? 'border-purple-500/30 text-purple-400 bg-purple-500/5' : 'border-white/10 text-slate-400'}`}>
+                        <span
+                          className={`text-[9px] font-black px-3 py-1 rounded-lg border uppercase tracking-widest ${
+                            u.subscription === "enterprise"
+                              ? "border-purple-500/30 text-purple-400 bg-purple-500/5"
+                              : "border-white/10 text-slate-400"
+                          }`}
+                        >
                           {u.subscription}
                         </span>
                       </td>
@@ -116,16 +128,23 @@ export default function AdminDashboard() {
               </div>
             ) : (
               executions.map((e) => (
-                <div key={e.id} className="bg-slate-900/40 border border-white/5 p-6 rounded-2xl flex flex-col md:flex-row items-center justify-between hover:border-red-500/30 transition-all group">
+                <div
+                  key={e.id}
+                  className="bg-slate-900/40 border border-white/5 p-6 rounded-2xl flex flex-col md:flex-row items-center justify-between hover:border-red-500/30 transition-all group"
+                >
                   <div className="flex items-center gap-6">
-                    <div className={`w-2 h-2 rounded-full ${e.status === 'RUNNING' ? 'bg-blue-500 animate-pulse' : 'bg-slate-700'}`} />
+                    <div
+                      className={`w-2 h-2 rounded-full ${
+                        e.status === "RUNNING" ? "bg-blue-500 animate-pulse" : "bg-slate-700"
+                      }`}
+                    />
                     <div>
-                      {/* 🛡️ FIX: String conversion for safe slicing */}
                       <h4 className="text-sm font-black text-white tracking-tight uppercase">
-                        NODE_{String(e.id || "").slice(0, 8)}
+                        NODE_{safeSlice(e.id)}
                       </h4>
                       <p className="text-[10px] font-mono text-slate-500 mt-1 uppercase">
-                        INIT: {formatDate(e.started_at)} {e.finished_at && `// TERM: ${formatDate(e.finished_at)}`}
+                        INIT: {formatDate(e.started_at)}{" "}
+                        {e.finished_at && `// TERM: ${formatDate(e.finished_at)}`}
                       </p>
                     </div>
                   </div>
@@ -171,7 +190,11 @@ function StatusBadge({ status }) {
     FAILED: "text-red-400 bg-red-400/10 border-red-400/20",
   };
   return (
-    <span className={`text-[9px] font-black px-3 py-1 rounded-lg border uppercase tracking-widest ${map[status] || "text-slate-500"}`}>
+    <span
+      className={`text-[9px] font-black px-3 py-1 rounded-lg border uppercase tracking-widest ${
+        map[status] || "text-slate-500 bg-slate-500/10 border-slate-500/20"
+      }`}
+    >
       {status}
     </span>
   );
