@@ -60,7 +60,7 @@ export default function AdminDashboard() {
         </header>
 
         {/* Usage Overview Table */}
-        {usage && (
+        {usage && usage.users && (
           <section className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Usage Metrics — {usage.month}</h2>
@@ -84,7 +84,10 @@ export default function AdminDashboard() {
                     <tr key={u.id} className="hover:bg-white/[0.01] transition-colors group">
                       <td className="p-5">
                         <p className="text-sm font-bold text-slate-200">{u.email}</p>
-                        <p className="text-[9px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">ID: {u.id.slice(0, 8)}</p>
+                        {/* 🛡️ FIX: String conversion for safe slicing */}
+                        <p className="text-[9px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">
+                          ID: {String(u.id || "").slice(0, 8)}
+                        </p>
                       </td>
                       <td className="p-5">
                         <span className={`text-[9px] font-black px-3 py-1 rounded-lg border uppercase tracking-widest ${u.subscription === 'enterprise' ? 'border-purple-500/30 text-purple-400 bg-purple-500/5' : 'border-white/10 text-slate-400'}`}>
@@ -117,7 +120,10 @@ export default function AdminDashboard() {
                   <div className="flex items-center gap-6">
                     <div className={`w-2 h-2 rounded-full ${e.status === 'RUNNING' ? 'bg-blue-500 animate-pulse' : 'bg-slate-700'}`} />
                     <div>
-                      <h4 className="text-sm font-black text-white tracking-tight uppercase">NODE_{e.id.slice(0, 8)}</h4>
+                      {/* 🛡️ FIX: String conversion for safe slicing */}
+                      <h4 className="text-sm font-black text-white tracking-tight uppercase">
+                        NODE_{String(e.id || "").slice(0, 8)}
+                      </h4>
                       <p className="text-[10px] font-mono text-slate-500 mt-1 uppercase">
                         INIT: {formatDate(e.started_at)} {e.finished_at && `// TERM: ${formatDate(e.finished_at)}`}
                       </p>
