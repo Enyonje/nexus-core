@@ -43,13 +43,13 @@ await app.register(cors, {
 
 await app.register(websocket);
 
-// ✅ Postgres plugin with SSL handling
+// ✅ Postgres plugin with Aiven CA certificate
 await app.register(fastifyPostgres, {
-  connectionString: `${process.env.DATABASE_URL}?sslmode=verify-full`,
+  connectionString: process.env.DATABASE_URL,
   ssl:
     process.env.NODE_ENV === "production"
       ? {
-          ca: process.env.PG_CA_CERT, // CA cert stored in Render env variable
+          ca: process.env.PG_CA_CERT, // CA cert from env
           rejectUnauthorized: true,   // enforce validation
         }
       : false, // no SSL locally
