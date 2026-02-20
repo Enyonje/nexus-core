@@ -50,7 +50,7 @@ await app.register(fastifyPostgres, {
     process.env.NODE_ENV === "production"
       ? {
           ca: process.env.PG_CA_CERT, // CA cert from env
-          rejectUnauthorized: false,   // enforce validation
+          rejectUnauthorized: true,   // enforce validation
         }
       : false, // no SSL locally
 });
