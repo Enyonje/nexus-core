@@ -20,7 +20,7 @@ export const db = new Pool({
   ssl: sslConfig,
   max: 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000,
 });
 
 // Test connection immediately on startup
