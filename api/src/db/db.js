@@ -1,29 +1,38 @@
 // src/db/db.js
-import "dotenv/config";   // ensures .env is loaded before anything else
+import "dotenv/config";
 import pg from "pg";
 
 const { Pool } = pg;
 
-// Decide which connection string to use
-// - In production (Render), use DATABASE_URL (internal URL recommended)
-// - In local dev, you can set DATABASE_URL to the external Render URL in .env
 const connectionString = process.env.DATABASE_URL;
+
+// Aiven and Render both require SSL. 
+// We use a helper to determine if we should apply the SSL fix.
+const useSSL = connectionString && !connectionString.includes("localhost") && !connectionString.includes("127.0.0.1");
 
 export const db = new Pool({
   connectionString,
-  ssl: process.env.NODE_ENV === "production"
-    ? { rejectUnauthorized: false } // Render requires SSL
-    : undefined,
-  max: 10,               // limit pool size to avoid exhausting DB connections
-  idleTimeoutMillis: 30000, // close idle clients after 30s
+  ssl: useSSL 
+    ? { rejectUnauthorized: false } 
+    : false,
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000, // Terminate if connection takes too long
 });
 
-// Event listeners for visibility
+// Test connection immediately on startup
+db.query('SELECT NOW()', (err, res) => {
+  if (err) {
+    console.error("❌ Database Handshake Failed:", err.message);
+  } else {
+    console.log("✅ Database Handshake Successful at:", res.rows[0].now);
+  }
+});
+
 db.on("connect", () => {
-  console.log("✅ Postgres connected");
+  console.log("✅ Postgres pool client created");
 });
 
 db.on("error", (err) => {
-  console.error("❌ Postgres error:", err);
-  // Don't force exit here; let Render restart if needed
+  console.error("❌ Unexpected Postgres error:", err);
 });
