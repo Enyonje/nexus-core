@@ -45,7 +45,7 @@ await app.register(websocket);
 
 // ✅ Postgres plugin with SSL handling
 await app.register(fastifyPostgres, {
-  connectionString: process.env.DATABASE_URL,
+  connectionString: `${process.env.DATABASE_URL}?sslmode=verify-full`,
   ssl:
     process.env.NODE_ENV === "production"
       ? {
