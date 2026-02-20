@@ -6,22 +6,25 @@ const { Pool } = pg;
 
 const connectionString = process.env.DATABASE_URL;
 
-// Aiven and Render both require SSL. 
-// We use a helper to determine if we should apply the SSL fix.
-const useSSL = connectionString && !connectionString.includes("localhost") && !connectionString.includes("127.0.0.1");
+// Use CA cert in production, disable SSL locally
+const sslConfig =
+  process.env.NODE_ENV === "production"
+    ? {
+        ca: process.env.PG_CA_CERT, // full cert string from env
+        rejectUnauthorized: true,   // enforce validation
+      }
+    : false;
 
 export const db = new Pool({
   connectionString,
-  ssl: useSSL 
-    ? { rejectUnauthorized: false } 
-    : false,
+  ssl: sslConfig,
   max: 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000, // Terminate if connection takes too long
+  connectionTimeoutMillis: 2000,
 });
 
 // Test connection immediately on startup
-db.query('SELECT NOW()', (err, res) => {
+db.query("SELECT NOW()", (err, res) => {
   if (err) {
     console.error("❌ Database Handshake Failed:", err.message);
   } else {
