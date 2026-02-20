@@ -4,38 +4,27 @@ import pg from "pg";
 
 const { Pool } = pg;
 
-const connectionString = process.env.DATABASE_URL;
-
-// Use CA cert in production, disable SSL locally
-const sslConfig =
-  process.env.NODE_ENV === "production"
-    ? {
-        ca: process.env.PG_CA_CERT, // full cert string from env
-        rejectUnauthorized: true,   // enforce validation
-      }
-    : false;
+// 1. Force the string to include sslmode if it's missing
+let connectionString = process.env.DATABASE_URL;
+if (connectionString && !connectionString.includes("sslmode=")) {
+  connectionString += (connectionString.includes("?") ? "&" : "?") + "sslmode=require";
+}
 
 export const db = new Pool({
   connectionString,
-  ssl: sslConfig,
+  ssl: {
+    rejectUnauthorized: false, // Critical for Aiven/Render handshake
+  },
   max: 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
 });
 
-// Test connection immediately on startup
-db.query("SELECT NOW()", (err, res) => {
+// Immediate Connectivity Test
+db.connect((err, client, release) => {
   if (err) {
-    console.error("❌ Database Handshake Failed:", err.message);
+    console.error("❌ CRITICAL: Could not connect to Aiven:", err.message);
   } else {
-    console.log("✅ Database Handshake Successful at:", res.rows[0].now);
+    console.log("✅ DATABASE_CONNECTED: Neural link established.");
+    release();
   }
-});
-
-db.on("connect", () => {
-  console.log("✅ Postgres pool client created");
-});
-
-db.on("error", (err) => {
-  console.error("❌ Unexpected Postgres error:", err);
 });
