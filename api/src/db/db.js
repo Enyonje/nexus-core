@@ -9,7 +9,6 @@ if (connectionString && !connectionString.includes("sslmode=")) {
   connectionString += (connectionString.includes("?") ? "&" : "?") + "sslmode=verify-full";
 }
 
-// Decode escaped newlines into real ones
 const caCert = process.env.PG_CA_CERT
   ? process.env.PG_CA_CERT.replace(/\\n/g, "\n")
   : null;
@@ -19,15 +18,14 @@ export const db = new Pool({
   ssl: caCert
     ? {
         ca: caCert,
-        rejectUnauthorized: true, // enforce validation
+        rejectUnauthorized: true,
       }
-    : { rejectUnauthorized: false }, // fallback only for local dev
+    : false,
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
 });
 
-// Connectivity test
 db.connect((err, client, release) => {
   if (err) {
     console.error("❌ CRITICAL: Could not connect to Aiven:", err.message);
