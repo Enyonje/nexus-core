@@ -1,11 +1,11 @@
-CREATE TABLE event_permissions (
+CREATE TABLE IF NOT EXISTS event_permissions (
   event_type TEXT,
   role TEXT,
   PRIMARY KEY (event_type, role)
 );
 
 -- Users table
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
@@ -15,13 +15,13 @@ CREATE TABLE users (
 );
 
 -- Roles table (optional, for extensibility)
-CREATE TABLE roles (
+CREATE TABLE IF NOT EXISTS roles (
   name TEXT PRIMARY KEY,
   description TEXT
 );
 
 -- Subscriptions table (monetization tiers)
-CREATE TABLE subscriptions (
+CREATE TABLE IF NOT EXISTS subscriptions (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   price_cents INTEGER NOT NULL,
@@ -31,14 +31,14 @@ CREATE TABLE subscriptions (
 );
 
 -- Stripe customer mapping
-CREATE TABLE stripe_customers (
+CREATE TABLE IF NOT EXISTS stripe_customers (
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   stripe_customer_id TEXT NOT NULL,
   PRIMARY KEY (user_id)
 );
 
 -- Stripe subscription mapping
-CREATE TABLE stripe_subscriptions (
+CREATE TABLE IF NOT EXISTS stripe_subscriptions (
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   stripe_subscription_id TEXT NOT NULL,
   status TEXT,
@@ -47,7 +47,7 @@ CREATE TABLE stripe_subscriptions (
 );
 
 -- Password resets table
-CREATE TABLE password_resets (
+CREATE TABLE IF NOT EXISTS password_resets (
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   token TEXT UNIQUE NOT NULL,
   expires_at TIMESTAMP NOT NULL,

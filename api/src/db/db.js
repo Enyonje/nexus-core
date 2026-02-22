@@ -4,19 +4,28 @@ import pg from "pg";
 
 const { Pool } = pg;
 
-// 1. Force the string to include sslmode if it's missing
+// Ensure sslmode is set
 let connectionString = process.env.DATABASE_URL;
 if (connectionString && !connectionString.includes("sslmode=")) {
-  connectionString += (connectionString.includes("?") ? "&" : "?") + "sslmode=require";
+  connectionString += (connectionString.includes("?") ? "&" : "?") + "sslmode=verify-full";
 }
+
+// Decode the CA cert from env (Render strips newlines, so we store with \n)
+const caCert = process.env.PG_CA_CERT
+  ? process.env.PG_CA_CERT.replace(/\\n/g, "\n")
+  : null;
 
 export const db = new Pool({
   connectionString,
-  ssl: {
-    rejectUnauthorized: false, // Critical for Aiven/Render handshake
-  },
+  ssl: caCert
+    ? {
+        ca: caCert,
+        rejectUnauthorized: true, // enforce validation
+      }
+    : false,
   max: 10,
   idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
 });
 
 // Immediate Connectivity Test
