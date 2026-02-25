@@ -1,7 +1,39 @@
+// events/stream.js
+import Redis from "ioredis";
+
+// Local map of executionId -> Set of SSE reply objects
 const clients = new Map();
 
+// Redis connections
+const redisPublisher = new Redis(process.env.REDIS_URL);
+const redisSubscriber = new Redis(process.env.REDIS_URL);
+
+// Subscribe to the "stream-events" channel
+redisSubscriber.subscribe("stream-events", (err) => {
+  if (err) {
+    console.error("Redis subscription failed:", err);
+  } else {
+    console.log("Subscribed to stream-events channel");
+  }
+});
+
+// When a message arrives from Redis, broadcast to local clients
+redisSubscriber.on("message", (channel, message) => {
+  if (channel !== "stream-events") return;
+  try {
+    const payload = JSON.parse(message);
+    if (payload.executionId) {
+      emitEvent(payload.executionId, payload);
+    } else {
+      broadcastEvent(payload);
+    }
+  } catch (err) {
+    console.error("Failed to parse Redis message:", err);
+  }
+});
+
 /**
- * Register SSE client
+ * Register SSE client for a given executionId
  */
 export function registerClient(executionId, reply) {
   reply.raw.writeHead(200, {
@@ -18,10 +50,10 @@ export function registerClient(executionId, reply) {
   }
   clients.get(executionId).add(reply);
 
-  // Heartbeat every 15s to keep connection alive
+  // Heartbeat every 15s
   const interval = setInterval(() => {
     try {
-      reply.raw.write(":\n\n"); // comment line = SSE heartbeat
+      reply.raw.write(":\n\n");
     } catch {
       clearInterval(interval);
     }
@@ -37,7 +69,7 @@ export function registerClient(executionId, reply) {
 }
 
 /**
- * Emit event to all listeners for a specific execution
+ * Emit event to all listeners for a specific execution (local only)
  */
 export function emitEvent(executionId, payload) {
   const listeners = clients.get(executionId);
@@ -60,7 +92,7 @@ export function emitEvent(executionId, payload) {
 }
 
 /**
- * Broadcast event to all connected clients across all executions
+ * Broadcast event to all connected clients across all executions (local only)
  */
 export function broadcastEvent(payload) {
   for (const [executionId, listeners] of clients.entries()) {
@@ -79,6 +111,13 @@ export function broadcastEvent(payload) {
       }
     }
   }
+}
+
+/**
+ * Publish event to Redis so all nodes can broadcast
+ */
+export function publishEvent(payload) {
+  redisPublisher.publish("stream-events", JSON.stringify(payload));
 }
 
 /**
