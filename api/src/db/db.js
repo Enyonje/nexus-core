@@ -6,7 +6,7 @@ const { Pool } = pg;
 
 let connectionString = process.env.DATABASE_URL;
 if (connectionString && !connectionString.includes("sslmode=")) {
-  connectionString += (connectionString.includes("?") ? "&" : "?") + "sslmode=verify-full";
+connectionString += (connectionString.includes("?") ? "&" : "?") + "sslmode=require";
 }
 
 const caCert = process.env.PG_CA_CERT
