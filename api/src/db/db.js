@@ -13,18 +13,17 @@ const caCert = process.env.PG_CA_CERT
   ? process.env.PG_CA_CERT.replace(/\\n/g, "\n")
   : null;
 
+// ...existing code...
 export const db = new Pool({
   connectionString,
-  ssl: caCert
-    ? {
-        ca: caCert,
-        rejectUnauthorized: true,
-      }
+  ssl: process.env.NODE_ENV === "production"
+    ? { rejectUnauthorized: false }
     : false,
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
 });
+// ...existing code...
 
 db.connect((err, client, release) => {
   if (err) {
