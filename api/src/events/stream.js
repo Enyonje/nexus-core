@@ -5,8 +5,13 @@ import Redis from "ioredis";
 const clients = new Map();
 
 // Redis connections
-const redisPublisher = new Redis(process.env.REDIS_URL);
-const redisSubscriber = new Redis(process.env.REDIS_URL);
+const redisOptions = {};
+if (process.env.REDIS_URL?.startsWith("rediss://")) {
+  redisOptions.tls = { rejectUnauthorized: false };
+}
+
+const redisPublisher = new Redis(process.env.REDIS_URL, redisOptions);
+const redisSubscriber = new Redis(process.env.REDIS_URL, redisOptions);
 
 // Subscribe to the "stream-events" channel
 redisSubscriber.subscribe("stream-events", (err) => {
