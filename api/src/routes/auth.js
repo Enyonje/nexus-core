@@ -1,8 +1,10 @@
-import { db } from "../db/db.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import Stripe from "stripe";
 import { v4 as uuidv4 } from "uuid";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
@@ -18,17 +20,12 @@ export function requireAuth(req, reply, done) {
   try {
     let token;
 
-    // 1. Authorization header
     if (req.headers.authorization?.startsWith("Bearer ")) {
       token = req.headers.authorization.split(" ")[1];
     }
-
-    // 2. Cookie (if using cookie-based auth)
     if (!token && req.cookies?.authToken) {
       token = req.cookies.authToken;
     }
-
-    // 3. Query param (for EventSource connections)
     if (!token && req.query?.token) {
       token = req.query.token;
     }
@@ -57,29 +54,28 @@ export async function authRoutes(server) {
         return reply.code(400).send({ error: "Email, password, and orgName required" });
       }
 
-      const exists = await db.query("SELECT id FROM users WHERE email = $1", [email]);
-      if (exists.rowCount) {
+      const exists = await prisma.user.findUnique({ where: { email } });
+      if (exists) {
         return reply.code(409).send({ error: "Email already exists" });
       }
 
       const hash = await bcrypt.hash(password, 10);
-      const userId = uuidv4();
-      const orgId = uuidv4();
+      const org = await prisma.organization.create({
+        data: { id: uuidv4(), name: orgName },
+      });
 
-      await db.query(
-        `INSERT INTO organizations (id, name, created_at)
-         VALUES ($1, $2, NOW())`,
-        [orgId, orgName]
-      );
+      const user = await prisma.user.create({
+        data: {
+          id: uuidv4(),
+          email,
+          password_hash: hash,
+          role: "user",
+          subscription: "free",
+          org_id: org.id,
+        },
+        select: { id: true, email: true, role: true, subscription: true, org_id: true },
+      });
 
-      const result = await db.query(
-        `INSERT INTO users (id, email, password_hash, role, subscription, org_id, created_at)
-         VALUES ($1, $2, $3, 'user', 'free', $4, NOW())
-         RETURNING id, email, role, subscription, org_id`,
-        [userId, email, hash, orgId]
-      );
-
-      const user = result.rows[0];
       const token = jwt.sign(
         { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
         JWT_SECRET,
@@ -101,28 +97,26 @@ export async function authRoutes(server) {
         return reply.code(400).send({ error: "Email and password required" });
       }
 
-      const result = await db.query("SELECT * FROM users WHERE email = $1", [email]);
-      if (!result.rowCount) {
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user) {
         return reply.code(401).send({ error: "Invalid credentials" });
       }
 
-      const user = result.rows[0];
       const valid = await bcrypt.compare(password, user.password_hash);
       if (!valid) {
         return reply.code(401).send({ error: "Invalid credentials" });
       }
 
-      // Ensure org_id exists
-      let orgId = user.org_id;
-      if (!orgId) {
-        orgId = uuidv4();
-        await db.query(
-          `INSERT INTO organizations (id, name, created_at)
-           VALUES ($1, $2, NOW())`,
-          [orgId, "Default Org"]
-        );
-        await db.query(`UPDATE users SET org_id = $1 WHERE id = $2`, [orgId, user.id]);
-        user.org_id = orgId;
+      // Ensure org exists
+      if (!user.org_id) {
+        const org = await prisma.organization.create({
+          data: { id: uuidv4(), name: "Default Org" },
+        });
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { org_id: org.id },
+        });
+        user.org_id = org.id;
       }
 
       const token = jwt.sign(
@@ -155,14 +149,17 @@ export async function authRoutes(server) {
         return reply.code(401).send({ error: "Invalid session" });
       }
 
-      const result = await db.query("SELECT subscription FROM users WHERE id = $1", [userId]);
-      if (!result.rowCount) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { subscription: true },
+      });
+      if (!user) {
         return reply.code(404).send({ error: "User not found" });
       }
 
       reply.send({
-        tier: result.rows[0].subscription,
-        active: result.rows[0].subscription !== "free",
+        tier: user.subscription,
+        active: user.subscription !== "free",
       });
     } catch (err) {
       console.error("Subscription fetch failed:", err);
