@@ -6,10 +6,11 @@ import { sslConfig } from "../config/ssl.js"; // shared CA loader
 const { Pool } = pg;
 
 // Use DATABASE_URL directly; append sslmode only if missing
-//let connectionString = process.env.DATABASE_URL;
-//if (connectionString && !connectionString.includes("sslmode=")) {
-  //connectionString += (connectionString.includes("?") ? "&" : "?") ;
-//}*/sslmode=require&sslrootcert=/app/config/ca.pem";
+let connectionString = process.env.DATABASE_URL;
+if (connectionString && !connectionString.includes("sslmode=")) {
+  // enforce verify-full for strong security
+  connectionString += (connectionString.includes("?") ? "&" : "?") + "sslmode=verify-full";
+}
 
 // Create pool with shared SSL config
 export const db = new Pool({
