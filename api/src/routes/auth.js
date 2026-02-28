@@ -48,55 +48,55 @@ export function requireAuth(req, reply, done) {
 export async function authRoutes(server) {
   /* ---------- REGISTER ---------- */
   server.post("/register", async (req, reply) => {
-    try {
-      const { email, accessKey, organization } = req.body;
-      if (!email || !accessKey || !organization) {
-        return reply.code(400).send({ error: "Email, access key, and organization required" });
-      }
-
-      // Check if user already exists
-      const exists = await prisma.user.findUnique({ where: { email } });
-      if (exists) {
-        return reply.code(409).send({ error: "Email already exists" });
-      }
-
-      // Check if organization exists, else create
-      let org = await prisma.organization.findFirst({ where: { name: organization } });
-      if (!org) {
-        org = await prisma.organization.create({
-          data: { id: uuidv4(), name: organization },
-        });
-      }
-
-      // Hash the access key
-      const hash = await bcrypt.hash(accessKey, 10);
-
-      // Create user
-      const user = await prisma.user.create({
-        data: {
-          id: uuidv4(),
-          email,
-          password_hash: hash,
-          role: "user",
-          subscription: "free",
-          org_id: org.id,
-        },
-        select: { id: true, email: true, role: true, subscription: true, org_id: true },
-      });
-
-      // Generate JWT
-      const token = jwt.sign(
-        { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
-        JWT_SECRET,
-        { expiresIn: "7d" }
-      );
-
-      reply.send({ token, user });
-    } catch (err) {
-      console.error("Register error:", err);
-      reply.code(500).send({ error: "Internal server error" });
+  try {
+    const { email, accessKey, organization } = req.body;
+    if (!email || !accessKey || !organization) {
+      return reply.code(400).send({ error: "Email, access key, and organization required" });
     }
-  });
+
+    // Check if user already exists
+    const exists = await prisma.user.findUnique({ where: { email } });
+    if (exists) {
+      return reply.code(409).send({ error: "Email already exists" });
+    }
+
+    // Check if organization exists, else create
+    let org = await prisma.organization.findFirst({ where: { name: organization } });
+    if (!org) {
+      org = await prisma.organization.create({
+        data: { id: uuidv4(), name: organization },
+      });
+    }
+
+    // Hash the access key
+    const hash = await bcrypt.hash(accessKey, 10);
+
+    // Create user
+    const user = await prisma.user.create({
+      data: {
+        id: uuidv4(),
+        email,
+        password_hash: hash,
+        role: "user",
+        subscription: "free",
+        org_id: org.id,
+      },
+      select: { id: true, email: true, role: true, subscription: true, org_id: true },
+    });
+
+    // Generate JWT
+    const token = jwt.sign(
+      { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    reply.send({ token, user });
+  } catch (err) {
+    console.error("Register error:", err);
+    reply.code(500).send({ error: "Internal server error" });
+  }
+});
 
   /* ---------- LOGIN ---------- */
   server.post("/login", async (req, reply) => {
