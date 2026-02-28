@@ -8,12 +8,13 @@ datasource db {
 }
 
 model User {
-  id            String       @id
-  email         String       @unique
+  id            String   @id
+  email         String   @unique
   password_hash String
-  role          String       @default("user")
-  subscription  String       @default("free")
-  created_at    DateTime     @default(now())
+  name          String?   // keep it
+  role          String   @default("user")
+  subscription  String   @default("free")
+  created_at    DateTime @default(now())
 
   org_id        String?
   organization  Organization? @relation(fields: [org_id], references: [id])
