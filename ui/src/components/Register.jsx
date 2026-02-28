@@ -16,36 +16,36 @@ export default function Register() {
   const navigate = useNavigate();
 
   async function handleRegister(e) {
-    e.preventDefault();
-    setLoading(true);
+  e.preventDefault();
+  setLoading(true);
 
-    try {
-      const res = await apiFetch("/auth/register", {
-        method: "POST",
-        body: JSON.stringify({ email, password, organization }),
-      });
+  try {
+    const res = await apiFetch("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ email, accessKey: password, organization }), // <-- FIXED
+    });
 
-      if (!res?.token || !res?.user) {
-        throw new Error("Invalid register response");
-      }
-
-      localStorage.setItem("authToken", res.token);
-      localStorage.setItem("user", JSON.stringify(res.user));
-
-      login({
-        user: res.user,
-        token: res.token,
-      });
-
-      addToast("Welcome to the Swarm! 🎉", "success");
-      navigate("/"); 
-    } catch (err) {
-      console.error("Register error:", err);
-      addToast(err.message || "Registration failed", "error");
-    } finally {
-      setLoading(false);
+    if (!res?.token || !res?.user) {
+      throw new Error("Invalid register response");
     }
+
+    localStorage.setItem("authToken", res.token);
+    localStorage.setItem("user", JSON.stringify(res.user));
+
+    login({
+      user: res.user,
+      token: res.token,
+    });
+
+    addToast("Welcome to the Swarm! 🎉", "success");
+    navigate("/");
+  } catch (err) {
+    console.error("Register error:", err);
+    addToast(err.message || "Registration failed", "error");
+  } finally {
+    setLoading(false);
   }
+}
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#020617] relative overflow-hidden px-4">

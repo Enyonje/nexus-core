@@ -14,35 +14,35 @@ export default function Login() {
   const { login } = useAuth();
 
   async function handleLogin(e) {
-    e.preventDefault();
-    setLoading(true);
+  e.preventDefault();
+  setLoading(true);
 
-    try {
-      const res = await apiFetch("/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      });
+  try {
+    const res = await apiFetch("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, accessKey: password }), // <-- FIXED
+    });
 
-      if (!res?.token || !res?.user) {
-        throw new Error("Invalid login response");
-      }
-
-      localStorage.setItem("authToken", res.token);
-      localStorage.setItem("user", JSON.stringify(res.user));
-
-      login({
-        user: res.user,
-        token: res.token,
-      });
-
-      addToast("Welcome back to the Core 👋", "success");
-    } catch (err) {
-      console.error("Login error:", err);
-      addToast(err.message || "Login failed", "error");
-    } finally {
-      setLoading(false);
+    if (!res?.token || !res?.user) {
+      throw new Error("Invalid login response");
     }
+
+    localStorage.setItem("authToken", res.token);
+    localStorage.setItem("user", JSON.stringify(res.user));
+
+    login({
+      user: res.user,
+      token: res.token,
+    });
+
+    addToast("Welcome back to the Core 👋", "success");
+  } catch (err) {
+    console.error("Login error:", err);
+    addToast(err.message || "Login failed", "error");
+  } finally {
+    setLoading(false);
   }
+}
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#020617] relative overflow-hidden px-4">
