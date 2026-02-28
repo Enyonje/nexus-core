@@ -49,9 +49,9 @@ export async function authRoutes(server) {
   /* ---------- REGISTER ---------- */
   server.post("/register", async (req, reply) => {
     try {
-      const { email, password, orgName } = req.body;
-      if (!email || !password || !orgName) {
-        return reply.code(400).send({ error: "Email, password, and orgName required" });
+      const { email, password, organization } = req.body;
+      if (!email || !password || !organization) {
+        return reply.code(400).send({ error: "Email, password, and organization required" });
       }
 
       const exists = await prisma.user.findUnique({ where: { email } });
@@ -61,7 +61,7 @@ export async function authRoutes(server) {
 
       const hash = await bcrypt.hash(password, 10);
       const org = await prisma.organization.create({
-        data: { id: uuidv4(), name: orgName },
+        data: { id: uuidv4(), name: organization },
       });
 
       const user = await prisma.user.create({
