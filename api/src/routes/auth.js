@@ -47,105 +47,111 @@ export function requireAuth(req, reply, done) {
 ========================= */
 export async function authRoutes(server) {
   /* ---------- REGISTER ---------- */
-server.post("/register", async (req, reply) => {
-  try {
-    const { email, accessKey, organization } = req.body;
-    if (!email || !accessKey || !organization) {
-      return reply.code(400).send({ error: "Email, access key, and organization required" });
+  server.post("/register", async (req, reply) => {
+    try {
+      const { email, accessKey, organization } = req.body;
+      if (!email || !accessKey || !organization) {
+        return reply.code(400).send({ error: "Email, access key, and organization required" });
+      }
+
+      // Check if user already exists
+      const exists = await prisma.user.findUnique({ where: { email } });
+      if (exists) {
+        return reply.code(409).send({ error: "Email already exists" });
+      }
+
+      // Check if organization exists, else create
+      let org = await prisma.organization.findFirst({ where: { name: organization } });
+      if (!org) {
+        org = await prisma.organization.create({
+          data: { id: uuidv4(), name: organization },
+        });
+      }
+
+      // Hash the access key
+      const hash = await bcrypt.hash(accessKey, 10);
+
+      // Create user
+      const user = await prisma.user.create({
+        data: {
+          id: uuidv4(),
+          email,
+          password_hash: hash,
+          role: "user",
+          subscription: "free",
+          org_id: org.id,
+        },
+        select: { id: true, email: true, role: true, subscription: true, org_id: true },
+      });
+
+      // Generate JWT
+      const token = jwt.sign(
+        { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
+      reply.send({ token, user });
+    } catch (err) {
+      console.error("Register error:", err);
+      reply.code(500).send({ error: "Internal server error" });
     }
-
-    // Check if user already exists
-    const exists = await prisma.user.findUnique({ where: { email } });
-    if (exists) {
-      return reply.code(409).send({ error: "Email already exists" });
-    }
-
-    // Hash the access key
-    const hash = await bcrypt.hash(accessKey, 10);
-
-    // Create organization
-    const org = await prisma.organization.create({
-      data: { id: uuidv4(), name: organization },
-    });
-
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        id: uuidv4(),
-        email,
-        password_hash: hash,   // still stored in password_hash column
-        role: "user",
-        subscription: "free",
-        org_id: org.id,
-      },
-      select: { id: true, email: true, role: true, subscription: true, org_id: true },
-    });
-
-    // Generate JWT
-    const token = jwt.sign(
-      { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    reply.send({ token, user });
-  } catch (err) {
-    console.error("Register error:", err);
-    reply.code(500).send({ error: "Internal server error" });
-  }
-});
+  });
 
   /* ---------- LOGIN ---------- */
-server.post("/login", async (req, reply) => {
-  try {
-    const { email, accessKey } = req.body;
-    if (!email || !accessKey) {
-      return reply.code(400).send({ error: "Email and access key required" });
-    }
+  server.post("/login", async (req, reply) => {
+    try {
+      const { email, accessKey } = req.body;
+      if (!email || !accessKey) {
+        return reply.code(400).send({ error: "Email and access key required" });
+      }
 
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      return reply.code(401).send({ error: "Invalid credentials" });
-    }
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user) {
+        return reply.code(401).send({ error: "Invalid credentials" });
+      }
 
-    const valid = await bcrypt.compare(accessKey, user.password_hash);
-    if (!valid) {
-      return reply.code(401).send({ error: "Invalid credentials" });
-    }
+      const valid = await bcrypt.compare(accessKey, user.password_hash);
+      if (!valid) {
+        return reply.code(401).send({ error: "Invalid credentials" });
+      }
 
-    // Ensure org exists
-    if (!user.org_id) {
-      const org = await prisma.organization.create({
-        data: { id: uuidv4(), name: "Default Org" },
+      // Ensure org exists
+      if (!user.org_id) {
+        let org = await prisma.organization.findFirst({ where: { name: "Default Org" } });
+        if (!org) {
+          org = await prisma.organization.create({
+            data: { id: uuidv4(), name: "Default Org" },
+          });
+        }
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { org_id: org.id },
+        });
+        user.org_id = org.id;
+      }
+
+      const token = jwt.sign(
+        { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
+      reply.send({
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          subscription: user.subscription,
+          org_id: user.org_id,
+        },
       });
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { org_id: org.id },
-      });
-      user.org_id = org.id;
+    } catch (err) {
+      console.error("Login error:", err);
+      reply.code(500).send({ error: "Internal server error" });
     }
-
-    const token = jwt.sign(
-      { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    reply.send({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        subscription: user.subscription,
-        org_id: user.org_id,
-      },
-    });
-  } catch (err) {
-    console.error("Login error:", err);
-    reply.code(500).send({ error: "Internal server error" });
-  }
-});
+  });
 
   /* ---------- SUBSCRIPTION STATUS ---------- */
   server.get("/subscription", { preHandler: requireAuth }, async (req, reply) => {
