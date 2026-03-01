@@ -42,6 +42,7 @@ model Goal {
   title       String
   description String?
   status      String       @default("active")
+  goal_type   String?
   created_at  DateTime     @default(now())
 
   user        User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
@@ -73,6 +74,7 @@ model Execution {
   action       String
   details      Json?
   created_at   DateTime   @default(now())
+  started_at   DateTime?  // <-- Add this line
 
   user      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   goal      Goal?     @relation(fields: [goal_id], references: [id])
