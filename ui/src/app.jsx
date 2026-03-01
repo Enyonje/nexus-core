@@ -4,6 +4,7 @@ import { Toaster } from "react-hot-toast";
 
 import Navbar from "./components/Navbar.jsx";
 import Layout from "./components/Layout.jsx";
+import DocsPage from "./components/DocsPage.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import ExecutionList from "./components/ExecutionList.jsx";
 import ExecutionDetail from "./components/ExecutionDetail.jsx";
@@ -56,6 +57,7 @@ export default function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/docs" element={<DocsPage />} />
 
           {/* =======================
               PROTECTED APP SHELL
