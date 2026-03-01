@@ -3,6 +3,10 @@ import { useState } from "react";
 import { Toaster } from "react-hot-toast";
 
 import Navbar from "./components/Navbar.jsx";
+import CareersPage from './components/CareersPage`.jsx';
+import ContactPage from "./components/ContactPage.jsx";
+import ArchitecturePage from "./components/ArchitecturePage.jsx";
+import DocsPage from "./components/DocsPage.jsx";
 import Layout from "./components/Layout.jsx";
 import DocsPage from "./components/DocsPage.jsx";
 import Dashboard from "./components/Dashboard.jsx";
@@ -53,11 +57,16 @@ export default function App() {
               PUBLIC ROUTES
           ======================= */}
           <Route path="/" element={<LandingPage />} />
+          <Route path="/docs" element={<DocsPage />} />
+          <Route path="/architecture" element={<ArchitecturePage />} />
+          <Route path="/careers" element={<CareersPage />} />
+          <Route path="/contact" element={<ContactPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/docs" element={<DocsPage />} />
+          
 
           {/* =======================
               PROTECTED APP SHELL
