@@ -24,7 +24,7 @@ export default function LandingPage() {
         <div className="hidden md:flex items-center gap-10 text-[11px] font-black uppercase tracking-widest text-slate-500">
           <Link to="/docs" className="hover:text-blue-400 transition-colors">Platform</Link>
           <Link to="/subscription" className="hover:text-blue-400 transition-colors">Pricing</Link>
-          <Link to="/blog" className="hover:text-blue-400 transition-colors">Architecture</Link>
+          <Link to="/architecture" className="hover:text-blue-400 transition-colors">Architecture</Link>
         </div>
         <Link to="/login" className="px-6 py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all text-[11px] font-black uppercase tracking-widest backdrop-blur-md">
           Client Login
@@ -128,7 +128,7 @@ export default function LandingPage() {
           </div>
           <nav className="flex flex-wrap justify-center gap-10 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
             <Link to="/docs" className="hover:text-white transition">Docs</Link>
-            <Link to="/blog" className="hover:text-white transition">Architecture</Link>
+            <Link to="/architecture" className="hover:text-white transition">Architecture</Link>
             <Link to="/careers" className="hover:text-white transition">Careers</Link>
             <Link to="/contact" className="hover:text-white transition">Contact</Link>
           </nav>

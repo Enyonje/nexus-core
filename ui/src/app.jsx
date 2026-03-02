@@ -3,10 +3,9 @@ import { useState } from "react";
 import { Toaster } from "react-hot-toast";
 
 import Navbar from "./components/Navbar.jsx";
-import CareersPage from './components/CareersPage`.jsx';
+import CareersPage from './components/CareersPage.jsx';
 import ContactPage from "./components/ContactPage.jsx";
 import ArchitecturePage from "./components/ArchitecturePage.jsx";
-import DocsPage from "./components/DocsPage.jsx";
 import Layout from "./components/Layout.jsx";
 import DocsPage from "./components/DocsPage.jsx";
 import Dashboard from "./components/Dashboard.jsx";
