@@ -2,34 +2,24 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import Stripe from "stripe";
 import { v4 as uuidv4 } from "uuid";
-import crypto from "crypto"; // for refresh token generation
+import crypto from "crypto";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2022-11-15",
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2022-11-15" });
 
 /* =========================
    AUTH MIDDLEWARE
 ========================= */
 export function requireAuth(req, reply, done) {
   try {
-    let token;
-
-    if (req.headers.authorization?.startsWith("Bearer ")) {
-      token = req.headers.authorization.split(" ")[1];
-    }
-    if (!token && req.cookies?.authToken) {
-      token = req.cookies.authToken;
-    }
-    if (!token && req.query?.token) {
-      token = req.query.token;
-    }
+    let token =
+      req.headers.authorization?.startsWith("Bearer ")
+        ? req.headers.authorization.split(" ")[1]
+        : req.cookies?.authToken || req.query?.token;
 
     if (!token) {
       return reply.code(401).send({ error: "Unauthorized: missing token" });
@@ -47,7 +37,7 @@ export function requireAuth(req, reply, done) {
    ROUTES
 ========================= */
 export async function authRoutes(server) {
-  /* ---------- REGISTER ---------- */
+  // REGISTER
   server.post("/register", async (req, reply) => {
     try {
       const { email, accessKey, organization } = req.body;
@@ -68,7 +58,6 @@ export async function authRoutes(server) {
       }
 
       const hash = await bcrypt.hash(accessKey, 10);
-
       const refreshToken = crypto.randomBytes(64).toString("hex");
 
       const user = await prisma.user.create({
@@ -87,16 +76,15 @@ export async function authRoutes(server) {
       const token = jwt.sign(
         { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
         JWT_SECRET,
-        { expiresIn: "15m" } // shorter-lived access token
+        { expiresIn: "15m" }
       );
 
-      // Send refresh token as cookie
       reply.setCookie("refreshToken", refreshToken, {
         httpOnly: true,
         secure: true,
         sameSite: "strict",
         path: "/",
-        maxAge: 30 * 24 * 60 * 60, // 30 days
+        maxAge: 30 * 24 * 60 * 60,
       });
 
       reply.send({ token, user });
@@ -106,7 +94,7 @@ export async function authRoutes(server) {
     }
   });
 
-  /* ---------- LOGIN ---------- */
+  // LOGIN
   server.post("/login", async (req, reply) => {
     try {
       const { email, accessKey } = req.body;
@@ -124,7 +112,8 @@ export async function authRoutes(server) {
         return reply.code(401).send({ error: "Invalid credentials" });
       }
 
-      if (!user.org_id) {
+      let orgId = user.org_id;
+      if (!orgId) {
         let org = await prisma.organization.findFirst({ where: { name: "Default Org" } });
         if (!org) {
           org = await prisma.organization.create({
@@ -135,7 +124,7 @@ export async function authRoutes(server) {
           where: { id: user.id },
           data: { org_id: org.id },
         });
-        user.org_id = org.id;
+        orgId = org.id;
       }
 
       const refreshToken = crypto.randomBytes(64).toString("hex");
@@ -145,7 +134,7 @@ export async function authRoutes(server) {
       });
 
       const token = jwt.sign(
-        { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
+        { sub: user.id, email: user.email, role: user.role, org_id: orgId },
         JWT_SECRET,
         { expiresIn: "15m" }
       );
@@ -165,7 +154,7 @@ export async function authRoutes(server) {
           email: user.email,
           role: user.role,
           subscription: user.subscription,
-          org_id: user.org_id,
+          org_id: orgId,
         },
       });
     } catch (err) {
@@ -174,7 +163,7 @@ export async function authRoutes(server) {
     }
   });
 
-  /* ---------- REFRESH ---------- */
+  // REFRESH
   server.post("/refresh", async (req, reply) => {
     try {
       const refreshToken = req.cookies?.refreshToken;
@@ -200,7 +189,7 @@ export async function authRoutes(server) {
     }
   });
 
-  /* ---------- SUBSCRIPTION STATUS ---------- */
+  // SUBSCRIPTION STATUS
   server.get("/subscription", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.identity?.sub;
@@ -226,7 +215,7 @@ export async function authRoutes(server) {
     }
   });
 
-  /* ---------- STRIPE CHECKOUT ---------- */
+  // STRIPE CHECKOUT
   server.post("/stripe/checkout", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const { tier } = req.body;

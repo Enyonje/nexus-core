@@ -20,20 +20,18 @@ const app = Fastify({
   bodyLimit: 1048576, // 1MB
 });
 
-/* =========================
-   GLOBAL PLUGINS
-========================= */
+// Register plugins
 await app.register(cookie, {
-  secret: process.env.COOKIE_SECRET || "cookie_secret", // for signed cookies
-  parseOptions: {}, // options passed to cookie.parse
+  secret: process.env.COOKIE_SECRET || "cookie_secret",
+  parseOptions: {},
 });
 
 await app.register(cors, {
   origin: (origin, cb) => {
     const allowedOrigins = [
-      "https://nexus-core-chi.vercel.app", // production frontend
-      "http://localhost:3000",             // local dev
-      "http://localhost:5173",             // vite dev
+      "https://nexus-core-chi.vercel.app",
+      "http://localhost:3000",
+      "http://localhost:5173",
     ];
     if (!origin || allowedOrigins.includes(origin)) {
       cb(null, true);
@@ -64,9 +62,7 @@ await app.register(fastifyJwt, {
   secret: process.env.JWT_SECRET || "super-secret-key",
 });
 
-/* =========================
-   API ROUTES
-========================= */
+// Register routes
 app.register(authRoutes, { prefix: "/api/auth" });
 app.register(goalsRoutes, { prefix: "/api/goals" });
 app.register(adminRoutes, { prefix: "/api/admin" });
@@ -77,9 +73,7 @@ app.register(paymentsRoutes, { prefix: "/api/payments" });
 app.register(streamRoutes, { prefix: "/api/stream" });
 app.register(stripeRoutes, { prefix: "/api" });
 
-/* =========================
-   HEALTH CHECK
-========================= */
+// Health check
 app.get("/api/health", async () => {
   const client = await app.pg.connect();
   const result = await client.query("SELECT 1");
@@ -87,9 +81,7 @@ app.get("/api/health", async () => {
   return { status: "ok", db: result.rowCount === 1 };
 });
 
-/* =========================
-   ERROR HANDLER
-========================= */
+// Error handler
 app.setErrorHandler((error, request, reply) => {
   request.log.error(error);
   reply.code(error.statusCode || 500).send({
@@ -97,9 +89,7 @@ app.setErrorHandler((error, request, reply) => {
   });
 });
 
-/* =========================
-   START SERVER
-========================= */
+// Start server
 const PORT = process.env.PORT || 3001;
 app.listen({ port: PORT, host: "0.0.0.0" }).then(() => {
   console.log(`🚀 API running on port ${PORT}`);
