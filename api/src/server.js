@@ -20,17 +20,14 @@ const app = Fastify({
   bodyLimit: 1048576, // 1MB
 });
 
-const server = Fastify();
-
-server.register(cookie, {
-  secret: process.env.COOKIE_SECRET || "cookie_secret", // for signed cookies
-  parseOptions: {} // options passed to cookie.parse
-});
-
-
 /* =========================
    GLOBAL PLUGINS
 ========================= */
+await app.register(cookie, {
+  secret: process.env.COOKIE_SECRET || "cookie_secret", // for signed cookies
+  parseOptions: {}, // options passed to cookie.parse
+});
+
 await app.register(cors, {
   origin: (origin, cb) => {
     const allowedOrigins = [
@@ -52,16 +49,15 @@ await app.register(cors, {
 
 await app.register(websocket);
 
-// ✅ Postgres plugin with Aiven CA certificate
 await app.register(fastifyPostgres, {
   connectionString: process.env.DATABASE_URL,
   ssl:
     process.env.NODE_ENV === "production"
       ? {
-          ca: process.env.PG_CA_CERT, // CA cert from env
-          rejectUnauthorized: false,   // enforce validation
+          ca: process.env.PG_CA_CERT,
+          rejectUnauthorized: false,
         }
-      : false, // no SSL locally
+      : false,
 });
 
 await app.register(fastifyJwt, {
