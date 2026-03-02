@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import Stripe from "stripe";
 import { v4 as uuidv4 } from "uuid";
+import crypto from "crypto"; // for refresh token generation
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -48,55 +49,62 @@ export function requireAuth(req, reply, done) {
 export async function authRoutes(server) {
   /* ---------- REGISTER ---------- */
   server.post("/register", async (req, reply) => {
-  try {
-    const { email, accessKey, organization } = req.body;
-    if (!email || !accessKey || !organization) {
-      return reply.code(400).send({ error: "Email, access key, and organization required" });
-    }
+    try {
+      const { email, accessKey, organization } = req.body;
+      if (!email || !accessKey || !organization) {
+        return reply.code(400).send({ error: "Email, access key, and organization required" });
+      }
 
-    // Check if user already exists
-    const exists = await prisma.user.findUnique({ where: { email } });
-    if (exists) {
-      return reply.code(409).send({ error: "Email already exists" });
-    }
+      const exists = await prisma.user.findUnique({ where: { email } });
+      if (exists) {
+        return reply.code(409).send({ error: "Email already exists" });
+      }
 
-    // Check if organization exists, else create
-    let org = await prisma.organization.findFirst({ where: { name: organization } });
-    if (!org) {
-      org = await prisma.organization.create({
-        data: { id: uuidv4(), name: organization },
+      let org = await prisma.organization.findFirst({ where: { name: organization } });
+      if (!org) {
+        org = await prisma.organization.create({
+          data: { id: uuidv4(), name: organization },
+        });
+      }
+
+      const hash = await bcrypt.hash(accessKey, 10);
+
+      const refreshToken = crypto.randomBytes(64).toString("hex");
+
+      const user = await prisma.user.create({
+        data: {
+          id: uuidv4(),
+          email,
+          password_hash: hash,
+          role: "user",
+          subscription: "free",
+          org_id: org.id,
+          refresh_token: refreshToken,
+        },
+        select: { id: true, email: true, role: true, subscription: true, org_id: true },
       });
+
+      const token = jwt.sign(
+        { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
+        JWT_SECRET,
+        { expiresIn: "15m" } // shorter-lived access token
+      );
+
+      // Send refresh token as cookie
+      reply.setCookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "strict",
+        path: "/",
+        maxAge: 30 * 24 * 60 * 60, // 30 days
+      });
+
+      reply.send({ token, user });
+    } catch (err) {
+      console.error("Register error:", err);
+      reply.code(500).send({ error: "Internal server error" });
     }
-
-    // Hash the access key
-    const hash = await bcrypt.hash(accessKey, 10);
-
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        id: uuidv4(),
-        email,
-        password_hash: hash,
-        role: "user",
-        subscription: "free",
-        org_id: org.id,
-      },
-      select: { id: true, email: true, role: true, subscription: true, org_id: true },
-    });
-
-    // Generate JWT
-    const token = jwt.sign(
-      { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    reply.send({ token, user });
-  } catch (err) {
-    console.error("Register error:", err);
-    reply.code(500).send({ error: "Internal server error" });
-  }
-});
+  });
 
   /* ---------- LOGIN ---------- */
   server.post("/login", async (req, reply) => {
@@ -116,7 +124,6 @@ export async function authRoutes(server) {
         return reply.code(401).send({ error: "Invalid credentials" });
       }
 
-      // Ensure org exists
       if (!user.org_id) {
         let org = await prisma.organization.findFirst({ where: { name: "Default Org" } });
         if (!org) {
@@ -131,11 +138,25 @@ export async function authRoutes(server) {
         user.org_id = org.id;
       }
 
+      const refreshToken = crypto.randomBytes(64).toString("hex");
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { refresh_token: refreshToken },
+      });
+
       const token = jwt.sign(
         { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
         JWT_SECRET,
-        { expiresIn: "7d" }
+        { expiresIn: "15m" }
       );
+
+      reply.setCookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "strict",
+        path: "/",
+        maxAge: 30 * 24 * 60 * 60,
+      });
 
       reply.send({
         token,
@@ -149,6 +170,32 @@ export async function authRoutes(server) {
       });
     } catch (err) {
       console.error("Login error:", err);
+      reply.code(500).send({ error: "Internal server error" });
+    }
+  });
+
+  /* ---------- REFRESH ---------- */
+  server.post("/refresh", async (req, reply) => {
+    try {
+      const refreshToken = req.cookies?.refreshToken;
+      if (!refreshToken) {
+        return reply.code(401).send({ error: "Missing refresh token" });
+      }
+
+      const user = await prisma.user.findFirst({ where: { refresh_token: refreshToken } });
+      if (!user) {
+        return reply.code(401).send({ error: "Invalid refresh token" });
+      }
+
+      const newAccessToken = jwt.sign(
+        { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
+        JWT_SECRET,
+        { expiresIn: "15m" }
+      );
+
+      reply.send({ token: newAccessToken });
+    } catch (err) {
+      console.error("Refresh error:", err);
       reply.code(500).send({ error: "Internal server error" });
     }
   });

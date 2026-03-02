@@ -18,6 +18,7 @@ model User {
 
   org_id        String?
   organization  Organization? @relation(fields: [org_id], references: [id])
+  refresh_token String?
 
   goals         Goal[]
   executions    Execution[]
