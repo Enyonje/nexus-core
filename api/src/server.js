@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import fastifyPostgres from "@fastify/postgres";
 import fastifyJwt from "@fastify/jwt";
+import cookie from "@fastify/cookie";
 
 import { authRoutes } from "./routes/auth.js";
 import { goalsRoutes } from "./routes/goals.js";
@@ -18,6 +19,14 @@ const app = Fastify({
   logger: true,
   bodyLimit: 1048576, // 1MB
 });
+
+const server = Fastify();
+
+server.register(cookie, {
+  secret: process.env.COOKIE_SECRET || "cookie_secret", // for signed cookies
+  parseOptions: {} // options passed to cookie.parse
+});
+
 
 /* =========================
    GLOBAL PLUGINS
