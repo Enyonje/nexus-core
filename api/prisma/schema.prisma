@@ -49,6 +49,7 @@ model Goal {
   user        User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
   objectives  Objective[]
   executions  Execution[]
+  goal_payload Json?
 
   @@map("goals")
 }
