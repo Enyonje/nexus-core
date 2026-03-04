@@ -61,7 +61,7 @@ model Objective {
   description String?
   completed   Boolean    @default(false)
   created_at  DateTime   @default(now())
-
+  goal_payload Json?
   goal        Goal       @relation(fields: [goal_id], references: [id], onDelete: Cascade)
   executions  Execution[]
 
@@ -80,6 +80,7 @@ model Execution {
 
   user      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   goal      Goal?     @relation(fields: [goal_id], references: [id])
+  goal_payload Json?
   objective Objective? @relation(fields: [objective_id], references: [id])
 
   @@map("executions")
