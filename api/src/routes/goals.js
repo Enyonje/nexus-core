@@ -68,11 +68,22 @@ export async function goalsRoutes(app) {
         return reply.code(400).send({ error: messages });
       }
 
+      // Validate required fields for DB (title, user_id)
+      let title = null;
+      let description = null;
+      if (goalType === "analysis") {
+        title = payload.title;
+        description = payload.description;
+        if (!title) {
+          return reply.code(400).send({ error: "Title is required for analysis goals" });
+        }
+      }
+
       const result = await app.pg.query(
-        `INSERT INTO goals (id, org_id, user_id, goal_type, goal_payload, created_at)
-         VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
-         RETURNING id, goal_type, goal_payload, created_at`,
-        [uuidv4(), orgId, userId, goalType, JSON.stringify(payload)]
+        `INSERT INTO goals (id, org_id, user_id, goal_type, title, description, goal_payload, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW())
+         RETURNING id, goal_type, title, description, goal_payload, created_at`,
+        [uuidv4(), orgId, userId, goalType, title, description, JSON.stringify(payload)]
       );
 
       return reply.code(201).send(result.rows[0]);
@@ -90,7 +101,7 @@ export async function goalsRoutes(app) {
     try {
       const userId = req.identity.sub;
       const result = await app.pg.query(
-        `SELECT id, goal_type, goal_payload, created_at
+        `SELECT id, goal_type, title, description, goal_payload, created_at
          FROM goals
          WHERE user_id = $1
          ORDER BY created_at DESC`,
@@ -109,7 +120,7 @@ export async function goalsRoutes(app) {
       const userId = req.identity.sub;
       const { id } = req.params;
       const result = await app.pg.query(
-        `SELECT id, goal_type, goal_payload, created_at
+        `SELECT id, goal_type, title, description, goal_payload, created_at
          FROM goals
          WHERE id = $1 AND user_id = $2`,
         [id, userId]
