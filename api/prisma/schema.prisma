@@ -80,6 +80,7 @@ model Execution {
   started_at   DateTime?  // <-- Add this line
   goal_type    String?
   org_id       String?
+  version      Int?
 
   user      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   goal      Goal?     @relation(fields: [goal_id], references: [id])
