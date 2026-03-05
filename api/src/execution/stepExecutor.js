@@ -1,7 +1,7 @@
 // src/execution/stepExecutor.js
-import { publishEvent } from "../routes/executions.js"; // use same SSE bus
+import { publishEvent } from "../routes/executions.js";
 import { db } from "../db/db.js";
-import fetch from "node-fetch"; // for http_request steps
+import fetch from "node-fetch";
 import OpenAI from "openai";
 
 const SYSTEM_IDENTITY = {
@@ -90,7 +90,23 @@ async function runHttpStep(step) {
   if (!url) throw new Error("Missing URL in http_request step");
 
   const res = await fetch(url, { method, headers, body });
-  const text = await res.text();
+  const reader = res.body.getReader();
+  let text = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = new TextDecoder().decode(value);
+    text += chunk;
+
+    // Publish streaming progress
+    publishEvent(step.execution_id, {
+      event: "execution_step_progress",
+      stepId: step.id,
+      partial: text,
+    });
+  }
+
   return { status: res.status, body: text };
 }
 
@@ -128,9 +144,31 @@ async function runAutomationStep(step) {
   if (!Array.isArray(step.payload?.tasks)) {
     throw new Error("Automation step requires tasks[]");
   }
-  return step.payload.tasks.map((t, i) => ({
-    step: i + 1,
-    name: t,
-    status: "done",
-  }));
+  const results = [];
+  for (let i = 0; i < step.payload.tasks.length; i++) {
+    const result = { step: i + 1, name: step.payload.tasks[i], status: "done" };
+    results.push(result);
+
+    // Publish incremental progress
+    publishEvent(step.execution_id, {
+      event: "execution_step_progress",
+      stepId: step.id,
+      partial: results,
+    });
+  }
+  return results;
 }
+
+/* =========================
+   Recommendations for Advanced Features
+========================= */
+// 1. Add step retry logic for transient errors.
+// 2. Support conditional branching and step dependencies.
+// 3. Allow custom user-defined step plugins.
+// 4. Integrate with external APIs/services for more step types.
+// 5. Add step-level audit logging and analytics.
+// 6. Support pausing/resuming long-running steps.
+// 7. Add role-based access for sensitive step types.
+// 8. Implement step timeout and cancellation.
+// 9. Provide detailed error reporting and troubleshooting hints.
+// 10. Enable step output streaming to UI for real-time feedback.

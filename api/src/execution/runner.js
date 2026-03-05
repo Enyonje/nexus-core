@@ -1,7 +1,7 @@
 import { db } from "../db/db.js";
 import { executeGoalLogic } from "./logic.js";
-import { publishEvent } from "../routes/executions.js"; // SSE bus
-import { runSentinel } from "../agents/sentinel.js"; // governance agent
+import { publishEvent } from "../routes/executions.js";
+import { runSentinel } from "../agents/sentinel.js";
 
 /**
  * Validate payload before execution starts
@@ -11,7 +11,8 @@ function validatePayload(goalType, payload) {
     throw new Error("Payload must be an object");
   }
 
-  if (!payload.text || payload.text.trim().length === 0) {
+  // Universal required fields
+  if (!payload.text || typeof payload.text !== "string" || payload.text.trim().length === 0) {
     throw new Error(`Missing or empty payload.text for goal: ${goalType}`);
   }
 
@@ -27,6 +28,7 @@ function validatePayload(goalType, payload) {
         throw new Error("Analysis text too short, must be descriptive");
       }
       break;
+    // Add more goalType-specific validation here as needed
     default:
       break;
   }
@@ -61,7 +63,6 @@ function validateStepOutput(stepInfo, output) {
         };
       }
       break;
-
     case "processFile":
       if (!output.file) {
         return {
@@ -71,7 +72,6 @@ function validateStepOutput(stepInfo, output) {
         };
       }
       break;
-
     case "ai_generate":
       if (!output.text) {
         return {
@@ -81,7 +81,6 @@ function validateStepOutput(stepInfo, output) {
         };
       }
       break;
-
     case "analysis":
       if (!output.text) {
         return {
@@ -91,7 +90,6 @@ function validateStepOutput(stepInfo, output) {
         };
       }
       break;
-
     default:
       if (!output.echo) {
         return {
@@ -109,11 +107,14 @@ function validateStepOutput(stepInfo, output) {
  * Run an execution with real-time step publishing and Sentinel validation
  */
 export async function runExecution(executionId, payloadOverride = null) {
+  // Fetch execution and goal details
   const { rows } = await db.query(
     `SELECT e.id, e.goal_id, e.user_id, e.org_id,
-            g.goal_type, g.goal_payload
+            g.goal_type, g.goal_payload,
+            u.subscription
      FROM executions e
      JOIN goals g ON g.id = e.goal_id
+     JOIN users u ON u.id = e.user_id
      WHERE e.id = $1`,
     [executionId]
   );
@@ -121,12 +122,17 @@ export async function runExecution(executionId, payloadOverride = null) {
   if (!rows.length) throw new Error("Execution not found");
   const execution = rows[0];
 
-  // ✅ Merge override payload if provided
+  // Check subscription status
+  if (execution.subscription === "free") {
+    throw new Error("Upgrade required: Only subscribed users can run executions.");
+  }
+
+  // Merge override payload if provided
   let payload = payloadOverride
     ? { ...execution.goal_payload, ...payloadOverride }
     : execution.goal_payload;
 
-  // ✅ Validate payload before running
+  // Validate payload before running
   payload = validatePayload(execution.goal_type, payload);
 
   try {
@@ -184,12 +190,6 @@ export async function runExecution(executionId, payloadOverride = null) {
             step: stepInfo.name,
             result: normalized,
             completedSteps,
-          });
-
-          // Debug log before Sentinel
-          console.log("Sentinel check:", {
-            step: stepInfo.name,
-            output: normalized,
           });
 
           // Sentinel validation
@@ -263,3 +263,17 @@ async function runStep(stepInfo) {
       return { echo: stepInfo.payload || "no payload provided" };
   }
 }
+
+/* =========================
+   Recommendations for Advanced Features
+========================= */
+// 1. Add retry logic for failed steps (with max attempts).
+// 2. Support parallel execution for independent steps.
+// 3. Integrate notifications (email/webhook) for execution status.
+// 4. Add audit logging for all execution events.
+// 5. Allow custom step plugins for extensibility.
+// 6. Track resource usage and execution time for analytics.
+// 7. Add role-based access control for sensitive goal types.
+// 8. Support pausing/resuming executions for long-running tasks.
+// 9. Add detailed error reporting and troubleshooting hints for users.
+// 10. Integrate with external AI/ML APIs for advanced goal types.

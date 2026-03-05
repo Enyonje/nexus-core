@@ -111,7 +111,7 @@ export async function executionsRoutes(app) {
         return reply.code(404).send({ error: "Execution not found or not owned by user" });
       }
 
-      // ✅ Pass request body into runner
+      // Pass request body into runner
       const payloadOverride = req.body || {};
 
       runExecution(id, payloadOverride).catch((err) => {
@@ -147,11 +147,12 @@ export async function executionsRoutes(app) {
     }
   });
 
-  /* ===============================
+    /* ===============================
      STREAM EXECUTION EVENTS (SSE)
   =============================== */
   app.get("/:id/stream", { preHandler: requireAuth }, async (req, reply) => {
     const { id } = req.params;
+    const userId = req.identity.sub;
 
     // Allow CORS for your frontend origins
     const origin = req.headers.origin;
@@ -181,6 +182,29 @@ export async function executionsRoutes(app) {
     // Initial handshake event
     cb({ event: "connected", executionId: id });
 
+    // ✅ Send existing logs immediately
+    try {
+      const execRes = await app.pg.query(
+        `SELECT id FROM executions WHERE id = $1 AND user_id = $2`,
+        [id, userId]
+      );
+      if (execRes.rows.length) {
+        const { rows } = await app.pg.query(
+          `SELECT id, name, status, started_at, finished_at, output, error
+           FROM execution_steps
+           WHERE execution_id = $1
+           ORDER BY started_at ASC`,
+          [id]
+        );
+        cb({ event: "execution_logs", executionId: id, logs: rows });
+      } else {
+        cb({ event: "error", message: "Execution not found or not owned by user" });
+      }
+    } catch (err) {
+      req.log.error(err, "Failed to fetch execution logs for SSE");
+      cb({ event: "error", message: "Failed to fetch execution logs" });
+    }
+
     // Handle disconnect
     req.raw.on("close", () => {
       subscribers.get(id)?.delete(cb);
@@ -194,38 +218,38 @@ export async function executionsRoutes(app) {
   /* ===============================
      GET EXECUTION LOGS
   =============================== */
-app.get("/api/executions/:id/logs", { preHandler: requireAuth }, async (req, reply) => {
-  try {
-    const userId = req.identity.sub;
-    const { id } = req.params;
+  app.get("/api/executions/:id/logs", { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      const userId = req.identity.sub;
+      const { id } = req.params;
 
-    // Verify execution belongs to user
-    const execRes = await app.pg.query(
-      `SELECT id FROM executions WHERE id = $1 AND user_id = $2`,
-      [id, userId]
-    );
-    if (!execRes.rows.length) {
-      return reply.code(404).send({ error: "Execution not found or not owned by user" });
+      // Verify execution belongs to user
+      const execRes = await app.pg.query(
+        `SELECT id FROM executions WHERE id = $1 AND user_id = $2`,
+        [id, userId]
+      );
+      if (!execRes.rows.length) {
+        return reply.code(404).send({ error: "Execution not found or not owned by user" });
+      }
+
+      // Fetch logs from execution_steps
+      const { rows } = await app.pg.query(
+        `SELECT id, name, status, started_at, finished_at, output, error
+         FROM execution_steps
+         WHERE execution_id = $1
+         ORDER BY started_at ASC`,
+        [id]
+      );
+
+      return { logs: rows };
+    } catch (err) {
+      req.log.error(err, "Fetch execution logs failed");
+      return reply.code(500).send({
+        error: "Failed to fetch execution logs",
+        detail: err.message,
+      });
     }
-
-    // Fetch logs from execution_steps
-    const { rows } = await app.pg.query(
-      `SELECT id, name, status, started_at, finished_at, output, error
-       FROM execution_steps
-       WHERE execution_id = $1
-       ORDER BY started_at ASC`,
-      [id]
-    );
-
-    return { logs: rows };
-  } catch (err) {
-    req.log.error(err, "Fetch execution logs failed");
-    return reply.code(500).send({
-      error: "Failed to fetch execution logs",
-      detail: err.message,
-    });
-  }
-});
+  });
 
   /* ===============================
      ADMIN OVERRIDE DASHBOARD
@@ -259,7 +283,7 @@ app.get("/api/executions/:id/logs", { preHandler: requireAuth }, async (req, rep
     }
   });
 
-    /* ===============================
+   /* ===============================
      ADMIN DELETE EXECUTION
   =============================== */
   app.delete("/admin/:id", { preHandler: requireAdmin }, async (req, reply) => {
@@ -273,3 +297,17 @@ app.get("/api/executions/:id/logs", { preHandler: requireAuth }, async (req, rep
     }
   });
 }
+
+/* ===============================
+   Recommendations for Advanced Features
+=============================== */
+// 1. Add execution retry logic for transient failures.
+// 2. Support scheduled and recurring executions.
+// 3. Integrate notifications (email/webhook) for execution status.
+// 4. Add audit logging and analytics for executions.
+// 5. Allow custom execution plugins for extensibility.
+// 6. Track resource usage and execution time for billing/analytics.
+// 7. Add role-based access control for sensitive executions.
+// 8. Support pausing/resuming executions for long-running tasks.
+// 9. Provide detailed error reporting and troubleshooting hints.
+// 10. Enable execution output streaming to UI for real-time feedback.
