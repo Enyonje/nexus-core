@@ -81,6 +81,7 @@ model Execution {
   goal_type    String?
   org_id       String?
   version      Int?
+  status       String   @default("pending")
 
   user      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   goal      Goal?     @relation(fields: [goal_id], references: [id])
