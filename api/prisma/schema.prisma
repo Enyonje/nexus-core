@@ -74,7 +74,7 @@ model Execution {
   user_id      String
   goal_id      String
   objective_id String
-  action       String
+  action       String?
   details      Json?
   created_at   DateTime   @default(now())
   started_at   DateTime?  // <-- Add this line
