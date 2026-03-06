@@ -41,60 +41,60 @@ const schemasByType = {
 
 export async function goalsRoutes(app) {
   /* CREATE GOAL */
-  app.post("/", { preHandler: requireAuth }, async (req, reply) => {
-    try {
-      const userId = req.identity?.sub;
-      const orgId = req.identity?.org_id;
-      const { goalType, payload } = req.body;
+app.post("/", { preHandler: requireAuth }, async (req, reply) => {
+  try {
+    const userId = req.identity?.sub;
+    const orgId = req.identity?.org_id;
+    const { goalType, payload } = req.body;
 
-      if (!userId || !orgId) {
-        return reply.code(400).send({ error: "Missing userId or orgId in token" });
-      }
-
-      const baseParse = baseGoalSchema.safeParse(req.body);
-      if (!baseParse.success) {
-        const messages = baseParse.error?.errors?.map((e) => e.message) || ["Invalid request"];
-        return reply.code(400).send({ error: messages });
-      }
-
-      const schema = schemasByType[goalType];
-      if (!schema) {
-        return reply.code(400).send({ error: `Unsupported goalType: ${goalType}` });
-      }
-
-      const payloadParse = schema.safeParse(payload);
-      if (!payloadParse.success) {
-        const messages = payloadParse.error?.errors?.map((e) => e.message) || ["Invalid payload"];
-        return reply.code(400).send({ error: messages });
-      }
-
-      // Validate required fields for DB (title, user_id)
-      let title = null;
-      let description = null;
-      if (goalType === "analysis") {
-        title = payload.title;
-        description = payload.description;
-        if (!title) {
-          return reply.code(400).send({ error: "Title is required for analysis goals" });
-        }
-      }
-
-      const result = await app.pg.query(
-        `INSERT INTO goals (id, org_id, user_id, goal_type, title, description, goal_payload, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW())
-         RETURNING id, goal_type, title, description, goal_payload, created_at`,
-        [uuidv4(), orgId, userId, goalType, title, description, JSON.stringify(payload)]
-      );
-
-      return reply.code(201).send(result.rows[0]);
-    } catch (err) {
-      app.log.error({ err }, "Create goal failed");
-      return reply.code(500).send({
-        error: "Failed to create goal",
-        detail: err.message,
-      });
+    if (!userId || !orgId) {
+      return reply.code(400).send({ error: "Missing userId or orgId in token" });
     }
-  });
+
+    const baseParse = baseGoalSchema.safeParse(req.body);
+    if (!baseParse.success) {
+      const messages = baseParse.error?.errors?.map((e) => e.message) || ["Invalid request"];
+      return reply.code(400).send({ error: messages });
+    }
+
+    const schema = schemasByType[goalType];
+    if (!schema) {
+      return reply.code(400).send({ error: `Unsupported goalType: ${goalType}` });
+    }
+
+    const payloadParse = schema.safeParse(payload);
+    if (!payloadParse.success) {
+      const messages = payloadParse.error?.errors?.map((e) => e.message) || ["Invalid payload"];
+      return reply.code(400).send({ error: messages });
+    }
+
+    // ✅ Ensure title is always set
+    let title = payload.title || `Untitled ${goalType} goal`;
+    let description = payload.description || null;
+
+    // For analysis goals, enforce description too
+    if (goalType === "analysis" && !description) {
+      return reply.code(400).send({ error: "Description is required for analysis goals" });
+    }
+
+    const result = await app.pg.query(
+      `INSERT INTO goals (
+         id, org_id, user_id, goal_type, title, description, goal_payload, created_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW())
+       RETURNING id, goal_type, title, description, goal_payload, created_at`,
+      [uuidv4(), orgId, userId, goalType, title, description, JSON.stringify(payload)]
+    );
+
+    return reply.code(201).send(result.rows[0]);
+  } catch (err) {
+    app.log.error({ err }, "Create goal failed");
+    return reply.code(500).send({
+      error: "Failed to create goal",
+      detail: err.message,
+    });
+  }
+});
 
   /* GET USER GOALS */
   app.get("/", { preHandler: requireAuth }, async (req, reply) => {
