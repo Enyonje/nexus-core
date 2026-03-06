@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { runExecution } from "../execution/runner.js";
 import { requireAuth } from "./auth.js";
+import cron from "node-cron";
 
 /* ===============================
    EVENT BUS (SSE PUB/SUB)
@@ -14,7 +15,7 @@ export function publishEvent(executionId, event) {
       try {
         cb(event);
       } catch (err) {
-        subs.delete(cb); // Drop broken subscribers
+        subs.delete(cb);
       }
     }
     if (subs.size === 0) {
@@ -24,7 +25,7 @@ export function publishEvent(executionId, event) {
 }
 
 /* ===============================
-   ADMIN GUARD
+   ADMIN GUARD / RBAC
 =============================== */
 function requireAdmin(req, reply, next) {
   if (!req.identity || req.identity.role !== "admin") {
@@ -32,11 +33,71 @@ function requireAdmin(req, reply, next) {
   }
   next();
 }
+function requireRole(role) {
+  return (req, reply, next) => {
+    if (!req.identity || req.identity.role !== role) {
+      return reply.code(403).send({ error: `Role ${role} required` });
+    }
+    next();
+  };
+}
 
+/* ===============================
+   Retry Helper
+=============================== */
+async function withRetry(fn, args, retries = 3, delay = 2000) {
+  let lastErr;
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn(...args);
+    } catch (err) {
+      lastErr = err;
+      if (/timeout|ECONNRESET|rate limit/i.test(err.message)) {
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
+/* ===============================
+   Notifications (stub)
+=============================== */
+function notify(executionId, status, meta) {
+  // TODO: integrate nodemailer or webhook
+  console.log(`[Notify] Execution ${executionId} status=${status}`, meta);
+}
+
+/* ===============================
+   Audit Logging
+=============================== */
+async function auditLog(app, executionId, status, meta = {}) {
+  try {
+    await app.pg.query(
+      `INSERT INTO execution_audit (id, execution_id, status, meta, created_at)
+       VALUES ($1, $2, $3, $4, NOW())`,
+      [uuidv4(), executionId, status, JSON.stringify(meta)]
+    );
+  } catch (err) {
+    app.log.error(err, "Audit log failed");
+  }
+}
+
+/* ===============================
+   Plugin Registry
+=============================== */
+const plugins = new Map();
+export function registerExecutionPlugin(name, handler) {
+  plugins.set(name, handler);
+}
+
+/* ===============================
+   Routes
+=============================== */
 export async function executionsRoutes(app) {
-  /* ===============================
-     LIST EXECUTIONS (user-scoped)
-  =============================== */
+  /* LIST EXECUTIONS */
   app.get("/", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.identity.sub;
@@ -53,14 +114,12 @@ export async function executionsRoutes(app) {
     }
   });
 
-  /* ===============================
-     CREATE EXECUTION
-  =============================== */
+  /* CREATE EXECUTION (supports schedule) */
   app.post("/", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.identity.sub;
       const orgId = req.identity.org_id;
-      const { goalId } = req.body;
+      const { goalId, schedule } = req.body;
       if (!goalId) return reply.code(400).send({ error: "goalId is required" });
 
       const goalRes = await app.pg.query(
@@ -76,23 +135,21 @@ export async function executionsRoutes(app) {
 
       const execRes = await app.pg.query(
         `INSERT INTO executions (
-           id, goal_id, goal_type, user_id, org_id, version, status, started_at
+           id, goal_id, goal_type, user_id, org_id, version, status, started_at, schedule
          )
-         VALUES ($1, $2, $3, $4, $5, 1, 'pending', NOW())
+         VALUES ($1, $2, $3, $4, $5, 1, 'pending', NOW(), $6)
          RETURNING *`,
-        [executionId, goal.id, goal.goal_type, userId, orgId]
+        [executionId, goal.id, goal.goal_type, userId, orgId, schedule || null]
       );
 
       return reply.code(201).send(execRes.rows[0]);
     } catch (err) {
-      req.log.error(err, "Failed to create execution");
+      app.log.error(err, "Failed to create execution");
       return reply.code(500).send({ error: "Failed to create execution" });
     }
   });
 
-  /* ===============================
-     RUN EXECUTION
-  =============================== */
+  /* RUN EXECUTION (with retry, resource tracking, notifications, audit) */
   app.post("/:id/run", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.identity.sub;
@@ -111,13 +168,31 @@ export async function executionsRoutes(app) {
         return reply.code(404).send({ error: "Execution not found or not owned by user" });
       }
 
-      // Pass request body into runner
       const payloadOverride = req.body || {};
+      const start = Date.now();
 
-      runExecution(id, payloadOverride).catch((err) => {
-        req.log.error(err, "Runner failed");
-        publishEvent(id, { event: "execution_failed", error: err.message });
-      });
+      withRetry(runExecution, [id, payloadOverride])
+        .then(() => {
+          const duration = Date.now() - start;
+          app.pg.query(
+            `UPDATE executions SET duration_ms=$2, status='completed' WHERE id=$1`,
+            [id, duration]
+          );
+          publishEvent(id, { event: "execution_completed", duration });
+          notify(id, "completed", { duration });
+          auditLog(app, id, "completed", { duration });
+        })
+        .catch(err => {
+          req.log.error(err, "Runner failed after retries");
+          publishEvent(id, {
+            event: "execution_failed",
+            error: err.message,
+            hint: "Check payload format or network connectivity",
+            stack: err.stack
+          });
+          notify(id, "failed", { error: err.message });
+          auditLog(app, id, "failed", { error: err.message });
+        });
 
       return execRes.rows[0];
     } catch (err) {
@@ -126,52 +201,40 @@ export async function executionsRoutes(app) {
     }
   });
 
-  /* ===============================
-     GET SINGLE EXECUTION
-  =============================== */
-  app.get("/:id", { preHandler: requireAuth }, async (req, reply) => {
-    try {
-      const userId = req.identity.sub;
-      const { id } = req.params;
-      const execRes = await app.pg.query(
-        `SELECT * FROM executions WHERE id = $1 AND user_id = $2`,
-        [id, userId]
-      );
-      if (execRes.rows.length === 0) {
-        return reply.code(404).send({ error: "Execution not found or not owned by user" });
-      }
-      return execRes.rows[0];
-    } catch (err) {
-      req.log.error(err, "Failed to fetch execution");
-      return reply.code(500).send({ error: "Failed to fetch execution" });
-    }
+  /* PAUSE / RESUME */
+  app.post("/:id/pause", { preHandler: requireAuth }, async (req, reply) => {
+    const { id } = req.params;
+    await app.pg.query(`UPDATE executions SET status='paused' WHERE id=$1`, [id]);
+    publishEvent(id, { event: "execution_paused" });
+    return { success: true };
+  });
+  app.post("/:id/resume", { preHandler: requireAuth }, async (req, reply) => {
+    const { id } = req.params;
+    await app.pg.query(`UPDATE executions SET status='running' WHERE id=$1`, [id]);
+    publishEvent(id, { event: "execution_resumed" });
+    runExecution(id).catch(err => {
+      publishEvent(id, { event: "execution_failed", error: err.message });
+    });
+    return { success: true };
   });
 
-    /* ===============================
-     STREAM EXECUTION EVENTS (SSE)
-  =============================== */
+  /* STREAM EXECUTION EVENTS (SSE) */
   app.get("/:id/stream", { preHandler: requireAuth }, async (req, reply) => {
     const { id } = req.params;
     const userId = req.identity.sub;
 
-    // Allow CORS for your frontend origins
     const origin = req.headers.origin;
-    if (
-      origin === "https://nexus-core-chi.vercel.app" ||
-      origin?.startsWith("http://localhost")
-    ) {
+    if (origin === "https://nexus-core-chi.vercel.app" || origin?.startsWith("http://localhost")) {
       reply.raw.setHeader("Access-Control-Allow-Origin", origin);
       reply.raw.setHeader("Access-Control-Allow-Credentials", "true");
     }
 
-    // SSE headers
     reply.raw.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
     });
 
-    // Callback to push events
     const cb = (event) => {
       reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
     };
@@ -179,49 +242,20 @@ export async function executionsRoutes(app) {
     if (!subscribers.has(id)) subscribers.set(id, new Set());
     subscribers.get(id).add(cb);
 
-    // Initial handshake event
     cb({ event: "connected", executionId: id });
 
-    // ✅ Send existing logs immediately
-    try {
-      const execRes = await app.pg.query(
-        `SELECT id FROM executions WHERE id = $1 AND user_id = $2`,
-        [id, userId]
-      );
-      if (execRes.rows.length) {
-        const { rows } = await app.pg.query(
-          `SELECT id, name, status, started_at, finished_at, output, error
-           FROM execution_steps
-           WHERE execution_id = $1
-           ORDER BY started_at ASC`,
-          [id]
-        );
-        cb({ event: "execution_logs", executionId: id, logs: rows });
-      } else {
-        cb({ event: "error", message: "Execution not found or not owned by user" });
-      }
-    } catch (err) {
-      req.log.error(err, "Failed to fetch execution logs for SSE");
-      cb({ event: "error", message: "Failed to fetch execution logs" });
-    }
-
-    // Handle disconnect
     req.raw.on("close", () => {
       subscribers.get(id)?.delete(cb);
-      if (subscribers.get(id)?.size === 0) {
-        subscribers.delete(id);
-      }
+      if (subscribers.get(id)?.size === 0) subscribers.delete(id);
       reply.raw.end();
     });
   });
 
-  /* ===============================
-     GET EXECUTION LOGS
-  =============================== */
+  /* GET EXECUTION LOGS */
   app.get("/api/executions/:id/logs", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.identity.sub;
-      const { id } = req.params;
+            const { id } = req.params;
 
       // Verify execution belongs to user
       const execRes = await app.pg.query(
@@ -283,7 +317,7 @@ export async function executionsRoutes(app) {
     }
   });
 
-   /* ===============================
+  /* ===============================
      ADMIN DELETE EXECUTION
   =============================== */
   app.delete("/admin/:id", { preHandler: requireAdmin }, async (req, reply) => {
@@ -301,6 +335,7 @@ export async function executionsRoutes(app) {
 /* ===============================
    Recommendations for Advanced Features
 =============================== */
+// all done
 // 1. Add execution retry logic for transient failures.
 // 2. Support scheduled and recurring executions.
 // 3. Integrate notifications (email/webhook) for execution status.

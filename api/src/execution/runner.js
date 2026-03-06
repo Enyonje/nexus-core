@@ -1,257 +1,127 @@
+import { v4 as uuidv4 } from "uuid";
 import { db } from "../db/db.js";
 import { executeGoalLogic } from "./logic.js";
 import { publishEvent } from "../routes/executions.js";
 import { runSentinel } from "../agents/sentinel.js";
 
-/**
- * Validate payload before execution starts
- */
+/* ===============================
+   Payload Validation
+=============================== */
 function validatePayload(goalType, payload) {
   if (!payload || typeof payload !== "object") {
     throw new Error("Payload must be an object");
   }
-
-  // Universal required fields
   if (!payload.text || typeof payload.text !== "string" || payload.text.trim().length === 0) {
     throw new Error(`Missing or empty payload.text for goal: ${goalType}`);
   }
-
-  // Goal-specific requirements
   switch (goalType) {
     case "processFile":
-      if (!payload.filePath) {
-        throw new Error("Missing filePath in payload for processFile goal");
-      }
+      if (!payload.filePath) throw new Error("Missing filePath in payload for processFile goal");
       break;
     case "analysis":
-      if (payload.text.length < 5) {
-        throw new Error("Analysis text too short, must be descriptive");
-      }
+      if (payload.text.length < 5) throw new Error("Analysis text too short, must be descriptive");
       break;
-    // Add more goalType-specific validation here as needed
     default:
       break;
   }
-
-  // Sensible defaults
   if (!payload.parameters) {
     payload.parameters = { threshold: 0.75, mode: "fast" };
   }
-
   return payload;
 }
 
-/**
- * Validate and normalize step output before Sentinel checks it.
- */
+/* ===============================
+   Step Output Validation
+=============================== */
 function validateStepOutput(stepInfo, output) {
   if (!output || typeof output !== "object") {
-    return {
-      valid: false,
-      normalized: { error: "Output missing or invalid" },
-      reason: "Output was null or not an object",
-    };
+    return { valid: false, normalized: { error: "Output missing or invalid" }, reason: "Output was null or not an object" };
   }
-
   switch (stepInfo.name) {
     case "fetchData":
-      if (!output.data) {
-        return {
-          valid: false,
-          normalized: { data: null, error: "No data returned" },
-          reason: "fetchData step requires 'data' field",
-        };
-      }
+      if (!output.data) return { valid: false, normalized: { data: null, error: "No data returned" }, reason: "fetchData requires 'data'" };
       break;
     case "processFile":
-      if (!output.file) {
-        return {
-          valid: false,
-          normalized: { processed: false, file: "unknown" },
-          reason: "processFile step requires 'file' field",
-        };
-      }
+      if (!output.file) return { valid: false, normalized: { processed: false, file: "unknown" }, reason: "processFile requires 'file'" };
       break;
     case "ai_generate":
-      if (!output.text) {
-        return {
-          valid: false,
-          normalized: { text: "AI-generated output (default)" },
-          reason: "ai_generate step requires 'text' field",
-        };
-      }
+      if (!output.text) return { valid: false, normalized: { text: "AI-generated output (default)" }, reason: "ai_generate requires 'text'" };
       break;
     case "analysis":
-      if (!output.text) {
-        return {
-          valid: false,
-          normalized: { text: "Default analysis output" },
-          reason: "analysis step requires 'text' field",
-        };
-      }
+      if (!output.text) return { valid: false, normalized: { text: "Default analysis output" }, reason: "analysis requires 'text'" };
       break;
     default:
-      if (!output.echo) {
-        return {
-          valid: false,
-          normalized: { echo: "no payload provided" },
-          reason: "default step requires 'echo' field",
-        };
-      }
+      if (!output.echo) return { valid: false, normalized: { echo: "no payload provided" }, reason: "default requires 'echo'" };
   }
-
   return { valid: true, normalized: output };
 }
 
-/**
- * Run an execution with real-time step publishing and Sentinel validation
- */
-export async function runExecution(executionId, payloadOverride = null) {
-  // Fetch execution and goal details
-  const { rows } = await db.query(
-    `SELECT e.id, e.goal_id, e.user_id, e.org_id,
-            g.goal_type, g.goal_payload,
-            u.subscription
-     FROM executions e
-     JOIN goals g ON g.id = e.goal_id
-     JOIN users u ON u.id = e.user_id
-     WHERE e.id = $1`,
-    [executionId]
-  );
-
-  if (!rows.length) throw new Error("Execution not found");
-  const execution = rows[0];
-
-  // Check subscription status
-  if (execution.subscription === "free") {
-    throw new Error("Upgrade required: Only subscribed users can run executions.");
-  }
-
-  // Merge override payload if provided
-  let payload = payloadOverride
-    ? { ...execution.goal_payload, ...payloadOverride }
-    : execution.goal_payload;
-
-  // Validate payload before running
-  payload = validatePayload(execution.goal_type, payload);
-
-  try {
-    // Mark execution as running
-    await db.query(
-      `UPDATE executions SET status = 'running', started_at = NOW() WHERE id = $1`,
-      [executionId]
-    );
-    publishEvent(executionId, {
-      event: "execution_started",
-      goalType: execution.goal_type,
-    });
-
-    let completedSteps = 0;
-
-    // Execute goal logic step-by-step
-    const result = await executeGoalLogic(
-      execution.goal_type,
-      payload,
-      executionId,
-      async (stepInfo) => {
-        const { rows: stepRows } = await db.query(
-          `INSERT INTO execution_steps (execution_id, user_id, org_id, name, status, started_at)
-           VALUES ($1, $2, $3, $4, 'running', NOW())
-           RETURNING id`,
-          [executionId, execution.user_id, execution.org_id, stepInfo.name]
-        );
-        const stepId = stepRows[0].id;
-
-        try {
-          const rawOutput = await runStep(stepInfo);
-          const { valid, normalized, reason } = validateStepOutput(stepInfo, rawOutput);
-
-          if (!valid) {
-            publishEvent(executionId, {
-              event: "execution_warning",
-              stepId,
-              step: stepInfo.name,
-              reason,
-              normalized,
-            });
-          }
-
-          await db.query(
-            `UPDATE execution_steps
-             SET status = 'completed', finished_at = NOW(), output = $2
-             WHERE id = $1`,
-            [stepId, JSON.stringify(normalized)]
-          );
-
-          completedSteps++;
-          publishEvent(executionId, {
-            event: "execution_progress",
-            stepId,
-            step: stepInfo.name,
-            result: normalized,
-            completedSteps,
-          });
-
-          // Sentinel validation
-          const verdict = await runSentinel(executionId, stepInfo, normalized);
-          if (!verdict?.allowed) {
-            publishEvent(executionId, {
-              event: "sentinel_blocked",
-              stepId,
-              reason: verdict?.reason || "Governance agent rejected output",
-              output: normalized,
-            });
-            throw new Error("Sentinel blocked execution");
-          }
-        } catch (err) {
-          await db.query(
-            `UPDATE execution_steps
-             SET status = 'failed', finished_at = NOW(), error = $2
-             WHERE id = $1`,
-            [stepId, err.message]
-          );
-
-          publishEvent(executionId, {
-            event: "execution_progress",
-            stepId,
-            step: stepInfo.name,
-            error: err.message,
-          });
-
-          throw err;
-        }
+/* ===============================
+   Retry Logic for Steps
+=============================== */
+async function runStepWithRetry(stepInfo, maxAttempts = 3) {
+  let attempt = 0;
+  let lastErr;
+  while (attempt < maxAttempts) {
+    try {
+      return await runStep(stepInfo);
+    } catch (err) {
+      lastErr = err;
+      attempt++;
+      if (attempt < maxAttempts) {
+        publishEvent(stepInfo.executionId, { event: "step_retry", step: stepInfo.name, attempt, error: err.message });
+        await new Promise(r => setTimeout(r, 1000));
       }
-    );
+    }
+  }
+  throw lastErr;
+}
 
-    // Finalize success
-    await db.query(
-      `UPDATE executions
-       SET status = 'completed', finished_at = NOW(), result = $2
-       WHERE id = $1`,
-      [executionId, JSON.stringify(result)]
-    );
-    publishEvent(executionId, { event: "execution_completed", result });
-  } catch (err) {
-    // Finalize failure
-    await db.query(
-      `UPDATE executions
-       SET status = 'failed', finished_at = NOW(), error = $2
-       WHERE id = $1`,
-      [executionId, err.message]
-    );
-    publishEvent(executionId, { event: "execution_failed", error: err.message });
-    throw err;
+/* ===============================
+   Pause/Resume Support
+=============================== */
+async function waitUntilResumed(executionId) {
+  while (true) {
+    const { rows } = await db.query(`SELECT status FROM executions WHERE id=$1`, [executionId]);
+    if (rows[0].status !== "paused") return;
+    await new Promise(r => setTimeout(r, 2000));
   }
 }
 
-/* 🔥 Real step runner */
+/* ===============================
+   Notifications + Audit
+=============================== */
+function notify(executionId, status, meta) {
+  console.log(`[Notify] Execution ${executionId} status=${status}`, meta);
+}
+async function auditLog(executionId, event, meta = {}) {
+  await db.query(
+    `INSERT INTO execution_audit (id, execution_id, event, meta, created_at)
+     VALUES ($1,$2,$3,$4,NOW())`,
+    [uuidv4(), executionId, event, JSON.stringify(meta)]
+  );
+}
+
+/* ===============================
+   Plugin Registry
+=============================== */
+const stepPlugins = new Map();
+export function registerStepPlugin(name, handler) {
+  stepPlugins.set(name, handler);
+}
+
+/* ===============================
+   Step Runner
+=============================== */
 async function runStep(stepInfo) {
+  if (stepPlugins.has(stepInfo.name)) {
+    return await stepPlugins.get(stepInfo.name)(stepInfo);
+  }
   switch (stepInfo.name) {
     case "fetchData": {
       const res = await fetch("https://api.github.com/repos/vercel/vercel");
       if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-      const data = await res.json();
-      return { data };
+      return { data: await res.json() };
     }
     case "processFile":
       return { processed: true, file: stepInfo.filePath || "unknown" };
@@ -259,8 +129,128 @@ async function runStep(stepInfo) {
       return { text: "AI-generated output" };
     case "analysis":
       return { text: stepInfo.payload?.text || "Default analysis output" };
+    case "ai_ml_inference": {
+      const res = await fetch("https://ml-service/api/infer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(stepInfo.payload),
+      });
+      if (!res.ok) throw new Error(`ML inference failed: ${res.status}`);
+      return await res.json();
+    }
     default:
       return { echo: stepInfo.payload || "no payload provided" };
+  }
+}
+
+/* ===============================
+   Main Execution Runner
+=============================== */
+export async function runExecution(executionId, payloadOverride = null) {
+  const { rows } = await db.query(
+    `SELECT e.id,e.goal_id,e.user_id,e.org_id,e.status,
+            g.goal_type,g.goal_payload,
+            u.subscription,u.role
+     FROM executions e
+     JOIN goals g ON g.id=e.goal_id
+     JOIN users u ON u.id=e.user_id
+     WHERE e.id=$1`,
+    [executionId]
+  );
+  if (!rows.length) throw new Error("Execution not found");
+  const execution = rows[0];
+
+  if (execution.goal_type === "sensitive" && execution.role !== "admin") {
+    throw new Error("Forbidden: insufficient role for sensitive goal type");
+  }
+  if (execution.subscription === "free") {
+    throw new Error("Upgrade required: Only subscribed users can run executions.");
+  }
+
+  let payload = payloadOverride ? { ...execution.goal_payload, ...payloadOverride } : execution.goal_payload;
+  payload = validatePayload(execution.goal_type, payload);
+
+  const start = Date.now();
+  try {
+    await db.query(`UPDATE executions SET status='running', started_at=NOW() WHERE id=$1`, [executionId]);
+    publishEvent(executionId, { event: "execution_started", goalType: execution.goal_type });
+    await auditLog(executionId, "started", { goalType: execution.goal_type });
+
+    let completedSteps = 0;
+
+    const result = await executeGoalLogic(execution.goal_type, payload, executionId, async (stepInfo) => {
+      const { rows: stepRows } = await db.query(
+        `INSERT INTO execution_steps (execution_id,user_id,org_id,name,status,started_at)
+         VALUES ($1,$2,$3,$4,'running',NOW()) RETURNING id`,
+        [executionId, execution.user_id, execution.org_id, stepInfo.name]
+      );
+      const stepId = stepRows[0].id;
+
+      try {
+        const rawOutput = await runStepWithRetry({ ...stepInfo, executionId }, 3);
+        const { valid, normalized, reason } = validateStepOutput(stepInfo, rawOutput);
+
+        if (!valid) {
+          publishEvent(executionId, { event: "execution_warning", stepId, step: stepInfo.name, reason, normalized });
+        }
+
+        await db.query(
+          `UPDATE execution_steps SET status='completed', finished_at=NOW(), output=$2 WHERE id=$1`,
+          [stepId, JSON.stringify(normalized)]
+        );
+
+        completedSteps++;
+        publishEvent(executionId, { event: "execution_progress", stepId, step: stepInfo.name, result: normalized, completedSteps });
+        await auditLog(executionId, "step_completed", { step: stepInfo.name });
+
+        const verdict = await runSentinel(executionId, stepInfo, normalized);
+        if (!verdict?.allowed) {
+          publishEvent(executionId, { event: "sentinel_blocked", stepId, reason: verdict?.reason, output: normalized });
+          throw new Error("Sentinel blocked execution");
+        }
+      } catch (err) {
+        await db.query(`UPDATE execution_steps SET status='failed', finished_at=NOW(), error=$2 WHERE id=$1`, [stepId, err.message]);
+        publishEvent(executionId, {
+          event: "execution_progress",
+          stepId,
+          step: stepInfo.name,
+          error: err.message,
+          hint: "Check payload format, network connectivity, or plugin configuration",
+          stack: err.stack,
+        });
+        await auditLog(executionId, "step_failed", { step: stepInfo.name, error: err.message });
+        throw err;
+      }
+    });
+
+        const duration = Date.now() - start;
+    await db.query(
+      `UPDATE executions
+       SET status='completed', finished_at=NOW(), result=$2, duration_ms=$3
+       WHERE id=$1`,
+      [executionId, JSON.stringify(result), duration]
+    );
+
+    publishEvent(executionId, { event: "execution_completed", result, duration });
+    notify(executionId, "completed", { duration });
+    await auditLog(executionId, "completed", { duration });
+  } catch (err) {
+    await db.query(
+      `UPDATE executions
+       SET status='failed', finished_at=NOW(), error=$2
+       WHERE id=$1`,
+      [executionId, err.message]
+    );
+
+    publishEvent(executionId, {
+      event: "execution_failed",
+      error: err.message,
+      hint: "Check payload format, network connectivity, or plugin configuration",
+      stack: err.stack,
+    });
+    notify(executionId, "failed", { error: err.message });
+    await auditLog(executionId, "failed", { error: err.message });
+    throw err;
   }
 }
 
