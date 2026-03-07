@@ -87,6 +87,8 @@ model Execution {
   goal         Goal       @relation(fields: [goal_id], references: [id])
   objective    Objective? @relation(fields: [objective_id], references: [id], onDelete: Restrict)
   user         User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  schedule    Json?    // or DateTime?, depending on your design
+
 
   @@map("executions")
 }
