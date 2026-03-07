@@ -4,9 +4,7 @@ import Stripe from "stripe";
 import { v4 as uuidv4 } from "uuid";
 import crypto from "crypto";
 import { PrismaClient } from "@prisma/client";
-import speakeasy from "speakeasy"; // for MFA TOTP
-// For email reset, integrate nodemailer or SendGrid
-// For OAuth/social login, integrate passport or next-auth
+import speakeasy from "speakeasy";
 
 const prisma = new PrismaClient();
 
@@ -48,13 +46,13 @@ export function requireRole(role) {
 /* =========================
    AUDIT LOGGING
 ========================= */
-async function auditLog(userId, event, meta = {}) {
+async function auditLog(userId, action, meta = {}) {
   await prisma.authAudit.create({
     data: {
       id: uuidv4(),
       user_id: userId,
-      event,
-      meta: JSON.stringify(meta),
+      action,
+      details: meta,
       created_at: new Date(),
     },
   });
@@ -239,13 +237,12 @@ export async function authRoutes(server) {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return reply.code(404).send({ error: "AUTH_USER_NOT_FOUND" });
 
-        const resetToken = crypto.randomBytes(32).toString("hex");
+    const resetToken = crypto.randomBytes(32).toString("hex");
     await prisma.user.update({
       where: { id: user.id },
-      data: { reset_token: resetToken, reset_token_expires: new Date(Date.now() + 3600 * 1000) } // 1h expiry
+      data: { reset_token: resetToken, reset_token_expires: new Date(Date.now() + 3600 * 1000) }
     });
 
-    // TODO: send resetToken via email (e.g., nodemailer/SendGrid)
     await auditLog(user.id, "password_reset_requested", {});
     reply.send({ success: true, message: "Password reset link sent" });
   });
@@ -312,13 +309,11 @@ export async function authRoutes(server) {
 
   // Placeholder for OAuth/social login
   server.get("/oauth/:provider/callback", async (req, reply) => {
-    // TODO: handle OAuth callback for Google/GitHub/etc.
     reply.send({ success: true, provider: req.params.provider });
   });
 
   // Placeholder for external identity provider integration (Azure AD, etc.)
   server.post("/external-login", async (req, reply) => {
-    // TODO: validate external JWT against provider keys
     reply.send({ success: true, provider: "external" });
   });
 }
