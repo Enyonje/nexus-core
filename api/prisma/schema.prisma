@@ -8,70 +8,51 @@ datasource db {
 }
 
 model User {
-  id            String   @id
-  email         String   @unique
-  password_hash String
-  name          String?
-  role          String   @default("user")
-  subscription  String   @default("free")
-  created_at    DateTime @default(now())
-
-  org_id        String?
-  organization  Organization? @relation(fields: [org_id], references: [id])
-  refresh_token String?
-
-  // 🔐 New security fields
-  failed_attempts     Int       @default(0)
-  locked_until        DateTime?
-  mfa_enabled         Boolean   @default(false)
+  id                  String        @id
+  email               String        @unique
+  password_hash       String
+  created_at          DateTime      @default(now())
+  org_id              String?
+  role                String        @default("user")
+  subscription        String        @default("free")
+  name                String?
+  refresh_token       String?
+  failed_attempts     Int           @default(0)
+  locked_until        DateTime?     @db.Timestamptz(6)
+  mfa_enabled         Boolean       @default(false)
   mfa_secret          String?
   reset_token         String?
-  reset_token_expires DateTime?
-
-  goals      Goal[]
-  executions Execution[]
-  audits     Audit[]
-  authAudits AuthAudit[] // 👈 opposite relation field
+  reset_token_expires DateTime?     @db.Timestamptz(6)
+  audits              Audit[]
+  executions          Execution[]
+  goals               Goal[]
+  organization        Organization? @relation(fields: [org_id], references: [id])
 
   @@map("users")
-}
-
-model AuthAudit {
-  id         String   @id @default(uuid())
-  user_id    String?
-  event      String
-  meta       Json?
-  created_at DateTime @default(now())
-
-  user User? @relation(fields: [user_id], references: [id])
-
-  @@map("auth_audit")
 }
 
 model Organization {
   id         String   @id
   name       String
   created_at DateTime @default(now())
-
-  users User[]
+  users      User[]
 
   @@map("organizations")
 }
 
 model Goal {
-  id          String   @id @default(uuid())
-  user_id     String
-  title       String
-  org_id      String?
-  description String?
-  status      String   @default("active")
-  goal_type   String?
-  created_at  DateTime @default(now())
-
+  id           String      @id @default(uuid())
+  user_id      String
+  title        String
+  description  String?
+  status       String      @default("active")
+  created_at   DateTime    @default(now())
+  goal_type    String?
+  goal_payload Json?
+  org_id       String?
+  executions   Execution[]
   user         User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
   objectives   Objective[]
-  executions   Execution[]
-  goal_payload Json?
 
   @@map("goals")
 }
@@ -84,30 +65,28 @@ model Objective {
   completed    Boolean     @default(false)
   created_at   DateTime    @default(now())
   goal_payload Json?
-  goal         Goal        @relation(fields: [goal_id], references: [id], onDelete: Cascade)
   executions   Execution[]
+  goal         Goal        @relation(fields: [goal_id], references: [id], onDelete: Cascade)
 
   @@map("objectives")
 }
 
 model Execution {
-  id           String    @id @default(uuid())
+  id           String     @id @default(uuid())
   user_id      String
   goal_id      String
-  objective_id String
+  objective_id String?
   action       String?
   details      Json?
-  created_at   DateTime  @default(now())
-  started_at   DateTime? // <-- Add this line
+  created_at   DateTime   @default(now())
+  started_at   DateTime?
   goal_type    String?
   org_id       String?
   version      Int?
-  status       String    @default("pending")
-
-  user User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  goal Goal? @relation(fields: [goal_id], references: [id])
-
-  objective Objective? @relation(fields: [objective_id], references: [id])
+  status       String     @default("pending")
+  goal         Goal       @relation(fields: [goal_id], references: [id])
+  objective    Objective? @relation(fields: [objective_id], references: [id], onDelete: Restrict)
+  user         User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@map("executions")
 }
@@ -118,8 +97,15 @@ model Audit {
   action     String
   details    Json?
   created_at DateTime @default(now())
-
-  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@map("audit")
+}
+
+model execution_audit {
+  id           String    @id @db.Uuid
+  execution_id String?   @db.Uuid
+  status       String?
+  meta         Json?
+  created_at   DateTime? @default(now()) @db.Timestamptz(6)
 }
