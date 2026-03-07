@@ -23,7 +23,7 @@ model User {
   mfa_secret          String?
   reset_token         String?
   reset_token_expires DateTime?     @db.Timestamptz(6)
-  audits              Audit[]
+  authAudits          AuthAudit[]
   executions          Execution[]
   goals               Goal[]
   organization        Organization? @relation(fields: [org_id], references: [id])
@@ -91,7 +91,7 @@ model Execution {
   @@map("executions")
 }
 
-model Audit {
+model AuthAudit {
   id         String   @id @default(uuid())
   user_id    String
   action     String
