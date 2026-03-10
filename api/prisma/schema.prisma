@@ -7,13 +7,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  user
+  admin
+  superadmin
+}
+
 model User {
-  id                  String        @id
+  id                  String        @id @default(uuid())
   email               String        @unique
   password_hash       String
   created_at          DateTime      @default(now())
   org_id              String?
-  role                String        @default("user")
+  role                Role          @default(user)   // 👈 enum instead of String
   subscription        String        @default("free")
   name                String?
   refresh_token       String?
@@ -23,6 +29,7 @@ model User {
   mfa_secret          String?
   reset_token         String?
   reset_token_expires DateTime?     @db.Timestamptz(6)
+
   authAudits          AuthAudit[]
   executions          Execution[]
   goals               Goal[]
