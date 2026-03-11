@@ -150,56 +150,71 @@ export async function executionsRoutes(app) {
   });
 
   /* RUN EXECUTION (with retry, resource tracking, notifications, audit) */
-  app.post("/:id/run", { preHandler: requireAuth }, async (req, reply) => {
-    try {
-      const userId = req.identity.sub;
-      const { id } = req.params;
+app.post("/:id/run", { preHandler: requireAuth }, async (req, reply) => {
+  try {
+    const userId = req.identity.sub;
+    const { id } = req.params;
 
-      const execRes = await app.pg.query(
-        `UPDATE executions
-         SET status = 'running',
-             started_at = COALESCE(started_at, NOW())
-         WHERE id = $1 AND user_id = $2
-         RETURNING *`,
-        [id, userId]
-      );
+    // Mark execution as running
+    const execRes = await app.pg.query(
+      `UPDATE executions
+       SET status = 'running',
+           started_at = COALESCE(started_at, NOW())
+       WHERE id = $1 AND user_id = $2
+       RETURNING *`,
+      [id, userId]
+    );
 
-      if (execRes.rows.length === 0) {
-        return reply.code(404).send({ error: "Execution not found or not owned by user" });
-      }
+    if (execRes.rows.length === 0) {
+      return reply.code(404).send({ error: "Execution not found or not owned by user" });
+    }
 
-      const payloadOverride = req.body || {};
-      const start = Date.now();
+    const payloadOverride = req.body || {};
+    const start = Date.now();
 
-      withRetry(runExecution, [id, payloadOverride])
-        .then(() => {
-          const duration = Date.now() - start;
-          app.pg.query(
-            `UPDATE executions SET duration_ms=$2, status='completed' WHERE id=$1`,
-            [id, duration]
-          );
-          publishEvent(id, { event: "execution_completed", duration });
-          notify(id, "completed", { duration });
-          auditLog(app, id, "completed", { duration });
-        })
-        .catch(err => {
-          req.log.error(err, "Runner failed after retries");
-          publishEvent(id, {
-            event: "execution_failed",
-            error: err.message,
-            hint: "Check payload format or network connectivity",
-            stack: err.stack
-          });
-          notify(id, "failed", { error: err.message });
-          auditLog(app, id, "failed", { error: err.message });
+    // Run with retry logic
+    withRetry(runExecution, [id, payloadOverride])
+      .then(() => {
+        const duration = Date.now() - start;
+        app.pg.query(
+          `UPDATE executions SET duration_ms=$2, status='completed' WHERE id=$1`,
+          [id, duration]
+        );
+
+        // Publish cluster‑wide event
+        publishEvent(id, { event: "execution_completed", duration });
+
+        // Notify user
+        notify(id, "completed", { duration });
+
+        // Audit log
+        auditLog(app, id, "completed", { duration });
+      })
+      .catch(err => {
+        req.log.error(err, "Runner failed after retries");
+
+        app.pg.query(
+          `UPDATE executions SET status='failed' WHERE id=$1`,
+          [id]
+        );
+
+        publishEvent(id, {
+          event: "execution_failed",
+          error: err.message,
+          hint: "Check payload format or network connectivity",
+          stack: err.stack
         });
 
-      return execRes.rows[0];
-    } catch (err) {
-      req.log.error(err, "Failed to run execution");
-      return reply.code(500).send({ error: "Failed to run execution" });
-    }
-  });
+        notify(id, "failed", { error: err.message });
+        auditLog(app, id, "failed", { error: err.message });
+      });
+
+    return execRes.rows[0];
+  } catch (err) {
+    req.log.error(err, "Failed to run execution");
+    return reply.code(500).send({ error: "Failed to run execution" });
+  }
+});
 
   /* PAUSE / RESUME */
   app.post("/:id/pause", { preHandler: requireAuth }, async (req, reply) => {
