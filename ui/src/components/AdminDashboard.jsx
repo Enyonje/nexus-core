@@ -81,12 +81,12 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {usage.users.map((u) => (
-                    <tr key={u.id} className="hover:bg-white/[0.01] transition-colors group">
+                    <tr key={String(u.id)} className="hover:bg-white/[0.01] transition-colors group">
                       <td className="p-5">
                         <p className="text-sm font-bold text-slate-200">{u.email}</p>
                         {/* 🛡️ FIX: String conversion for safe slicing */}
                         <p className="text-[9px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">
-                          ID: {String(u.id || "").slice(0, 8)}
+                          ID: {typeof u.id === "string" ? u.id.slice(0, 8) : String(u.id || "").slice(0, 8)}
                         </p>
                       </td>
                       <td className="p-5">
@@ -116,13 +116,13 @@ export default function AdminDashboard() {
               </div>
             ) : (
               executions.map((e) => (
-                <div key={e.id} className="bg-slate-900/40 border border-white/5 p-6 rounded-2xl flex flex-col md:flex-row items-center justify-between hover:border-red-500/30 transition-all group">
+                <div key={String(e.id)} className="bg-slate-900/40 border border-white/5 p-6 rounded-2xl flex flex-col md:flex-row items-center justify-between hover:border-red-500/30 transition-all group">
                   <div className="flex items-center gap-6">
                     <div className={`w-2 h-2 rounded-full ${e.status === 'RUNNING' ? 'bg-blue-500 animate-pulse' : 'bg-slate-700'}`} />
                     <div>
                       {/* 🛡️ FIX: String conversion for safe slicing */}
                       <h4 className="text-sm font-black text-white tracking-tight uppercase">
-                        NODE_{String(e.id || "").slice(0, 8)}
+                        NODE_{typeof e.id === "string" ? e.id.slice(0, 8) : String(e.id || "").slice(0, 8)}
                       </h4>
                       <p className="text-[10px] font-mono text-slate-500 mt-1 uppercase">
                         INIT: {formatDate(e.started_at)} {e.finished_at && `// TERM: ${formatDate(e.finished_at)}`}
