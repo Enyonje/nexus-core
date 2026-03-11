@@ -20,7 +20,8 @@ export default function Dashboard() {
       .then(([healthRes, goalsRes, execs]) => {
         setHealth(healthRes);
         setGoals(goalsRes || []);
-        setExecutions(execs || []);
+        // Ensure executions is always an array
+        setExecutions(Array.isArray(execs) ? execs : []);
       })
       .finally(() => setLoading(false));
   }, [subscription]);
