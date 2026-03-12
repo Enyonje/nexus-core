@@ -13,7 +13,8 @@ export async function streamRoutes(server) {
           return reply.code(400).send({ error: "executionId is required" });
         }
 
-        registerClient(Number(executionId), reply);
+        // Register SSE client (keep executionId as string)
+        registerClient(executionId, reply);
 
         reply.raw.on("close", () => {
           server.log.info(`Stream closed for execution ${executionId}`);
