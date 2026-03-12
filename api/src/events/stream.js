@@ -1,10 +1,11 @@
 // events/stream.js
 import Redis from "ioredis";
+import { v4 as uuidv4 } from "uuid";
 
 // Local map of executionId -> Set of SSE reply objects
 const clients = new Map();
 
-// Redis connections
+// Redis connection options (TLS for rediss://)
 const redisOptions = {};
 if (process.env.REDIS_URL?.startsWith("rediss://")) {
   redisOptions.tls = { rejectUnauthorized: false };
@@ -22,7 +23,7 @@ redisSubscriber.subscribe("stream-events", (err) => {
   }
 });
 
-// When a message arrives from Redis, broadcast to local clients
+// Handle incoming events from Redis and broadcast locally
 redisSubscriber.on("message", (channel, message) => {
   if (channel !== "stream-events") return;
   try {
@@ -81,6 +82,8 @@ export function emitEvent(executionId, payload) {
   if (!listeners) return;
 
   const enriched = {
+    id: uuidv4(),
+    ts: Date.now(),
     event: payload.event,
     executionId,
     ...payload,
@@ -102,6 +105,8 @@ export function emitEvent(executionId, payload) {
 export function broadcastEvent(payload) {
   for (const [executionId, listeners] of clients.entries()) {
     const enriched = {
+      id: uuidv4(),
+      ts: Date.now(),
       event: payload.event,
       executionId,
       ...payload,
