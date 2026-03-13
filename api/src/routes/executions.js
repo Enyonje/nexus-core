@@ -298,6 +298,28 @@ export async function executionsRoutes(app) {
     }
   });
 
+  /* GET EXECUTION BY ID */
+app.get("/:id", { preHandler: requireAuth }, async (req, reply) => {
+  try {
+    const { id } = req.params;
+    const userId = req.identity.sub;
+
+    const { rows } = await app.pg.query(
+      `SELECT * FROM executions WHERE id=$1 AND user_id=$2`,
+      [id, userId]
+    );
+
+    if (!rows.length) {
+      return reply.code(404).send({ error: "Execution not found or not owned by user" });
+    }
+
+    return rows[0];
+  } catch (err) {
+    req.log.error(err, "Failed to fetch execution");
+    return reply.code(500).send({ error: "Failed to fetch execution" });
+  }
+});
+
   /* ===============================
      ADMIN OVERRIDE DASHBOARD
   =============================== */
