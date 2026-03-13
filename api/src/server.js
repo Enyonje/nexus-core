@@ -12,7 +12,7 @@ import { executionsRoutes } from "./routes/executions.js";
 import { auditRoutes } from "./routes/audit.js";
 import { billingRoutes } from "./routes/billing.js";
 import { paymentsRoutes } from "./routes/payments.js";
-import { streamRoutes } from "./routes/streams.js"; // note plural
+import { streamRoutes } from "./routes/stream.js"; // note plural
 import { stripeRoutes } from "./routes/stripe.js";
 
 const app = Fastify({
