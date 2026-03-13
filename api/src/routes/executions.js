@@ -114,12 +114,12 @@ export async function executionsRoutes(app) {
     }
   });
 
-  /* CREATE EXECUTION (supports schedule) */
+  /* CREATE EXECUTION (supports schedule/recurring) */
   app.post("/", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.identity.sub;
       const orgId = req.identity.org_id;
-      const { goalId, schedule } = req.body;
+      const { goalId, schedule, recurring } = req.body;
       if (!goalId) return reply.code(400).send({ error: "goalId is required" });
 
       const goalRes = await app.pg.query(
@@ -135,12 +135,18 @@ export async function executionsRoutes(app) {
 
       const execRes = await app.pg.query(
         `INSERT INTO executions (
-           id, goal_id, goal_type, user_id, org_id, version, status, started_at, schedule
+           id, goal_id, goal_type, user_id, org_id, version, status, started_at, schedule, recurring
          )
-         VALUES ($1, $2, $3, $4, $5, 1, 'pending', NOW(), $6)
+         VALUES ($1, $2, $3, $4, $5, 1, 'pending', NOW(), $6, $7)
          RETURNING *`,
-        [executionId, goal.id, goal.goal_type, userId, orgId, schedule || null]
+        [executionId, goal.id, goal.goal_type, userId, orgId, schedule || null, recurring || false]
       );
+
+      if (schedule) {
+        cron.schedule(schedule, () => {
+          runExecution(executionId, {});
+        });
+      }
 
       return reply.code(201).send(execRes.rows[0]);
     } catch (err) {
@@ -149,72 +155,66 @@ export async function executionsRoutes(app) {
     }
   });
 
-  /* RUN EXECUTION (with retry, resource tracking, notifications, audit) */
-app.post("/:id/run", { preHandler: requireAuth }, async (req, reply) => {
-  try {
-    const userId = req.identity.sub;
-    const { id } = req.params;
+  /* RUN EXECUTION */
+  app.post("/:id/run", { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      const userId = req.identity.sub;
+      const { id } = req.params;
 
-    // Mark execution as running
-    const execRes = await app.pg.query(
-      `UPDATE executions
-       SET status = 'running',
-           started_at = COALESCE(started_at, NOW())
-       WHERE id = $1 AND user_id = $2
-       RETURNING *`,
-      [id, userId]
-    );
+      const execRes = await app.pg.query(
+        `UPDATE executions
+         SET status = 'running',
+             started_at = COALESCE(started_at, NOW())
+         WHERE id = $1 AND user_id = $2
+         RETURNING *`,
+        [id, userId]
+      );
 
-    if (execRes.rows.length === 0) {
-      return reply.code(404).send({ error: "Execution not found or not owned by user" });
-    }
+      if (execRes.rows.length === 0) {
+        return reply.code(404).send({ error: "Execution not found or not owned by user" });
+      }
 
-    const payloadOverride = req.body || {};
-    const start = Date.now();
+      const payloadOverride = req.body || {};
+      const start = Date.now();
 
-    // Run with retry logic
-    withRetry(runExecution, [id, payloadOverride])
-      .then(() => {
-        const duration = Date.now() - start;
-        app.pg.query(
-          `UPDATE executions SET duration_ms=$2, status='completed' WHERE id=$1`,
-          [id, duration]
-        );
+      withRetry(runExecution, [id, payloadOverride])
+        .then(() => {
+          const duration = Date.now() - start;
+          app.pg.query(
+            `UPDATE executions SET duration_ms=$2, status='completed' WHERE id=$1`,
+            [id, duration]
+          );
 
-        // Publish cluster‑wide event
-        publishEvent(id, { event: "execution_completed", duration });
+          publishEvent(id, { event: "execution_completed", duration });
+          notify(id, "completed", { duration });
+          auditLog(app, id, "completed", { duration });
 
-        // Notify user
-        notify(id, "completed", { duration });
-
-        // Audit log
-        auditLog(app, id, "completed", { duration });
-      })
-      .catch(err => {
-        req.log.error(err, "Runner failed after retries");
-
-        app.pg.query(
-          `UPDATE executions SET status='failed' WHERE id=$1`,
-          [id]
-        );
-
-        publishEvent(id, {
-          event: "execution_failed",
-          error: err.message,
-          hint: "Check payload format or network connectivity",
-          stack: err.stack
+          for (const [name, handler] of plugins.entries()) {
+            handler({ id, status: "completed", duration });
+          }
+        })
+        .catch(err => {
+          req.log.error(err, "Runner failed after retries");
+          app.pg.query(
+            `UPDATE executions SET status='failed' WHERE id=$1`,
+            [id]
+          );
+          publishEvent(id, {
+            event: "execution_failed",
+            error: err.message,
+            hint: "Check payload format or network connectivity",
+            stack: err.stack
+          });
+          notify(id, "failed", { error: err.message });
+          auditLog(app, id, "failed", { error: err.message });
         });
 
-        notify(id, "failed", { error: err.message });
-        auditLog(app, id, "failed", { error: err.message });
-      });
-
-    return execRes.rows[0];
-  } catch (err) {
-    req.log.error(err, "Failed to run execution");
-    return reply.code(500).send({ error: "Failed to run execution" });
-  }
-});
+      return execRes.rows[0];
+    } catch (err) {
+      req.log.error(err, "Failed to run execution");
+      return reply.code(500).send({ error: "Failed to run execution" });
+    }
+  });
 
   /* PAUSE / RESUME */
   app.post("/:id/pause", { preHandler: requireAuth }, async (req, reply) => {
@@ -236,8 +236,6 @@ app.post("/:id/run", { preHandler: requireAuth }, async (req, reply) => {
   /* STREAM EXECUTION EVENTS (SSE) */
   app.get("/:id/stream", { preHandler: requireAuth }, async (req, reply) => {
     const { id } = req.params;
-    const userId = req.identity.sub;
-
     const origin = req.headers.origin;
     if (origin === "https://nexus-core-chi.vercel.app" || origin?.startsWith("http://localhost")) {
       reply.raw.setHeader("Access-Control-Allow-Origin", origin);
@@ -255,7 +253,7 @@ app.post("/:id/run", { preHandler: requireAuth }, async (req, reply) => {
     };
 
     if (!subscribers.has(id)) subscribers.set(id, new Set());
-    subscribers.get(id).add(cb);
+        subscribers.get(id).add(cb);
 
     cb({ event: "connected", executionId: id });
 
@@ -270,7 +268,7 @@ app.post("/:id/run", { preHandler: requireAuth }, async (req, reply) => {
   app.get("/api/executions/:id/logs", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.identity.sub;
-            const { id } = req.params;
+      const { id } = req.params;
 
       // Verify execution belongs to user
       const execRes = await app.pg.query(
@@ -346,18 +344,3 @@ app.post("/:id/run", { preHandler: requireAuth }, async (req, reply) => {
     }
   });
 }
-
-/* ===============================
-   Recommendations for Advanced Features
-=============================== */
-// all done
-// 1. Add execution retry logic for transient failures.
-// 2. Support scheduled and recurring executions.
-// 3. Integrate notifications (email/webhook) for execution status.
-// 4. Add audit logging and analytics for executions.
-// 5. Allow custom execution plugins for extensibility.
-// 6. Track resource usage and execution time for billing/analytics.
-// 7. Add role-based access control for sensitive executions.
-// 8. Support pausing/resuming executions for long-running tasks.
-// 9. Provide detailed error reporting and troubleshooting hints.
-// 10. Enable execution output streaming to UI for real-time feedback.
