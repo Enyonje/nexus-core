@@ -12,7 +12,7 @@ import { executionsRoutes } from "./routes/executions.js";
 import { auditRoutes } from "./routes/audit.js";
 import { billingRoutes } from "./routes/billing.js";
 import { paymentsRoutes } from "./routes/payments.js";
-import { streamRoutes } from "./routes/stream.js";
+import { streamRoutes } from "./routes/streams.js"; // note plural
 import { stripeRoutes } from "./routes/stripe.js";
 
 const app = Fastify({
@@ -20,7 +20,7 @@ const app = Fastify({
   bodyLimit: 1048576, // 1MB
 });
 
-// Register plugins
+// Plugins
 await app.register(cookie, {
   secret: process.env.COOKIE_SECRET || "cookie_secret",
   parseOptions: {},
@@ -62,7 +62,7 @@ await app.register(fastifyJwt, {
   secret: process.env.JWT_SECRET || "super-secret-key",
 });
 
-// Register routes
+// Routes — all under /api
 app.register(authRoutes, { prefix: "/api/auth" });
 app.register(goalsRoutes, { prefix: "/api/goals" });
 app.register(adminRoutes, { prefix: "/api/admin" });
@@ -71,7 +71,7 @@ app.register(auditRoutes, { prefix: "/api/audit" });
 app.register(billingRoutes, { prefix: "/api/billing" });
 app.register(paymentsRoutes, { prefix: "/api/payments" });
 app.register(streamRoutes, { prefix: "/api/stream" });
-app.register(stripeRoutes, { prefix: "/api" });
+app.register(stripeRoutes, { prefix: "/api/stripe" });
 
 // Health check
 app.get("/api/health", async () => {
@@ -87,6 +87,11 @@ app.setErrorHandler((error, request, reply) => {
   reply.code(error.statusCode || 500).send({
     error: error.message || "Internal Server Error",
   });
+});
+
+// Debug: print all registered routes
+app.ready().then(() => {
+  console.log(app.printRoutes());
 });
 
 // Start server
