@@ -7,19 +7,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  user
-  admin
-  superadmin
-}
-
 model User {
   id                  String        @id @default(uuid())
   email               String        @unique
   password_hash       String
   created_at          DateTime      @default(now())
   org_id              String?
-  role                Role          @default(user)   // 👈 enum instead of String
+  role                String        @default("user")
   subscription        String        @default("free")
   name                String?
   refresh_token       String?
@@ -29,7 +23,6 @@ model User {
   mfa_secret          String?
   reset_token         String?
   reset_token_expires DateTime?     @db.Timestamptz(6)
-
   authAudits          AuthAudit[]
   executions          Execution[]
   goals               Goal[]
@@ -91,11 +84,10 @@ model Execution {
   org_id       String?
   version      Int?
   status       String     @default("pending")
+  schedule     Json?
   goal         Goal       @relation(fields: [goal_id], references: [id])
   objective    Objective? @relation(fields: [objective_id], references: [id], onDelete: Restrict)
   user         User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  schedule    Json?    // or DateTime?, depending on your design
-
 
   @@map("executions")
 }

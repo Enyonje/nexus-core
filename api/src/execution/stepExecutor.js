@@ -1,4 +1,3 @@
-// src/execution/stepExecutor.js
 import { publishEvent } from "../routes/executions.js";
 import { db } from "../db/db.js";
 import fetch from "node-fetch";
@@ -14,9 +13,40 @@ function getOpenAIClient() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
+/* ===============================
+   Plugin Registry for custom steps
+=============================== */
+const stepPlugins = new Map();
+export function registerStepPlugin(name, handler) {
+  stepPlugins.set(name, handler);
+}
+
+/* ===============================
+   Retry Helper for steps
+=============================== */
+async function withRetry(fn, args, retries = 3, delay = 2000) {
+  let lastErr;
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn(...args);
+    } catch (err) {
+      lastErr = err;
+      if (/timeout|ECONNRESET|rate limit/i.test(err.message)) {
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
+/* ===============================
+   Execute Step
+=============================== */
 export async function executeStep(executionId, step) {
   try {
-    // Mark step as started in DB
+    // Mark step as started
     await db.query(
       `UPDATE execution_steps 
        SET status = 'running', started_at = NOW() 
@@ -30,8 +60,13 @@ export async function executeStep(executionId, step) {
       stepType: step.step_type,
     });
 
-    // Run the step based on type
-    const result = await runStep(step);
+    // Run with retry + timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), step.timeout_ms || 60000);
+
+    const result = await withRetry(runStep, [step, controller]);
+
+    clearTimeout(timeout);
 
     // Mark step as completed
     await db.query(
@@ -47,9 +82,15 @@ export async function executeStep(executionId, step) {
       output: result,
     });
 
+    // Audit logging
+    await db.query(
+      `INSERT INTO step_audit (id, execution_id, step_id, status, meta, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())`,
+      [uuidv4(), executionId, step.id, "completed", JSON.stringify(result)]
+    );
+
     return result;
   } catch (err) {
-    // Mark step as failed
     await db.query(
       `UPDATE execution_steps 
        SET status = 'failed', finished_at = NOW(), error = $2 
@@ -61,6 +102,8 @@ export async function executeStep(executionId, step) {
       event: "execution_step_failed",
       stepId: step.id,
       error: err.message,
+      hint: "Check payload format, network connectivity, or plugin configuration",
+      stack: err.stack,
     });
 
     throw err;
@@ -70,10 +113,30 @@ export async function executeStep(executionId, step) {
 /* =========================
    STEP LOGIC HANDLERS
 ========================= */
-async function runStep(step) {
+async function runStep(step, controller) {
+  // RBAC check for sensitive step types
+  if (step.step_type === "sensitive" && step.role_required && step.role_required !== SYSTEM_IDENTITY.role) {
+    throw new Error(`Role ${step.role_required} required for step ${step.id}`);
+  }
+
+  // Conditional branching
+  if (step.condition && !evaluateCondition(step.condition)) {
+    return { skipped: true, reason: "Condition not met" };
+  }
+
+  // Dependencies
+  if (step.depends_on && !(await checkDependency(step.depends_on))) {
+    return { skipped: true, reason: "Dependency not satisfied" };
+  }
+
+  // Plugin support
+  if (stepPlugins.has(step.step_type)) {
+    return stepPlugins.get(step.step_type)(step);
+  }
+
   switch (step.step_type) {
     case "http_request":
-      return runHttpStep(step);
+      return runHttpStep(step, controller);
     case "ai_analysis":
       return runAiStep(step, "You are an expert analyst.");
     case "ai_summary":
@@ -85,11 +148,11 @@ async function runStep(step) {
   }
 }
 
-async function runHttpStep(step) {
+async function runHttpStep(step, controller) {
   const { url, method = "GET", headers = {}, body } = step.payload || {};
   if (!url) throw new Error("Missing URL in http_request step");
 
-  const res = await fetch(url, { method, headers, body });
+  const res = await fetch(url, { method, headers, body, signal: controller.signal });
   const reader = res.body.getReader();
   let text = "";
 
@@ -99,7 +162,6 @@ async function runHttpStep(step) {
     const chunk = new TextDecoder().decode(value);
     text += chunk;
 
-    // Publish streaming progress
     publishEvent(step.execution_id, {
       event: "execution_step_progress",
       stepId: step.id,
@@ -129,7 +191,6 @@ async function runAiStep(step, systemPrompt) {
     if (!delta) continue;
     text += delta;
 
-    // Publish streaming progress
     publishEvent(step.execution_id, {
       event: "execution_step_progress",
       stepId: step.id,
@@ -149,7 +210,6 @@ async function runAutomationStep(step) {
     const result = { step: i + 1, name: step.payload.tasks[i], status: "done" };
     results.push(result);
 
-    // Publish incremental progress
     publishEvent(step.execution_id, {
       event: "execution_step_progress",
       stepId: step.id,
@@ -157,6 +217,23 @@ async function runAutomationStep(step) {
     });
   }
   return results;
+}
+
+/* =========================
+   Helpers
+========================= */
+function evaluateCondition(condition) {
+  // Simple evaluator stub
+  return condition === true;
+}
+
+async function checkDependency(depId) {
+  const { rows } = await db.query(
+    `SELECT status FROM execution_steps WHERE id=$1`,
+    [depId]
+  );
+  return rows.length && rows[0].status === "completed";
+}
 }
 
 /* =========================
