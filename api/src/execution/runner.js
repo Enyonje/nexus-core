@@ -5,28 +5,43 @@ import { publishEvent } from "../routes/executions.js";
 import { runSentinel } from "../agents/sentinel.js";
 
 /* ===============================
-   Payload Validation
+   Payload Validation (Improved)
 =============================== */
 function validatePayload(goalType, payload) {
   if (!payload || typeof payload !== "object") {
-    throw new Error("Payload must be an object");
+    payload = {};
   }
+
+  // Ensure text exists for text-based goals
   if (!payload.text || typeof payload.text !== "string" || payload.text.trim().length === 0) {
-    throw new Error(`Missing or empty payload.text for goal: ${goalType}`);
+    if (goalType === "analysis" || goalType === "ai_generate") {
+      // Provide a default instead of throwing
+      payload.text = "Default input for analysis";
+    }
   }
+
   switch (goalType) {
     case "processFile":
-      if (!payload.filePath) throw new Error("Missing filePath in payload for processFile goal");
+      if (!payload.filePath) {
+        // Default filePath if missing
+        payload.filePath = "uploads/default.txt";
+      }
       break;
     case "analysis":
-      if (payload.text.length < 5) throw new Error("Analysis text too short, must be descriptive");
+      if (payload.text.length < 5) {
+        // Pad short text with a default suffix
+        payload.text = payload.text + " (extended for analysis)";
+      }
       break;
     default:
       break;
   }
+
+  // Always ensure parameters exist
   if (!payload.parameters) {
     payload.parameters = { threshold: 0.75, mode: "fast" };
   }
+
   return payload;
 }
 

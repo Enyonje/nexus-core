@@ -85,6 +85,8 @@ model Execution {
   version      Int?
   status       String     @default("pending")
   schedule     Json?
+   goal_payload Json       @default("{}")
+
   goal         Goal       @relation(fields: [goal_id], references: [id])
   objective    Objective? @relation(fields: [objective_id], references: [id], onDelete: Restrict)
   user         User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
