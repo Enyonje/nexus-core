@@ -87,7 +87,8 @@ model Execution {
   schedule     Json?
   finished_at  DateTime?   
   duration_ms  Int?        
-  result       Json?       
+  result       Json? 
+  error        String?      
 
    goal_payload Json       @default("{}")
 
