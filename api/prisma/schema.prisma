@@ -8,25 +8,27 @@ datasource db {
 }
 
 model User {
-  id                  String        @id @default(uuid())
-  email               String        @unique
+  id                  String    @id @default(uuid())
+  email               String    @unique
   password_hash       String
-  created_at          DateTime      @default(now())
+  created_at          DateTime  @default(now())
   org_id              String?
-  role                String        @default("user")
-  subscription        String        @default("free")
+  role                String    @default("user")
+  subscription        String    @default("free")
   name                String?
   refresh_token       String?
-  failed_attempts     Int           @default(0)
-  locked_until        DateTime?     @db.Timestamptz(6)
-  mfa_enabled         Boolean       @default(false)
+  failed_attempts     Int       @default(0)
+  locked_until        DateTime? @db.Timestamptz(6)
+  mfa_enabled         Boolean   @default(false)
   mfa_secret          String?
   reset_token         String?
-  reset_token_expires DateTime?     @db.Timestamptz(6)
-  authAudits          AuthAudit[]
-  executions          Execution[]
-  goals               Goal[]
-  organization        Organization? @relation(fields: [org_id], references: [id])
+  reset_token_expires DateTime? @db.Timestamptz(6)
+
+  authAudits   AuthAudit[]
+  executions   Execution[]
+  goals        Goal[]
+  steps        ExecutionStep[] // opposite side of relation
+  organization Organization?   @relation(fields: [org_id], references: [id])
 
   @@map("users")
 }
@@ -72,31 +74,51 @@ model Objective {
 }
 
 model Execution {
-  id           String     @id @default(uuid())
+  id           String    @id @default(uuid())
   user_id      String
   goal_id      String
   objective_id String?
   action       String?
   details      Json?
-  created_at   DateTime   @default(now())
+  created_at   DateTime  @default(now())
   started_at   DateTime?
+  finished_at  DateTime?
+  duration_ms  Int?
+  result       Json?
+  error        String?
   goal_type    String?
   org_id       String?
   version      Int?
-  status       String     @default("pending")
+  status       String    @default("pending")
   schedule     Json?
-  finished_at  DateTime?   
-  duration_ms  Int?        
-  result       Json? 
-  error        String?      
+  goal_payload Json      @default("{}")
 
-   goal_payload Json       @default("{}")
+  goal      Goal       @relation(fields: [goal_id], references: [id])
+  objective Objective? @relation(fields: [objective_id], references: [id], onDelete: Restrict)
+  user      User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  goal         Goal       @relation(fields: [goal_id], references: [id])
-  objective    Objective? @relation(fields: [objective_id], references: [id], onDelete: Restrict)
-  user         User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  steps  ExecutionStep[]
+  audits ExecutionAudit[]
 
   @@map("executions")
+}
+
+model ExecutionStep {
+  id           String    @id @default(uuid())
+  execution_id String
+  user_id      String
+  org_id       String?
+  name         String
+  status       String
+  started_at   DateTime  @default(now())
+  finished_at  DateTime?
+  output       Json?
+  error        String?
+
+  execution Execution @relation(fields: [execution_id], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("execution_steps")
 }
 
 model AuthAudit {
@@ -110,10 +132,15 @@ model AuthAudit {
   @@map("audit")
 }
 
-model execution_audit {
-  id           String    @id @db.Uuid
-  execution_id String?   @db.Uuid
-  status       String?
+model ExecutionAudit {
+  id           String   @id @default(uuid())
+  execution_id String
+  event        String   @default("unknown")
+  status       String? // keep if DB already has it
   meta         Json?
-  created_at   DateTime? @default(now()) @db.Timestamptz(6)
+  created_at   DateTime @default(now())
+
+  execution Execution @relation(fields: [execution_id], references: [id], onDelete: Cascade)
+
+  @@map("execution_audit")
 }
