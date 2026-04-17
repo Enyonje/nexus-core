@@ -30,6 +30,7 @@ await app.register(cors, {
   origin: (origin, cb) => {
     const allowedOrigins = [
       "https://nexus-core-chi.vercel.app",
+      "https://nexusthecore.com",	
       "http://localhost:3000",
       "http://localhost:5173",
     ];
