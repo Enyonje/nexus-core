@@ -8,13 +8,15 @@ import CareersPage from './components/CareersPage.jsx';
 import ContactPage from "./components/ContactPage.jsx";
 import ArchitecturePage from "./components/ArchitecturePage.jsx";
 import Layout from "./components/Layout.jsx";
+import ExecutionLogsStreamModal from "./components/ExecutionLogsStreamModal.jsx";
 import DocsPage from "./components/DocsPage.jsx";
+import AuditPage from "./components/AuditPage.jsx"; // Found it!
 import Dashboard from "./components/Dashboard.jsx";
 import ExecutionList from "./components/ExecutionList.jsx";
 import ExecutionDetail from "./components/ExecutionDetail.jsx";
 import Subscription from "./components/Subscription.jsx";
 import Goals from "./components/Goals.jsx";
-import ExecutionLogsStreamModal from "./components/ExecutionLogsStreamModal.jsx";
+import StreamPage from "./components/StreamPage.jsx"; // Integrated
 import Login from "./components/Login.jsx";
 import Register from "./components/Register.jsx";
 import ForgotPassword from "./components/ForgotPassword.jsx";
@@ -26,12 +28,13 @@ import AdminDashboard from "./components/AdminDashboard.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { lightTheme, darkTheme } from "./theme";
 import { AuthProvider } from "./context/AuthProvider.jsx";
-import { ToastProvider } from "./components/ToastContext.jsx"; // Ensure this matches your file structure
+import { ToastProvider } from "./components/ToastContext.jsx";
 
 export default function App() {
-  const [isDark, setIsDark] = useState(true); // Defaulting to dark for that "Neural" feel
+  const [isDark, setIsDark] = useState(true);
   const theme = isDark ? darkTheme : lightTheme;
 
+  // This state powers the "Quick View" modal from any page
   const [selectedExecutionId, setSelectedExecutionId] = useState(null);
 
   return (
@@ -46,7 +49,6 @@ export default function App() {
             color: theme.colors.text.primary,
           }}
         >
-          {/* Global UI Elements */}
           <Navbar
             onToggleTheme={() => setIsDark(!isDark)}
             isDark={isDark}
@@ -65,9 +67,7 @@ export default function App() {
           />
 
           <Routes>
-            {/* =======================
-                PUBLIC ROUTES
-            ======================= */}
+            {/* PUBLIC SECTOR */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/docs" element={<DocsPage />} />
             <Route path="/architecture" element={<ArchitecturePage />} />
@@ -78,9 +78,7 @@ export default function App() {
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
 
-            {/* =======================
-                PROTECTED APP SHELL (Standard User)
-            ======================= */}
+            {/* PROTECTED SECTOR: OPERATIONAL SHELL */}
             <Route
               element={
                 <ProtectedRoute allowed={["free", "pro", "enterprise", "admin"]}>
@@ -92,7 +90,7 @@ export default function App() {
               <Route path="/goals" element={<Goals />} />
               <Route path="/subscription" element={<Subscription />} />
               
-              {/* Premium Features */}
+              {/* OPERATIONAL TRACING: PRO+ FEATURES */}
               <Route
                 path="/executions"
                 element={
@@ -109,11 +107,29 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+
+              {/* LIVE STREAM SECTOR */}
+              <Route
+                path="/stream/:executionId"
+                element={
+                  <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
+                    <StreamPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* FORENSIC AUDIT SECTOR */}
+              <Route
+                path="/audit/:executionId"
+                element={
+                  <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
+                    <AuditPage />
+                  </ProtectedRoute>
+                }
+              />
             </Route>
 
-            {/* =======================
-                ADMIN SPECIFIC ROUTES
-            ======================= */}
+            {/* COMMAND SECTOR: ADMIN ONLY */}
             <Route
               path="/admin"
               element={
@@ -123,15 +139,10 @@ export default function App() {
               }
             />
 
-            {/* =======================
-                FALLBACK
-            ======================= */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
 
-          {/* =======================
-              GLOBAL MODALS
-          ======================= */}
+          {/* GLOBAL OVERLAYS */}
           {selectedExecutionId && (
             <ExecutionLogsStreamModal
               executionId={selectedExecutionId}
