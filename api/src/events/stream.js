@@ -42,13 +42,28 @@ redisSubscriber.on("message", (channel, message) => {
  * Register SSE client for a given executionId
  */
 export function registerClient(executionId, reply) {
+  const origin = reply.request?.headers?.origin;
+  const allowedOrigins = [
+    "https://nexusthecore.com",
+    "https://nexus-core-chi.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:5173",
+  ];
+
+  if (origin && !allowedOrigins.includes(origin)) {
+    reply.code(403).send({ error: "Origin not allowed" });
+    return;
+  }
+
   reply.raw.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive",
+    "Connection": "keep-alive",
+    "Access-Control-Allow-Origin": origin || "*",
+    "Access-Control-Allow-Credentials": "true",
   });
 
-  // Flush headers immediately (important for proxies)
+  // Flush headers immediately
   if (typeof reply.raw.flushHeaders === "function") {
     reply.raw.flushHeaders();
   }
