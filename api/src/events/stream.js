@@ -50,11 +50,13 @@ export function registerClient(executionId, reply) {
     "http://localhost:5173",
   ];
 
+  // Reject if origin not allowed
   if (origin && !allowedOrigins.includes(origin)) {
     reply.code(403).send({ error: "Origin not allowed" });
     return;
   }
 
+  // Explicit CORS headers for SSE
   reply.raw.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
@@ -68,7 +70,7 @@ export function registerClient(executionId, reply) {
     reply.raw.flushHeaders();
   }
 
-  // Initial ping so client knows stream is alive
+  // Initial ping
   reply.raw.write(":\n\n");
 
   if (!clients.has(executionId)) {
@@ -98,7 +100,7 @@ export function registerClient(executionId, reply) {
 }
 
 /**
- * Emit event to all listeners for a specific execution (local only)
+ * Emit event to all listeners for a specific execution
  */
 export function emitEvent(executionId, payload) {
   const listeners = clients.get(executionId);
@@ -123,7 +125,7 @@ export function emitEvent(executionId, payload) {
 }
 
 /**
- * Broadcast event to all connected clients across all executions (local only)
+ * Broadcast event to all connected clients
  */
 export function broadcastEvent(payload) {
   for (const [executionId, listeners] of clients.entries()) {
@@ -147,7 +149,7 @@ export function broadcastEvent(payload) {
 }
 
 /**
- * Publish event to Redis so all nodes can broadcast
+ * Publish event to Redis
  */
 export function publishEvent(payload) {
   try {
