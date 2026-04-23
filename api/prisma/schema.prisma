@@ -86,6 +86,7 @@ model Execution {
   version         Int?
   status          String            @default("pending")
   schedule        Json?
+  recurring Boolean? @default(false)
   duration_ms     Int?
   finished_at     DateTime?
   goal_payload    Json              @default("{}")

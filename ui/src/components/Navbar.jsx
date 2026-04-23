@@ -54,8 +54,8 @@ export default function Navbar({ onToggleTheme, isDark, theme }) {
             {/* Enterprise tier */}
             {subscription === "enterprise" && (
               <>
-                <Link to="/streams" style={styles.button}>StreamPage</Link>
-                <Link to="/audit" style={styles.button}>AuditPage</Link>
+                <Link to="/streams" style={styles.button}>Stream</Link>
+                <Link to="/audit" style={styles.button}>Audit</Link>
               </>
             )}
 

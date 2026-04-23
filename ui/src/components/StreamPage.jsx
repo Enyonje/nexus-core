@@ -9,39 +9,65 @@ export default function StreamPage() {
   const [status, setStatus] = useState("connecting");
   const [meta, setMeta] = useState(null);
   const scrollRef = useRef(null);
+  
+  // Use a ref to track the connection to avoid closure issues in retries
+  const sseRef = useRef(null);
 
   useEffect(() => {
-    // Establish SSE Connection to your backend route
-    // Note: EventSource doesn't support custom headers natively for Auth. 
-    // If your requireAuth checks cookies, this works. If it's a Bearer token, 
-    // you may need a library like 'event-source-polyfill'.
-    const sse = new EventSource(`${import.meta.env.VITE_API_URL}/stream/${executionId}`, {
-      withCredentials: true,
-    });
+    let retryTimeout;
 
-    sse.onopen = () => setStatus("active");
-    
-    sse.onmessage = (e) => {
-      const payload = JSON.parse(e.data);
+    const connect = () => {
+      // 1. Get token from storage (standard EventSource doesn't support headers)
+      const token = localStorage.getItem("token"); 
+      const baseUrl = import.meta.env.VITE_API_URL;
+      const url = `${baseUrl}/stream/${executionId}?token=${token}`;
+
+      console.log("Initiating Neural Trace...");
+      const sse = new EventSource(url);
+      sseRef.current = sse;
+
+      sse.onopen = () => {
+        setStatus("active");
+        console.log("Handshake stable.");
+      };
       
-      // Handle different event types from your publishEvent backend
-      if (payload.event === "execution_created" || payload.event === "execution_updated") {
-        setEvents((prev) => [payload, ...prev].slice(0, 50)); // Keep last 50
-        setMeta(payload.data);
-      }
-      
-      // Auto-scroll logic if needed
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = 0;
-      }
+      sse.onmessage = (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          
+          if (payload.event === "execution_created" || payload.event === "execution_updated") {
+            setEvents((prev) => [payload, ...prev].slice(0, 50));
+            setMeta(payload.data);
+          }
+          
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop = 0;
+          }
+        } catch (err) {
+          console.error("Payload corruption:", err);
+        }
+      };
+
+      sse.onerror = () => {
+        setStatus("interrupted");
+        sse.close();
+        
+        // 2. THE FIX: Delayed Retry
+        // Instead of reconnecting instantly, wait 5 seconds to prevent log spam
+        console.warn("Signal lost. Re-establishing in 5s...");
+        retryTimeout = setTimeout(() => {
+          connect();
+        }, 5000);
+      };
     };
 
-    sse.onerror = () => {
-      setStatus("interrupted");
-      sse.close();
-    };
+    connect();
 
-    return () => sse.close();
+    // 3. CLEANUP: Vital to prevent multiple connections on re-render
+    return () => {
+      if (sseRef.current) sseRef.current.close();
+      if (retryTimeout) clearTimeout(retryTimeout);
+    };
   }, [executionId]);
 
   return (
@@ -60,7 +86,7 @@ export default function StreamPage() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${
+          <div className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-colors duration-500 ${
             status === 'active' ? 'border-green-500/20 bg-green-500/5 text-green-400' : 'border-red-500/20 bg-red-500/5 text-red-400'
           }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
@@ -77,7 +103,7 @@ export default function StreamPage() {
             <div className="p-6 rounded-[2rem] bg-gradient-to-br from-slate-800/40 to-slate-900/40 border border-white/5">
               <h3 className="text-xl font-black tracking-tight mb-2">{meta?.action || "Initializing..."}</h3>
               <p className="text-xs text-slate-400 leading-relaxed font-medium">
-                {meta?.details || "Waiting for signal from objective nodes..."}
+                {meta?.details ? (typeof meta.details === 'string' ? meta.details : "Neural data processing...") : "Waiting for node signal..."}
               </p>
             </div>
           </section>
@@ -99,7 +125,7 @@ export default function StreamPage() {
           
           <div 
             ref={scrollRef}
-            className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar"
+            className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar flex flex-col-reverse"
           >
             <AnimatePresence initial={false}>
               {events.length === 0 ? (
@@ -128,11 +154,11 @@ export default function StreamPage() {
                       </div>
                       <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 group-hover:bg-white/[0.04] transition-colors">
                         <p className="text-sm font-bold text-slate-200 mb-1">{event.data?.action}</p>
-                        <p className="text-xs text-slate-500 font-mono leading-relaxed">
+                        <pre className="text-[10px] text-slate-500 font-mono whitespace-pre-wrap break-all bg-black/20 p-2 rounded">
                           {typeof event.data?.details === 'object' 
-                            ? JSON.stringify(event.data?.details) 
+                            ? JSON.stringify(event.data?.details, null, 2) 
                             : event.data?.details}
-                        </p>
+                        </pre>
                       </div>
                     </div>
                   </motion.div>
@@ -141,16 +167,13 @@ export default function StreamPage() {
             </AnimatePresence>
           </div>
 
-          {/* INPUT BAR (Visual Only or For Commands) */}
           <div className="p-6 border-t border-white/5 bg-slate-900/40 backdrop-blur-md">
             <div className="max-w-3xl mx-auto relative">
-              <input 
-                disabled
-                placeholder="Swarm is operating autonomously..." 
-                className="w-full bg-black/40 border border-white/10 rounded-xl px-6 py-4 text-xs font-mono text-slate-400 outline-none focus:border-blue-500/50 transition-all"
-              />
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 flex gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              <div className="w-full bg-black/40 border border-white/10 rounded-xl px-6 py-4 text-[10px] font-mono text-slate-500 flex items-center justify-between">
+                <span>SYSTEM STATUS: {status === 'active' ? 'STREAMING_AUTONOMOUS_DATA' : 'RE-ESTABLISHING_UPLINK...'}</span>
+                <div className="flex gap-2">
+                   <span className={`w-2 h-2 rounded-full ${status === 'active' ? 'bg-blue-500 animate-pulse' : 'bg-amber-500 animate-ping'}`} />
+                </div>
               </div>
             </div>
           </div>
