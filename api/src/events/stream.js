@@ -44,9 +44,14 @@ redisSubscriber.on("message", (channel, message) => {
 export function registerClient(executionId, reply) {
   reply.raw.writeHead(200, {
     "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
+    "Cache-Control": "no-cache, no-transform",
     Connection: "keep-alive",
   });
+
+  // Flush headers immediately (important for proxies)
+  if (typeof reply.raw.flushHeaders === "function") {
+    reply.raw.flushHeaders();
+  }
 
   // Initial ping so client knows stream is alive
   reply.raw.write(":\n\n");
@@ -67,9 +72,12 @@ export function registerClient(executionId, reply) {
 
   reply.raw.on("close", () => {
     clearInterval(interval);
-    clients.get(executionId)?.delete(reply);
-    if (clients.get(executionId)?.size === 0) {
-      clients.delete(executionId);
+    const listeners = clients.get(executionId);
+    if (listeners) {
+      listeners.delete(reply);
+      if (listeners.size === 0) {
+        clients.delete(executionId);
+      }
     }
   });
 }
@@ -84,14 +92,14 @@ export function emitEvent(executionId, payload) {
   const enriched = {
     id: uuidv4(),
     ts: Date.now(),
-    event: payload.event,
+    event: payload.event || "message",
     executionId,
     ...payload,
   };
 
   for (const reply of listeners) {
     try {
-      reply.raw.write(`event: ${payload.event}\n`);
+      reply.raw.write(`event: ${enriched.event}\n`);
       reply.raw.write(`data: ${JSON.stringify(enriched)}\n\n`);
     } catch (err) {
       console.warn("SSE write failed:", err.message);
@@ -107,14 +115,14 @@ export function broadcastEvent(payload) {
     const enriched = {
       id: uuidv4(),
       ts: Date.now(),
-      event: payload.event,
+      event: payload.event || "message",
       executionId,
       ...payload,
     };
 
     for (const reply of listeners) {
       try {
-        reply.raw.write(`event: ${payload.event}\n`);
+        reply.raw.write(`event: ${enriched.event}\n`);
         reply.raw.write(`data: ${JSON.stringify(enriched)}\n\n`);
       } catch (err) {
         console.warn("SSE broadcast failed:", err.message);
@@ -127,7 +135,11 @@ export function broadcastEvent(payload) {
  * Publish event to Redis so all nodes can broadcast
  */
 export function publishEvent(payload) {
-  redisPublisher.publish("stream-events", JSON.stringify(payload));
+  try {
+    redisPublisher.publish("stream-events", JSON.stringify(payload));
+  } catch (err) {
+    console.error("Redis publish failed:", err);
+  }
 }
 
 /**
