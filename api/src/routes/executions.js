@@ -234,35 +234,56 @@ export async function executionsRoutes(app) {
   });
 
   /* STREAM EXECUTION EVENTS (SSE) */
-  app.get("/:id/stream", { preHandler: requireAuth }, async (req, reply) => {
-    const { id } = req.params;
-    const origin = req.headers.origin;
-    if (origin === "https://nexus-core-chi.vercel.app" || origin?.startsWith("http://localhost")) {
-      reply.raw.setHeader("Access-Control-Allow-Origin", origin);
-      reply.raw.setHeader("Access-Control-Allow-Credentials", "true");
-    }
+app.get("/:id/stream", { preHandler: requireAuth }, async (req, reply) => {
+  const { id } = req.params;
+  const origin = req.headers.origin;
+  
+  // 1. Broaden CORS to include your production domain
+  const allowedOrigins = [
+    "https://nexusthecore.com",
+    "https://nexus-core-chi.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000"
+  ];
 
-    reply.raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    });
+  if (allowedOrigins.includes(origin)) {
+    reply.raw.setHeader("Access-Control-Allow-Origin", origin);
+    reply.raw.setHeader("Access-Control-Allow-Credentials", "true");
+  }
 
-    const cb = (event) => {
-      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
-    };
-
-    if (!subscribers.has(id)) subscribers.set(id, new Set());
-        subscribers.get(id).add(cb);
-
-    cb({ event: "connected", executionId: id });
-
-    req.raw.on("close", () => {
-      subscribers.get(id)?.delete(cb);
-      if (subscribers.get(id)?.size === 0) subscribers.delete(id);
-      reply.raw.end();
-    });
+  // 2. Set SSE Headers + Render/Nginx Buffering Fix
+  reply.raw.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform", // 'no-transform' prevents compression interference
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no", // CRITICAL: Tells Render/Nginx to stream immediately
   });
+
+  const cb = (event) => {
+    // Standard SSE format: data: <payload>\n\n
+    reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+  };
+
+  // 3. Register Subscriber
+  if (!subscribers.has(id)) subscribers.set(id, new Set());
+  subscribers.get(id).add(cb);
+
+  // Send initial heartbeat/handshake
+  cb({ 
+    event: "execution_created", 
+    data: { action: "Uplink Established", details: "Handshake verified. Awaiting trace data..." } 
+  });
+
+  // 4. Cleanup on disconnect
+  req.raw.on("close", () => {
+    const subs = subscribers.get(id);
+    if (subs) {
+      subs.delete(cb);
+      if (subs.size === 0) subscribers.delete(id);
+    }
+    reply.raw.end();
+  });
+});
 
   /* GET EXECUTION LOGS */
   app.get("/api/executions/:id/logs", { preHandler: requireAuth }, async (req, reply) => {
