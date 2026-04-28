@@ -70,7 +70,7 @@ export default function App() {
           <Routes>
             {/* PUBLIC SECTOR */}
             <Route path="/" element={<LandingPage />} />
-            <Route path="/docs" element={<SEOPillarpage />} />
+            <Route path="/docs" element={<SEOPillarPage />} />
             <Route path="/architecture" element={<ArchitecturePage />} />
             <Route path="/careers" element={<CareersPage />} />
             <Route path="/contact" element={<ContactPage />} />
