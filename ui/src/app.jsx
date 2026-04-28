@@ -10,6 +10,7 @@ import ArchitecturePage from "./components/ArchitecturePage.jsx";
 import Layout from "./components/Layout.jsx";
 import ExecutionLogsStreamModal from "./components/ExecutionLogsStreamModal.jsx";
 import DocsPage from "./components/DocsPage.jsx";
+import SEOPillarpage from "./components/SEOPillarpage.jsx"; // New addition
 import AuditPage from "./components/AuditPage.jsx"; // Found it!
 import Dashboard from "./components/Dashboard.jsx";
 import ExecutionList from "./components/ExecutionList.jsx";
@@ -69,7 +70,7 @@ export default function App() {
           <Routes>
             {/* PUBLIC SECTOR */}
             <Route path="/" element={<LandingPage />} />
-            <Route path="/docs" element={<DocsPage />} />
+            <Route path="/docs" element={<SEOPillarpage />} />
             <Route path="/architecture" element={<ArchitecturePage />} />
             <Route path="/careers" element={<CareersPage />} />
             <Route path="/contact" element={<ContactPage />} />
