@@ -10,7 +10,7 @@ import ArchitecturePage from "./components/ArchitecturePage.jsx";
 import Layout from "./components/Layout.jsx";
 import ExecutionLogsStreamModal from "./components/ExecutionLogsStreamModal.jsx";
 import DocsPage from "./components/DocsPage.jsx";
-import SEOPillarpage from "./components/SEOPillarpage.jsx"; // New addition
+import SEOPillarPage from "./components/SEOPillarpage.jsx"; // New addition
 import AuditPage from "./components/AuditPage.jsx"; // Found it!
 import Dashboard from "./components/Dashboard.jsx";
 import ExecutionList from "./components/ExecutionList.jsx";
