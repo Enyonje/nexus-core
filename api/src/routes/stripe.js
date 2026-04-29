@@ -21,7 +21,7 @@ export async function stripeRoutes(server) {
 
       return { url: session.url };
     } catch (err) {
-      console.error("Stripe checkout error:", err.message);
+      console.error("Stripe checkout error:", err);
       return reply.code(400).send({ error: err.message });
     }
   });

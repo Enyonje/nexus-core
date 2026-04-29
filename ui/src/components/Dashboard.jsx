@@ -20,7 +20,6 @@ export default function Dashboard() {
       .then(([healthRes, goalsRes, execs]) => {
         setHealth(healthRes);
         setGoals(goalsRes || []);
-        // Ensure executions is always an array
         setExecutions(Array.isArray(execs) ? execs : []);
       })
       .finally(() => setLoading(false));
@@ -38,12 +37,11 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 py-12 px-6 relative overflow-hidden">
-      {/* Background Glow */}
       <div className="absolute top-[-10%] right-[-10%] w-[600px] h-[600px] bg-blue-600/5 blur-[120px] rounded-full pointer-events-none" />
       
       <div className="max-w-6xl mx-auto space-y-10 relative z-10">
         
-        {/* Header Section */}
+        {/* Header */}
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6">
           <div className="space-y-2">
             <h1 className="text-5xl font-black tracking-tighter text-white">
@@ -63,7 +61,7 @@ export default function Dashboard() {
           )}
         </header>
 
-        {/* Top Stats Grid */}
+        {/* Stats */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <StatCard 
             label="Neural Health" 
@@ -78,10 +76,10 @@ export default function Dashboard() {
           />
         </section>
 
-        {/* Main Content Grid */}
+        {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* Left Side: Actions */}
+          {/* Actions */}
           <section className="lg:col-span-4 flex flex-col gap-4">
             <h3 className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Command Matrix</h3>
             <ActionCard
@@ -99,12 +97,12 @@ export default function Dashboard() {
             <ActionCard
               title="Nexus Streams"
               description="Real-time orchestration monitor."
-              to={subscription === "enterprise" ? "/streams" : "/subscription"}
+              to={subscription === "enterprise" && executions.length > 0 ? `/stream/${executions[0].id}` : "/subscription"}
               locked={subscription !== "enterprise"}
             />
           </section>
 
-          {/* Right Side: Activity Feed */}
+          {/* Activity Feed */}
           <section className="lg:col-span-8 flex flex-col gap-4">
             <div className="flex items-center justify-between ml-1">
               <h3 className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Recent Activity</h3>
@@ -137,7 +135,11 @@ export default function Dashboard() {
                             </p>
                           </div>
                         </div>
-                        <StatusBadge status={e.status} />
+                        <div className="flex gap-3 items-center">
+                          <Link to={`/stream/${e.id}`} className="text-[9px] text-blue-400 hover:underline">Stream</Link>
+                          <Link to={`/audit/${e.id}`} className="text-[9px] text-indigo-400 hover:underline">Audit</Link>
+                          <StatusBadge status={e.status} />
+                        </div>
                       </div>
                     ))
                   )}
@@ -151,7 +153,7 @@ export default function Dashboard() {
   );
 }
 
-/* UI Helper Components */
+/* Helper Components */
 
 function StatCard({ label, value, locked, status }) {
   return (
@@ -172,8 +174,20 @@ function StatCard({ label, value, locked, status }) {
 function ActionCard({ title, description, to, locked, variant }) {
   const isPrimary = variant === 'primary';
   return (
-    <Link to={to} className={`block p-5 rounded-xl border transition-all ${isPrimary ? "bg-blue-600/10 border-blue-500/20 hover:bg-blue-600/20" : "bg-slate-900/40 border-white/5 hover:border-blue-500/20"} ${locked ? "opacity-40 grayscale pointer-events-none" : "hover:-translate-y-1 shadow-lg"}`}>
-      <h3 className={`font-black text-xs uppercase tracking-tight mb-1 ${isPrimary ? "text-blue-400" : "text-white"}`}>{title}</h3>
+    <Link
+      to={to}
+      className={`block p-5 rounded-xl border transition-all 
+        ${isPrimary ? "bg-blue-600/10 border-blue-500/20 hover:bg-blue-600/20" 
+                    : "bg-slate-900/40 border-white/5 hover:border-blue-500/20"} 
+        ${locked ? "opacity-40 grayscale pointer-events-none" 
+                 : "hover:-translate-y-1 shadow-lg"}`}
+    >
+      <h3
+        className={`font-black text-xs uppercase tracking-tight mb-1 
+          ${isPrimary ? "text-blue-400" : "text-white"}`}
+      >
+        {title}
+      </h3>
       <p className="text-[10px] text-slate-500 leading-relaxed">{description}</p>
     </Link>
   );
@@ -186,7 +200,10 @@ function StatusBadge({ status }) {
     FAILED: "text-red-400 border-red-400/20 bg-red-400/5",
   };
   return (
-    <span className={`text-[8px] font-black px-2 py-0.5 rounded border uppercase tracking-widest ${styles[status] || "text-slate-500 border-white/10"}`}>
+    <span
+      className={`text-[8px] font-black px-2 py-0.5 rounded border uppercase tracking-widest 
+        ${styles[status] || "text-slate-500 border-white/10"}`}
+    >
       {status}
     </span>
   );
