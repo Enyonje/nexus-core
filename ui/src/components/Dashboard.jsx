@@ -5,7 +5,7 @@ import { formatDate } from "../lib/utils";
 import { useAuth } from "../context/AuthProvider";
 
 export default function Dashboard() {
-  const { subscription } = useAuth();
+  const { subscription, user } = useAuth(); // Added user for role-based links
   const [executions, setExecutions] = useState([]);
   const [goals, setGoals] = useState([]);
   const [health, setHealth] = useState(null);
@@ -20,7 +20,8 @@ export default function Dashboard() {
       .then(([healthRes, goalsRes, execs]) => {
         setHealth(healthRes);
         setGoals(goalsRes || []);
-        setExecutions(Array.isArray(execs) ? execs : []);
+        // Backend returns { executions: [] }, so we extract it
+        setExecutions(Array.isArray(execs?.executions) ? execs.executions : []);
       })
       .finally(() => setLoading(false));
   }, [subscription]);
@@ -42,35 +43,40 @@ export default function Dashboard() {
       <div className="max-w-6xl mx-auto space-y-10 relative z-10">
         
         {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6">
+        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-white/5">
           <div className="space-y-2">
             <h1 className="text-5xl font-black tracking-tighter text-white">
               Nexus <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Core</span>
             </h1>
-            <p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.3em]">
-              Security Clearance: <span className="text-blue-400">{subscription}</span>
-            </p>
+            <div className="flex items-center gap-4">
+              <p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.3em]">
+                Clearance: <span className="text-blue-400">{subscription}</span>
+              </p>
+              {user?.role === 'superadmin' && (
+                <Link to="/admin/override" className="text-[10px] font-black text-amber-500 hover:text-amber-400 uppercase tracking-widest border border-amber-500/20 px-2 py-0.5 rounded">
+                  Admin Panel
+                </Link>
+              )}
+            </div>
           </div>
-          {subscription === "free" && (
-            <Link
-              to="/subscription"
-              className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-widest px-8 py-3.5 rounded-xl transition-all shadow-lg active:scale-95"
-            >
-              Upgrade Protocol →
-            </Link>
-          )}
+          <Link
+            to="/subscription"
+            className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-widest px-8 py-3.5 rounded-xl transition-all shadow-lg active:scale-95"
+          >
+            {subscription === "free" ? "Upgrade Protocol →" : "Manage Subscription"}
+          </Link>
         </header>
 
         {/* Stats */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <StatCard 
-            label="Neural Health" 
+            label="System Integrity" 
             value={health?.status === "ok" ? "OPERATIONAL" : "DEGRADED"} 
             status={health?.status === "ok" ? "success" : "error"}
           />
           <StatCard label="Active Objectives" value={goals.length} />
           <StatCard
-            label="Workflow Executions"
+            label="Neural Executions"
             value={subscription === "free" ? "RESTRICTED" : executions.length}
             locked={subscription === "free"}
           />
@@ -79,26 +85,29 @@ export default function Dashboard() {
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* Actions */}
+          {/* Command Matrix (Links to All Main Pages) */}
           <section className="lg:col-span-4 flex flex-col gap-4">
             <h3 className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Command Matrix</h3>
+            
             <ActionCard
-              title="New Objective"
-              description="Define mission parameters for Nexus agents."
+              title="Mission Objectives"
+              description="Configure and manage neural goals."
               to="/goals"
               variant="primary"
             />
+            
             <ActionCard
-              title="Manual Trigger"
-              description="Initiate autonomous workflows."
+              title="Execution Archive"
+              description="Review historical traces and logs."
               to={subscription === "free" ? "/subscription" : "/executions"}
               locked={subscription === "free"}
             />
+            
             <ActionCard
-              title="Nexus Streams"
-              description="Real-time orchestration monitor."
-              to={subscription === "enterprise" && executions.length > 0 ? `/stream/${executions[0].id}` : "/subscription"}
-              locked={subscription !== "enterprise"}
+              title="Neural Streams"
+              description="Monitor live autonomous workflows."
+              to={executions.length > 0 ? `/stream/${executions[0].id}` : "/executions"}
+              locked={subscription === "free"}
             />
           </section>
 
@@ -107,7 +116,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between ml-1">
               <h3 className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Recent Activity</h3>
               <Link to="/executions" className="text-[10px] font-bold text-blue-500 hover:underline uppercase tracking-widest">
-                Full Logs
+                View All Traces
               </Link>
             </div>
 
@@ -125,19 +134,22 @@ export default function Dashboard() {
                     executions.slice(0, 5).map((e) => (
                       <div key={e.id} className="p-4 flex justify-between items-center hover:bg-white/[0.02] transition-colors group">
                         <div className="flex items-center gap-3">
-                          <div className={`w-1 h-1 rounded-full ${e.status === 'RUNNING' ? 'bg-blue-500 animate-pulse' : 'bg-slate-600'}`} />
+                          <div className={`w-1 h-1 rounded-full ${e.status === 'running' ? 'bg-blue-500 animate-pulse' : 'bg-slate-600'}`} />
                           <div>
                             <p className="text-xs font-bold text-slate-300 group-hover:text-white transition-colors uppercase">
-                              {e.goal_type || "Standard Node"}
+                              {e.goal_type?.replace('_', ' ') || "Standard Node"}
                             </p>
                             <p className="text-[9px] font-mono text-slate-500 mt-0.5">
                               {formatDate(e.started_at)}
                             </p>
                           </div>
                         </div>
-                        <div className="flex gap-3 items-center">
-                          <Link to={`/stream/${e.id}`} className="text-[9px] text-blue-400 hover:underline">Stream</Link>
-                          <Link to={`/audit/${e.id}`} className="text-[9px] text-indigo-400 hover:underline">Audit</Link>
+                        <div className="flex gap-4 items-center">
+                          <div className="flex gap-2">
+                            <Link to={`/stream/${e.id}`} className="text-[9px] font-black text-blue-500 hover:text-blue-400 uppercase tracking-tighter transition-colors">Stream</Link>
+                            <span className="text-slate-800">|</span>
+                            <Link to={`/audit/${e.id}`} className="text-[9px] font-black text-indigo-500 hover:text-indigo-400 uppercase tracking-tighter transition-colors">Audit</Link>
+                          </div>
                           <StatusBadge status={e.status} />
                         </div>
                       </div>
@@ -160,7 +172,7 @@ function StatCard({ label, value, locked, status }) {
     <div className="bg-slate-900/60 border border-white/5 rounded-2xl p-6 relative overflow-hidden group shadow-xl">
       {locked && (
         <div className="absolute inset-0 bg-slate-950/90 z-20 flex items-center justify-center">
-          <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest border border-slate-800 px-3 py-1 rounded-md">Locked</span>
+          <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest border border-slate-800 px-3 py-1 rounded-md">Upgrade Required</span>
         </div>
       )}
       <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">{label}</p>
@@ -179,7 +191,7 @@ function ActionCard({ title, description, to, locked, variant }) {
       className={`block p-5 rounded-xl border transition-all 
         ${isPrimary ? "bg-blue-600/10 border-blue-500/20 hover:bg-blue-600/20" 
                     : "bg-slate-900/40 border-white/5 hover:border-blue-500/20"} 
-        ${locked ? "opacity-40 grayscale pointer-events-none" 
+        ${locked ? "opacity-40 grayscale cursor-not-allowed" 
                  : "hover:-translate-y-1 shadow-lg"}`}
     >
       <h3
@@ -194,17 +206,19 @@ function ActionCard({ title, description, to, locked, variant }) {
 }
 
 function StatusBadge({ status }) {
+  const s = status?.toLowerCase();
   const styles = {
-    RUNNING: "text-blue-400 border-blue-400/20 bg-blue-400/5",
-    COMPLETED: "text-green-400 border-green-400/20 bg-green-400/5",
-    FAILED: "text-red-400 border-red-400/20 bg-red-400/5",
+    running: "text-blue-400 border-blue-400/20 bg-blue-400/5",
+    completed: "text-green-400 border-green-400/20 bg-green-400/5",
+    failed: "text-red-400 border-red-400/20 bg-red-400/5",
+    pending: "text-amber-400 border-amber-400/20 bg-amber-400/5",
   };
   return (
     <span
-      className={`text-[8px] font-black px-2 py-0.5 rounded border uppercase tracking-widest 
-        ${styles[status] || "text-slate-500 border-white/10"}`}
+      className={`text-[8px] font-black px-2 py-0.5 rounded border uppercase tracking-widest min-w-[70px] text-center
+        ${styles[s] || "text-slate-500 border-white/10"}`}
     >
-      {status}
+      {status || 'unknown'}
     </span>
   );
 }
