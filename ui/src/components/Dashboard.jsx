@@ -146,9 +146,9 @@ export default function Dashboard() {
                         </div>
                         <div className="flex gap-4 items-center">
                           <div className="flex gap-2">
-                            <Link to={`/stream/${executionId}`} className="text-[9px] font-black text-blue-500 hover:text-blue-400 uppercase tracking-tighter transition-colors">Stream</Link>
+                            <Link to={`/stream/${e.id}`} className="text-[9px] font-black text-blue-500 hover:text-blue-400 uppercase tracking-tighter transition-colors">Stream</Link>
                             <span className="text-slate-800">|</span>
-                            <Link to={`/audit/${executionId}`} className="text-[9px] font-black text-indigo-500 hover:text-indigo-400 uppercase tracking-tighter transition-colors">Audit</Link>
+                            <Link to={`/audit/${e.id}`} className="text-[9px] font-black text-indigo-500 hover:text-indigo-400 uppercase tracking-tighter transition-colors">Audit</Link>
                           </div>
                           <StatusBadge status={e.status} />
                         </div>

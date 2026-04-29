@@ -111,7 +111,7 @@ export default function App() {
 
               {/* LIVE STREAM SECTOR */}
               <Route
-                path="/stream/:id"
+                path="/stream/:executionId"
                 element={
                   <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
                     <StreamPage />
@@ -121,7 +121,7 @@ export default function App() {
 
               {/* FORENSIC AUDIT SECTOR */}
               <Route
-                path="/audit/:id"
+                path="/audit/:executionId"
                 element={
                   <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
                     <AuditPage />
