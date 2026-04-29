@@ -52,8 +52,8 @@ export async function getSubscriptionStatus(customerId) {
 
     const priceId = sub.items.data[0].price.id;
     let tier = "free";
-    if (priceId === process.env.STRIPE_PRICE_PRO) tier = "pro";
-    if (priceId === process.env.STRIPE_PRICE_ENTERPRISE) tier = "enterprise";
+    if (priceId === process.env.STRIPE_PRO_PRICE_ID) tier = "pro";
+    if (priceId === process.env.STRIPE_ENTERPRISE_PRICE_ID) tier = "enterprise";
 
     return { tier, active };
   } catch (err) {
