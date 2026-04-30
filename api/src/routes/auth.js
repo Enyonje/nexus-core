@@ -27,7 +27,16 @@ export function requireAuth(req, reply, done) {
     }
 
     const payload = jwt.verify(token, JWT_SECRET);
+
+    // Normalize payload into req.user
     req.identity = payload;
+    req.user = {
+      id: payload.sub,
+      email: payload.email,
+      role: payload.role,
+      org_id: payload.org_id,
+    };
+
     done();
   } catch (err) {
     return reply.code(401).send({ error: "AUTH_INVALID_TOKEN", detail: err.message });
@@ -135,7 +144,6 @@ export async function authRoutes(server) {
         return reply.code(401).send({ error: "AUTH_USER_NOT_FOUND" });
       }
 
-      // Lockout check
       if (user.locked_until && user.locked_until > new Date()) {
         return reply.code(403).send({ error: "AUTH_ACCOUNT_LOCKED" });
       }
@@ -152,10 +160,8 @@ export async function authRoutes(server) {
         return reply.code(401).send({ error: "AUTH_INVALID_PASSWORD" });
       }
 
-      // Reset attempts
       await prisma.user.update({ where: { id: user.id }, data: { failed_attempts: 0, locked_until: null } });
 
-      // MFA check
       if (user.mfa_enabled) {
         const verified = speakeasy.totp.verify({
           secret: user.mfa_secret,
@@ -186,7 +192,16 @@ export async function authRoutes(server) {
       });
 
       await auditLog(user.id, "login_success", {});
-      reply.send({ token, user: { id: user.id, email: user.email, role: user.role, subscription: user.subscription, org_id: user.org_id } });
+      reply.send({
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          subscription: user.subscription,
+          org_id: user.org_id,
+        },
+      });
     } catch (err) {
       console.error("Login error:", err);
       reply.code(500).send({ error: "AUTH_LOGIN_ERROR", detail: err.message });
@@ -231,7 +246,7 @@ export async function authRoutes(server) {
     }
   });
 
-  // PASSWORD RESET (simplified)
+  // PASSWORD RESET
   server.post("/forgot-password", async (req, reply) => {
     const { email } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
@@ -240,7 +255,7 @@ export async function authRoutes(server) {
     const resetToken = crypto.randomBytes(32).toString("hex");
     await prisma.user.update({
       where: { id: user.id },
-      data: { reset_token: resetToken, reset_token_expires: new Date(Date.now() + 3600 * 1000) }
+          data: { reset_token: resetToken, reset_token_expires: new Date(Date.now() + 3600 * 1000) }
     });
 
     await auditLog(user.id, "password_reset_requested", {});
@@ -267,10 +282,13 @@ export async function authRoutes(server) {
   // SUBSCRIPTION STATUS
   server.get("/subscription", { preHandler: requireAuth }, async (req, reply) => {
     try {
-      const userId = req.identity?.sub;
+      const userId = req.user?.id;
       if (!userId) return reply.code(401).send({ error: "AUTH_INVALID_SESSION" });
 
-      const user = await prisma.user.findUnique({ where: { id: userId }, select: { subscription: true } });
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { subscription: true }
+      });
       if (!user) return reply.code(404).send({ error: "AUTH_USER_NOT_FOUND" });
 
       reply.send({ tier: user.subscription, active: user.subscription !== "free" });
@@ -289,17 +307,21 @@ export async function authRoutes(server) {
       const priceId =
         tier === "pro" ? process.env.STRIPE_PRO_PRICE_ID : process.env.STRIPE_ENTERPRISE_PRICE_ID;
 
+      if (!priceId) {
+        return reply.code(400).send({ error: "AUTH_INVALID_TIER" });
+      }
+
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",
         payment_method_types: ["card"],
         line_items: [{ price: priceId, quantity: 1 }],
-        customer_email: req.identity.email,
+        customer_email: req.user.email,
         success_url: `${FRONTEND_URL}/subscription?success=1`,
         cancel_url: `${FRONTEND_URL}/subscription`,
         metadata: { tier },
       });
 
-      await auditLog(req.identity.sub, "stripe_checkout", { tier });
+      await auditLog(req.user.id, "stripe_checkout", { tier });
       reply.send({ sessionId: session.id });
     } catch (err) {
       console.error("Stripe checkout error:", err);
@@ -317,17 +339,3 @@ export async function authRoutes(server) {
     reply.send({ success: true, provider: "external" });
   });
 }
-
-/* =========================
-   Recommendations for Advanced Features
-========================= */
-// 1. Add account lockout after repeated failed logins.
-// 2. Support multi-factor authentication (MFA).
-// 3. Add audit logging for all auth events.
-// 4. Integrate OAuth/social login providers.
-// 5. Allow password reset via email.
-// 6. Add session expiration and refresh token rotation.
-// 7. Support role-based access control for endpoints.
-// 8. Add user activity tracking and analytics.
-// 9. Provide detailed error codes for frontend handling.
-// 10. Integrate with external identity providers (Azure AD, etc.).
