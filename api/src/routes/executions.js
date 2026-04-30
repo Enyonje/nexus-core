@@ -1,7 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { runExecution } from "../execution/runner.js";
 import { requireAuth } from "./auth.js";
-import cron from "node-cron";
 
 /* ===============================
     EVENT BUS (SSE PUB/SUB)
@@ -52,18 +51,19 @@ async function auditLog(app, executionId, status, meta = {}) {
 =============================== */
 export async function executionsRoutes(app) {
   
-  /* 1. LIST EXECUTIONS (Dashboard Main) */
+  /* 1. LIST EXECUTIONS */
   app.get("/", { preHandler: requireAuth }, async (req, reply) => {
     try {
-      const userId = req.user.id; // Aligned with req.user from auth.js
+      const userId = req.user?.id;
+      if (!userId) return reply.code(400).send({ error: "Missing user ID" });
+
       const { rows } = await app.pg.query(
         `SELECT * FROM executions 
          WHERE user_id = $1 
          ORDER BY started_at DESC NULLS LAST`,
         [userId]
       );
-      // Return as a flat array for the Dashboard table
-      return rows; 
+      return rows;
     } catch (err) {
       req.log.error(err, "Failed to fetch executions");
       return reply.code(500).send({ error: "Internal Server Error" });
@@ -73,9 +73,10 @@ export async function executionsRoutes(app) {
   /* 2. CREATE EXECUTION */
   app.post("/", { preHandler: requireAuth }, async (req, reply) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user?.id;
+      if (!userId) return reply.code(400).send({ error: "Missing user ID" });
+
       const { goalId, schedule, recurring } = req.body;
-      
       if (!goalId) return reply.code(400).send({ error: "goalId is required" });
 
       const goalRes = await app.pg.query(
@@ -106,42 +107,52 @@ export async function executionsRoutes(app) {
     }
   });
 
-  /* 3. RUN EXECUTION (Uplink Trigger) */
+  /* 3. RUN EXECUTION */
   app.post("/:id/run", { preHandler: requireAuth }, async (req, reply) => {
-    const userId = req.user.id;
-    const { id } = req.params;
+    try {
+      const userId = req.user?.id;
+      const { id } = req.params;
 
-    const execRes = await app.pg.query(
-      `UPDATE executions SET status = 'running', started_at = NOW() 
-       WHERE id = $1 AND user_id = $2 RETURNING *`,
-      [id, userId]
-    );
+      const execRes = await app.pg.query(
+        `UPDATE executions SET status = 'running', started_at = NOW() 
+         WHERE id = $1 AND user_id = $2 RETURNING *`,
+        [id, userId]
+      );
 
-    if (execRes.rows.length === 0) return reply.code(404).send({ error: "Access Denied" });
+      if (execRes.rows.length === 0) {
+        return reply.code(404).send({ error: "Execution not found or access denied" });
+      }
 
-    const start = Date.now();
-    
-    // Non-blocking run
-    runExecution(id, req.body || {}).then(async () => {
-      const duration = Date.now() - start;
-      await app.pg.query(`UPDATE executions SET duration_ms=$2, status='completed' WHERE id=$1`, [id, duration]);
-      publishEvent(id, { event: "execution_completed", duration });
-      auditLog(app, id, "completed", { duration });
-    }).catch(err => {
-      app.pg.query(`UPDATE executions SET status='failed' WHERE id=$1`, [id]);
-      publishEvent(id, { event: "execution_failed", error: err.message });
-      auditLog(app, id, "failed", { error: err.message });
-    });
+      const start = Date.now();
 
-    return execRes.rows[0];
+      runExecution(id, req.body || {})
+        .then(async () => {
+          const duration = Date.now() - start;
+          await app.pg.query(
+            `UPDATE executions SET duration_ms=$2, status='completed' WHERE id=$1`,
+            [id, duration]
+          );
+          publishEvent(id, { event: "execution_completed", duration });
+          auditLog(app, id, "completed", { duration });
+        })
+        .catch(async (err) => {
+          await app.pg.query(`UPDATE executions SET status='failed' WHERE id=$1`, [id]);
+          publishEvent(id, { event: "execution_failed", error: err.message });
+          auditLog(app, id, "failed", { error: err.message });
+        });
+
+      return execRes.rows[0];
+    } catch (err) {
+      app.log.error(err, "Failed to run execution");
+      return reply.code(500).send({ error: "Run failed" });
+    }
   });
 
-  /* 4. SSE STREAM (Live Trace) */
+  /* 4. SSE STREAM */
   app.get("/:id/stream", { preHandler: requireAuth }, async (req, reply) => {
     const { id } = req.params;
     const origin = req.headers.origin;
 
-    // CORS for SSE
     const allowedOrigins = ["https://nexusthecore.com", "http://localhost:5173"];
     if (allowedOrigins.includes(origin)) {
       reply.raw.setHeader("Access-Control-Allow-Origin", origin);
@@ -160,7 +171,6 @@ export async function executionsRoutes(app) {
     if (!subscribers.has(id)) subscribers.set(id, new Set());
     subscribers.get(id).add(send);
 
-    // Handshake for the Frontend "Active" status
     send({ event: "nexus_connected", details: "Uplink Secure" });
 
     req.raw.on("close", () => {
@@ -172,20 +182,31 @@ export async function executionsRoutes(app) {
     });
   });
 
-  /* 5. GET SINGLE EXECUTION (Audit/Stream Meta) */
+  /* 5. GET SINGLE EXECUTION */
   app.get("/:id", { preHandler: requireAuth }, async (req, reply) => {
-    const { id } = req.params;
-    const userId = req.user.id;
-    const { rows } = await app.pg.query(
-      `SELECT * FROM executions WHERE id=$1 AND user_id=$2`,
-      [id, userId]
-    );
-    return rows[0] || reply.code(404).send({ error: "Not found" });
+    try {
+      const { id } = req.params;
+      const userId = req.user?.id;
+      const { rows } = await app.pg.query(
+        `SELECT * FROM executions WHERE id=$1 AND user_id=$2`,
+        [id, userId]
+      );
+      if (rows.length === 0) return reply.code(404).send({ error: "Not found" });
+      return rows[0];
+    } catch (err) {
+      app.log.error(err, "Failed to fetch execution");
+      return reply.code(500).send({ error: "Internal Server Error" });
+    }
   });
 
   /* 6. ADMIN OVERRIDES */
   app.get("/admin/all", { preHandler: requireAdmin }, async (req, reply) => {
-    const { rows } = await app.pg.query(`SELECT * FROM executions ORDER BY started_at DESC`);
-    return rows;
+    try {
+      const { rows } = await app.pg.query(`SELECT * FROM executions ORDER BY started_at DESC`);
+      return rows;
+    } catch (err) {
+      app.log.error(err, "Failed to fetch all executions");
+      return reply.code(500).send({ error: "Internal Server Error" });
+    }
   });
 }
