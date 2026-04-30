@@ -1,193 +1,149 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { formatDate } from "../lib/utils";
+import { useAuth } from "../context/AuthProvider";
 
 export default function StreamPage() {
   const { executionId } = useParams();
+  const { token } = useAuth();
   const [events, setEvents] = useState([]);
   const [status, setStatus] = useState("connecting");
-  const [meta, setMeta] = useState(null);
   const scrollRef = useRef(null);
-  
-  // Use a ref to track the connection to avoid closure issues in retries
-  const sseRef = useRef(null);
+
+  // Auto-scroll logic: triggers every time 'events' array grows
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [events]);
 
   useEffect(() => {
-    let retryTimeout;
+    // 1. Connection string using the query token for Auth
+    const url = `${import.meta.env.VITE_API_URL}/api/executions/${executionId}/stream?token=${token}`;
+    const sse = new EventSource(url, { withCredentials: true });
 
-    const connect = () => {
-      // 1. Get token from storage (standard EventSource doesn't support headers)
-      const token = localStorage.getItem("token"); 
-      const baseUrl = import.meta.env.VITE_API_URL;
-      const url = `${baseUrl}/stream/${executionId}?token=${token}`;
+    sse.onopen = () => setStatus("active");
 
-      console.log("Initiating Neural Trace...");
-      const sse = new EventSource(url);
-      sseRef.current = sse;
-
-      sse.onopen = () => {
-        setStatus("active");
-        console.log("Handshake stable.");
-      };
-      
-      sse.onmessage = (e) => {
-        try {
-          const payload = JSON.parse(e.data);
-          
-          if (payload.event === "execution_created" || payload.event === "execution_updated") {
-            setEvents((prev) => [payload, ...prev].slice(0, 50));
-            setMeta(payload.data);
-          }
-          
-          if (scrollRef.current) {
-            scrollRef.current.scrollTop = 0;
-          }
-        } catch (err) {
-          console.error("Payload corruption:", err);
-        }
-      };
-
-      sse.onerror = () => {
-        setStatus("interrupted");
-        sse.close();
+    sse.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data);
         
-        // 2. THE FIX: Delayed Retry
-        // Instead of reconnecting instantly, wait 5 seconds to prevent log spam
-        console.warn("Signal lost. Re-establishing in 5s...");
-        retryTimeout = setTimeout(() => {
-          connect();
-        }, 5000);
-      };
+        // Adjusting to your backend's publishEvent structure
+        // If backend sends { event: 'x', ...data }, we capture it all
+        const newEvent = {
+          type: payload.event || "TRACE",
+          body: payload,
+          timestamp: new Date().toLocaleTimeString(),
+          id: crypto.randomUUID()
+        };
+
+        setEvents((prev) => [...prev, newEvent]);
+      } catch (err) {
+        console.error("Stream Parse Error:", err);
+      }
     };
 
-    connect();
-
-    // 3. CLEANUP: Vital to prevent multiple connections on re-render
-    return () => {
-      if (sseRef.current) sseRef.current.close();
-      if (retryTimeout) clearTimeout(retryTimeout);
+    sse.onerror = () => {
+      // Don't immediately set to error if it's just a temporary reconnect
+      if (sse.readyState === EventSource.CLOSED) {
+        setStatus("interrupted");
+      }
     };
-  }, [executionId]);
+
+    return () => sse.close();
+  }, [executionId, token]);
+
+  // Color mapping for different execution states
+  const getEventColor = (type) => {
+    if (type.includes("failed")) return "text-red-400";
+    if (type.includes("completed")) return "text-green-400";
+    if (type.includes("paused")) return "text-amber-400";
+    if (type.includes("connected")) return "text-blue-400";
+    return "text-indigo-400";
+  };
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white flex flex-col font-sans overflow-hidden">
-      {/* HUD Navigation */}
-      <nav className="border-b border-white/5 bg-slate-900/40 backdrop-blur-2xl px-6 py-4 flex justify-between items-center z-50">
-        <div className="flex items-center gap-6">
-          <Link to="/executions" className="group flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-blue-400 transition-colors">
-            <span className="group-hover:-translate-x-1 transition-transform">←</span> Back to Archive
-          </Link>
-          <div className="h-4 w-px bg-white/10" />
-          <div>
-            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white">Neural Stream</h2>
-            <p className="text-[9px] font-mono text-slate-500">{executionId?.toUpperCase()}</p>
+    <div className="min-h-screen bg-[#020617] text-slate-300 p-8 font-mono">
+      <div className="max-w-5xl mx-auto space-y-6">
+        
+        {/* Header Section */}
+        <header className="flex justify-between items-center border-b border-white/10 pb-4">
+          <div className="space-y-1">
+            <h1 className="text-xl font-black text-white uppercase tracking-tighter flex items-center gap-2">
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-ping" />
+              Nexus <span className="text-blue-500">Live Trace</span>
+            </h1>
+            <p className="text-[10px] text-slate-500 uppercase tracking-[0.3em]">System ID: {executionId}</p>
           </div>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-colors duration-500 ${
-            status === 'active' ? 'border-green-500/20 bg-green-500/5 text-green-400' : 'border-red-500/20 bg-red-500/5 text-red-400'
-          }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
-            <span className="text-[9px] font-black uppercase tracking-widest">{status}</span>
-          </div>
-        </div>
-      </nav>
-
-      <div className="flex-1 grid lg:grid-cols-12 overflow-hidden">
-        {/* SIDEBAR: ARCHITECT PANEL */}
-        <aside className="lg:col-span-4 border-r border-white/5 bg-slate-900/20 p-8 space-y-8 overflow-y-auto">
-          <section className="space-y-4">
-            <label className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em]">Current Protocol</label>
-            <div className="p-6 rounded-[2rem] bg-gradient-to-br from-slate-800/40 to-slate-900/40 border border-white/5">
-              <h3 className="text-xl font-black tracking-tight mb-2">{meta?.action || "Initializing..."}</h3>
-              <p className="text-xs text-slate-400 leading-relaxed font-medium">
-                {meta?.details ? (typeof meta.details === 'string' ? meta.details : "Neural data processing...") : "Waiting for node signal..."}
+          
+          <div className="flex items-center gap-6">
+            <div className="text-right">
+              <p className="text-[9px] text-slate-500 uppercase font-bold tracking-widest">Link Status</p>
+              <p className={`text-[10px] uppercase font-black ${status === 'active' ? 'text-green-500' : 'text-red-500'}`}>
+                {status}
               </p>
             </div>
-          </section>
-
-          <section className="space-y-4 pt-8 border-t border-white/5">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">System Telemetry</label>
-            <div className="grid grid-cols-2 gap-4">
-              <TelemetryCard label="Latency" value="24ms" color="text-green-400" />
-              <TelemetryCard label="Node Count" value="12" color="text-blue-400" />
-              <TelemetryCard label="Integrity" value="99.9%" color="text-indigo-400" />
-              <TelemetryCard label="Security" value="L5" color="text-purple-400" />
-            </div>
-          </section>
-        </aside>
-
-        {/* MAIN: THE NEURAL TRACE */}
-        <main className="lg:col-span-8 relative flex flex-col bg-black/20">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_#1e293b_0%,_transparent_40%)] opacity-20 pointer-events-none" />
-          
-          <div 
-            ref={scrollRef}
-            className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar flex flex-col-reverse"
-          >
-            <AnimatePresence initial={false}>
-              {events.length === 0 ? (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-[10px] font-mono text-slate-600 uppercase tracking-[0.4em] animate-pulse">Awaiting handshake...</p>
-                </div>
-              ) : (
-                events.map((event, idx) => (
-                  <motion.div
-                    key={event.data?.id || idx}
-                    initial={{ opacity: 0, x: 20, filter: "blur(10px)" }}
-                    animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                    className="flex gap-6 group"
-                  >
-                    <div className="flex flex-col items-center">
-                      <div className="w-px h-full bg-gradient-to-b from-blue-500/50 to-transparent" />
-                      <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)] my-2" />
-                    </div>
-                    
-                    <div className="flex-1 pb-8">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="text-[9px] font-mono text-slate-500">{formatDate(event.data?.created_at)}</span>
-                        <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[8px] font-black uppercase tracking-widest border border-blue-500/20">
-                          {event.event}
-                        </span>
-                      </div>
-                      <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 group-hover:bg-white/[0.04] transition-colors">
-                        <p className="text-sm font-bold text-slate-200 mb-1">{event.data?.action}</p>
-                        <pre className="text-[10px] text-slate-500 font-mono whitespace-pre-wrap break-all bg-black/20 p-2 rounded">
-                          {typeof event.data?.details === 'object' 
-                            ? JSON.stringify(event.data?.details, null, 2) 
-                            : event.data?.details}
-                        </pre>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))
-              )}
-            </AnimatePresence>
+            <Link 
+              to="/dashboard" 
+              className="text-[10px] font-black border border-white/10 px-4 py-2 hover:bg-red-500/10 hover:border-red-500/50 hover:text-red-400 transition-all uppercase tracking-widest"
+            >
+              Close Link
+            </Link>
           </div>
+        </header>
 
-          <div className="p-6 border-t border-white/5 bg-slate-900/40 backdrop-blur-md">
-            <div className="max-w-3xl mx-auto relative">
-              <div className="w-full bg-black/40 border border-white/10 rounded-xl px-6 py-4 text-[10px] font-mono text-slate-500 flex items-center justify-between">
-                <span>SYSTEM STATUS: {status === 'active' ? 'STREAMING_AUTONOMOUS_DATA' : 'RE-ESTABLISHING_UPLINK...'}</span>
-                <div className="flex gap-2">
-                   <span className={`w-2 h-2 rounded-full ${status === 'active' ? 'bg-blue-500 animate-pulse' : 'bg-amber-500 animate-ping'}`} />
-                </div>
+        {/* Terminal Output */}
+        <div 
+          ref={scrollRef}
+          className="bg-slate-950/80 border border-white/5 rounded-xl h-[65vh] overflow-y-auto p-6 space-y-2 relative shadow-2xl custom-scrollbar"
+        >
+          {/* Scanline Effect overlay */}
+          <div className="absolute inset-0 pointer-events-none bg-scanline opacity-[0.03]" />
+
+          {events.length === 0 && (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-slate-700 animate-pulse text-xs uppercase tracking-[0.5em]">
+                Initializing Neural Uplink...
               </div>
             </div>
-          </div>
-        </main>
+          )}
+
+          {events.map((ev) => (
+            <div key={ev.id} className="text-[12px] flex gap-4 font-mono group border-l border-transparent hover:border-blue-500/50 hover:bg-white/[0.01] transition-all pl-2">
+              <span className="text-slate-600 shrink-0 select-none">{ev.timestamp}</span>
+              <span className={`shrink-0 uppercase font-black tracking-tighter ${getEventColor(ev.type)}`}>
+                {ev.type}
+              </span>
+              <span className="text-slate-400 leading-relaxed">
+                {/* We remove the 'event' key from display since it's already in the badge */}
+                {Object.entries(ev.body)
+                  .filter(([key]) => key !== 'event')
+                  .map(([key, val]) => `${key}=${typeof val === 'object' ? JSON.stringify(val) : val}`)
+                  .join(" | ")}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer Metrics */}
+        <footer className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <MetricBox label="Data Packets" value={events.length} color="text-white" />
+          <MetricBox label="Signal Strength" value="Optimal" color="text-green-500" />
+          <MetricBox label="Encryption" value="Quantum-Secure" color="text-blue-500" />
+        </footer>
       </div>
     </div>
   );
 }
 
-function TelemetryCard({ label, value, color }) {
+/* Sub-component for cleanup */
+function MetricBox({ label, value, color }) {
   return (
-    <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5">
-      <p className="text-[8px] font-black text-slate-600 uppercase tracking-widest mb-1">{label}</p>
-      <p className={`text-sm font-black font-mono ${color}`}>{value}</p>
+    <div className="bg-slate-900/40 border border-white/5 p-4 rounded-xl backdrop-blur-md">
+      <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest mb-1">{label}</p>
+      <p className={`text-lg font-black uppercase tracking-tight ${color}`}>{value}</p>
     </div>
   );
 }

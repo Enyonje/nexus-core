@@ -1,49 +1,55 @@
 // routes/stream.js
-import { registerClient, getActiveStreams, publishEvent } from "../events/stream.js";
+import { registerClient, getActiveStreams } from "../events/stream.js";
 import { requireAuth } from "./auth.js";
 
 export async function streamRoutes(server) {
-  // STREAM EXECUTION EVENTS
   server.get(
     "/stream/:executionId",
     { preHandler: requireAuth },
     async (req, reply) => {
       try {
         const { executionId } = req.params;
-        if (!executionId) {
-          return reply.code(400).send({ error: "executionId is required" });
-        }
-
-        // Explicit CORS headers for SSE
         const origin = req.headers.origin;
+
+        // 1. Broaden allowed origins to ensure production works
         const allowedOrigins = [
           "https://nexusthecore.com",
           "https://nexus-core-chi.vercel.app",
-          "http://localhost:3000",
           "http://localhost:5173",
         ];
 
+        // 2. Set strict SSE headers with the Render Buffering Fix
         if (!origin || allowedOrigins.includes(origin)) {
           reply.raw.writeHead(200, {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no", // CRITICAL: Fixes the net::ERR_FAILED on Render
             "Access-Control-Allow-Origin": origin || "*",
             "Access-Control-Allow-Credentials": "true",
           });
         } else {
-          return reply.code(403).send({ error: "Origin not allowed" });
+          return reply.code(403).send({ error: "Access Denied: Origin Mismatch" });
         }
 
-        // Register SSE client
+        // 3. Initial "Neural Handshake"
+        // This confirms to the frontend that the pipe is open before the first real event
+        reply.raw.write(`data: ${JSON.stringify({ 
+          event: "nexus_connected", 
+          data: { system: "Neural Link Alpha", status: "Synchronized" } 
+        })}\n\n`);
+
+        // 4. Register client in your event bus
         registerClient(executionId, reply);
 
-        reply.raw.on("close", () => {
-          server.log.info(`Stream closed for execution ${executionId}`);
+        // 5. Cleanup
+        req.raw.on("close", () => {
+          server.log.info(`Nexus Link Terminated for ${executionId}`);
         });
+
       } catch (err) {
-        server.log.error("Stream route failed:", err);
-        return reply.code(500).send({ error: "Failed to open stream" });
+        server.log.error("Nexus Stream Error:", err);
+        return reply.code(500).send({ error: "Neural Link Failure" });
       }
     }
   );
