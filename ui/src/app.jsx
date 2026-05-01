@@ -10,14 +10,14 @@ import ArchitecturePage from "./components/ArchitecturePage.jsx";
 import Layout from "./components/Layout.jsx";
 import ExecutionLogsStreamModal from "./components/ExecutionLogsStreamModal.jsx";
 import DocsPage from "./components/DocsPage.jsx";
-import SEOPillarPage from "./components/SEOPillarPage.jsx"; // New addition
-import AuditPage from "./components/AuditPage.jsx"; // Found it!
+import SEOPillarPage from "./components/SEOPillarPage.jsx";
+import AuditPage from "./components/AuditPage.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import ExecutionList from "./components/ExecutionList.jsx";
 import ExecutionDetail from "./components/ExecutionDetail.jsx";
 import Subscription from "./components/Subscription.jsx";
 import Goals from "./components/Goals.jsx";
-import StreamPage from "./components/StreamPage.jsx"; // Integrated
+import StreamPage from "./components/StreamPage.jsx";
 import Login from "./components/Login.jsx";
 import Register from "./components/Register.jsx";
 import ForgotPassword from "./components/ForgotPassword.jsx";
@@ -35,7 +35,6 @@ export default function App() {
   const [isDark, setIsDark] = useState(true);
   const theme = isDark ? darkTheme : lightTheme;
 
-  // This state powers the "Quick View" modal from any page
   const [selectedExecutionId, setSelectedExecutionId] = useState(null);
 
   return (
@@ -55,7 +54,7 @@ export default function App() {
             isDark={isDark}
             theme={theme}
           />
-          
+
           <Toaster 
             position="top-right" 
             toastOptions={{
@@ -79,7 +78,7 @@ export default function App() {
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
 
-            {/* PROTECTED SECTOR: OPERATIONAL SHELL */}
+            {/* PROTECTED SECTOR */}
             <Route
               element={
                 <ProtectedRoute allowed={["free", "pro", "enterprise", "admin"]}>
@@ -90,8 +89,8 @@ export default function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/goals" element={<Goals />} />
               <Route path="/subscription" element={<Subscription />} />
-              
-              {/* OPERATIONAL TRACING: PRO+ FEATURES */}
+
+              {/* EXECUTIONS */}
               <Route
                 path="/executions"
                 element={
@@ -109,7 +108,7 @@ export default function App() {
                 }
               />
 
-              {/* LIVE STREAM SECTOR */}
+              {/* STREAM */}
               <Route
                 path="/stream/:executionId"
                 element={
@@ -119,7 +118,7 @@ export default function App() {
                 }
               />
 
-              {/* FORENSIC AUDIT SECTOR */}
+              {/* AUDIT */}
               <Route
                 path="/audit/:executionId"
                 element={
@@ -129,15 +128,16 @@ export default function App() {
                 }
               />
 
-              {/* COMMAND SECTOR: ADMIN ONLY */}
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute allowed={["admin"]}>
-                  <AdminDashboard />
-                </ProtectedRoute>
-              }
-            />
+              {/* ADMIN */}
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute allowed={["admin"]}>
+                    <AdminDashboard />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
