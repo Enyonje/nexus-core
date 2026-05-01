@@ -1,6 +1,6 @@
 import { registerClient, getActiveStreams } from "../events/stream.js";
 import { requireAuth } from "./auth.js";
-import { publishEvent } from "../execution/executions.js"; // make sure this is the right path
+import { publishEvent } from "./executions.js"; // make sure this is the right path
 
 export async function streamRoutes(server) {
   // SSE stream for executions
