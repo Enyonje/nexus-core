@@ -5,24 +5,31 @@ import { formatDate } from "../lib/utils";
 import { useAuth } from "../context/AuthProvider";
 
 export default function Dashboard() {
-  const { subscription, user } = useAuth(); // Added user for role-based links
+  const { subscription, user } = useAuth();
   const [executions, setExecutions] = useState([]);
   const [goals, setGoals] = useState([]);
   const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // 1. Fixed data extraction: Backend now returns flat arrays for these routes
     Promise.all([
-      apiFetch("/health"),
+      apiFetch("/health").catch(() => ({ status: "error" })),
       apiFetch("/goals").catch(() => []),
+      // Only fetch executions if not free
       subscription !== "free" ? apiFetch("/executions").catch(() => []) : [],
     ])
-      .then(([healthRes, goalsRes, execs]) => {
+      .then(([healthRes, goalsRes, execsRes]) => {
         setHealth(healthRes);
-        setGoals(goalsRes || []);
-        // Backend returns { executions: [] }, so we extract it
-        setExecutions(Array.isArray(execs?.executions) ? execs.executions : []);
+        setGoals(Array.isArray(goalsRes) ? goalsRes : []);
+        
+        /**
+         * FIX: We no longer extract execsRes.executions because 
+         * executions.js now returns a direct array.
+         */
+        setExecutions(Array.isArray(execsRes) ? execsRes : []);
       })
+      .catch(err => console.error("Dashboard Sync Error:", err))
       .finally(() => setLoading(false));
   }, [subscription]);
 
@@ -85,28 +92,25 @@ export default function Dashboard() {
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* Command Matrix (Links to All Main Pages) */}
           <section className="lg:col-span-4 flex flex-col gap-4">
             <h3 className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Command Matrix</h3>
-            
             <ActionCard
               title="Mission Objectives"
               description="Configure and manage neural goals."
               to="/goals"
               variant="primary"
             />
-            
             <ActionCard
               title="Execution Archive"
               description="Review historical traces and logs."
               to={subscription === "free" ? "/subscription" : "/executions"}
               locked={subscription === "free"}
             />
-            
             <ActionCard
               title="Neural Streams"
               description="Monitor live autonomous workflows."
-              to={executions.length > 0 ? `/stream/${executions[0].id}` : "/executions"}
+              /** FIX: Updated link to match the correct stream path */
+              to={executions.length > 0 ? `/executions/${executions[0].id}/stream` : "/executions"}
               locked={subscription === "free"}
             />
           </section>
@@ -129,7 +133,7 @@ export default function Dashboard() {
               ) : (
                 <div className="divide-y divide-white/5">
                   {executions.length === 0 ? (
-                    <div className="p-10 text-center text-slate-600 text-xs font-mono">STANDBY: NO ACTIVITY DETECTED</div>
+                    <div className="p-10 text-center text-slate-600 text-xs font-mono uppercase">Standby: No Neural Activity Detected</div>
                   ) : (
                     executions.slice(0, 5).map((e) => (
                       <div key={e.id} className="p-4 flex justify-between items-center hover:bg-white/[0.02] transition-colors group">
@@ -146,9 +150,10 @@ export default function Dashboard() {
                         </div>
                         <div className="flex gap-4 items-center">
                           <div className="flex gap-2">
-                            <Link to={`/stream/${e.id}`} className="text-[9px] font-black text-blue-500 hover:text-blue-400 uppercase tracking-tighter transition-colors">Stream</Link>
+                            {/* FIX: Aligned paths with the backend route changes */}
+                            <Link to={`/executions/${e.id}/stream`} className="text-[9px] font-black text-blue-500 hover:text-blue-400 uppercase tracking-tighter transition-colors">Stream</Link>
                             <span className="text-slate-800">|</span>
-                            <Link to={`/audit/${e.id}`} className="text-[9px] font-black text-indigo-500 hover:text-indigo-400 uppercase tracking-tighter transition-colors">Audit</Link>
+                            <Link to={`/executions/${e.id}/audit`} className="text-[9px] font-black text-indigo-500 hover:text-indigo-400 uppercase tracking-tighter transition-colors">Audit</Link>
                           </div>
                           <StatusBadge status={e.status} />
                         </div>
