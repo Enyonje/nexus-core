@@ -2,36 +2,34 @@ import { requireAuth } from "./auth.js";
 
 /**
  * Audit Routes
- * Provides a deep-dive forensic report of a specific execution, 
+ * Provides a deep-dive forensic report of a specific execution,
  * including neural reasoning, agent contracts, and inter-agent comms.
  */
 export async function auditRoutes(server) {
   server.get(
-    "/audit/:executionId",
+    "/api/executions/:executionId/audit", // align with frontend/backend
     { preHandler: requireAuth },
     async (req, reply) => {
       try {
         const { executionId } = req.params;
-        const userId = req.user.id; // Extracted from JWT via requireAuth
+        const userId = req.user.id;
 
-        // 1. Mission Summary & Ownership Check
-        // Ensures users can only audit their own neural traces
+        // Mission Summary & Ownership Check
         const executionHeader = await server.pg.query(
           `SELECT id, status, goal_type, started_at, completed_at, metadata
-           FROM executions 
+           FROM executions
            WHERE id = $1 AND user_id = $2`,
           [executionId, userId]
         );
 
         if (executionHeader.rows.length === 0) {
-          return reply.code(404).send({ 
-            error: "Trace Not Found", 
-            message: "The requested execution ID does not exist or you lack clearance." 
+          return reply.code(404).send({
+            error: "Trace Not Found",
+            message: "The requested execution ID does not exist or you lack clearance."
           });
         }
 
-        // 2. Execution Chronology (The "Steps")
-        // Fetches the internal reasoning and outputs of the autonomous engine
+        // Execution Chronology (Steps)
         const steps = await server.pg.query(
           `SELECT id, step_type, status, reasoning, output, error, created_at
            FROM execution_steps
@@ -40,8 +38,7 @@ export async function auditRoutes(server) {
           [executionId]
         );
 
-        // 3. Neural Contracts (The "Agents")
-        // Fetches the specific roles assigned during the orchestration
+        // Neural Contracts (Agents)
         const contracts = await server.pg.query(
           `SELECT id, agent_id, role, task_description, status
            FROM agent_contracts
@@ -49,8 +46,7 @@ export async function auditRoutes(server) {
           [executionId]
         );
 
-        // 4. Inter-Agent Comms (The "Chatter")
-        // Joins messages with contracts to map the dialogue between nodes
+        // Inter-Agent Comms (Messages)
         const messages = await server.pg.query(
           `SELECT m.id, m.contract_id, m.sender_role, m.content, m.created_at
            FROM agent_messages m
@@ -60,7 +56,6 @@ export async function auditRoutes(server) {
           [executionId]
         );
 
-        // Return the compiled Forensic Dossier
         return reply.send({
           executionId,
           summary: executionHeader.rows[0],
@@ -70,12 +65,11 @@ export async function auditRoutes(server) {
           integrity: "verified",
           timestamp: new Date().toISOString()
         });
-
       } catch (err) {
         server.log.error(`[Audit Error] Trace ID ${req.params.executionId}:`, err);
-        return reply.code(500).send({ 
-          error: "Audit Compilation Failure", 
-          message: "Internal neural link error while retrieving logs." 
+        return reply.code(500).send({
+          error: "Audit Compilation Failure",
+          message: "Internal neural link error while retrieving logs."
         });
       }
     }
