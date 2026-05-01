@@ -2,51 +2,42 @@ import { stripe, getStripePriceId } from "../utils/stripe.js";
 
 export async function stripeRoutes(server) {
   server.post("/create-checkout-session", async (req, reply) => {
-    // Destructure tier and userId from the request body
     const { tier, userId } = req.body;
 
     try {
-      // 1. Debugging: Log the incoming tier to ensure it's what you expect
       console.log(`[Stripe] Creating session for Tier: ${tier}, User: ${userId}`);
 
+      // Resolve the Price ID from utils/stripe.js
       const priceId = getStripePriceId(tier);
 
-      // 2. Strict Validation: Check if the priceId is actually present
-      if (!priceId || typeof priceId !== 'string') {
-        console.error(`[Stripe Error] Resolved priceId is invalid: ${priceId}`);
-        return reply.code(400).send({ 
-          error: `Invalid tier: '${tier}'. Please ensure your Stripe Price IDs are configured correctly.` 
+      if (!priceId || typeof priceId !== "string") {
+        console.error(`[Stripe Error] Invalid priceId for tier '${tier}':`, priceId);
+        return reply.code(400).send({
+          error: `Invalid tier '${tier}'. Check STRIPE_PRO_PRICE_ID and STRIPE_ENTERPRISE_PRICE_ID in your environment.`,
         });
       }
 
-      // 3. Create Session
       const session = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"], // Explicitly define payment types
         mode: "subscription",
+        payment_method_types: ["card"],
         line_items: [
           {
-            price: priceId, // This is where the error was triggered
+            price: priceId, // ✅ guaranteed to be a string
             quantity: 1,
           },
         ],
-        // Allow Stripe to handle recurring payment logic
-        subscription_data: {
-          metadata: { userId: userId || "anonymous" },
-        },
+        customer_email: req.user?.email || undefined, // optional, if you have auth
         success_url: `${process.env.FRONTEND_URL}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${process.env.FRONTEND_URL}/pricing`,
-        metadata: { userId: userId || "anonymous" },
+        metadata: { userId: userId || "anonymous", tier },
       });
 
-      // Return the URL for the frontend to redirect
-      return { url: session.url };
-      
+      return reply.send({ url: session.url });
     } catch (err) {
-      // 4. Enhanced Logging: Catch the specific Stripe error details
-      console.error("Stripe API Exception:", err.message);
-      return reply.code(500).send({ 
+      console.error("Stripe API Exception:", err);
+      return reply.code(500).send({
         error: "Internal Server Error during checkout initialization.",
-        details: err.message 
+        details: err.message,
       });
     }
   });

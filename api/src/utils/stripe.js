@@ -1,29 +1,31 @@
 import Stripe from "stripe";
 
-// Use a more recent API version for better compatibility with modern Stripe features
+// Initialize Stripe with your secret key
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2023-10-16", 
+  apiVersion: "2023-10-16",
 });
 
 /**
  * Map tier names to Stripe Price IDs from environment variables.
- * Added .toLowerCase() to prevent 'undefined' errors from case mismatches.
+ * Ensures consistent naming and avoids undefined values.
  */
 export function getStripePriceId(tier) {
   if (!tier) return undefined;
 
+  const normalizedTier = tier.toLowerCase().trim();
+
   const prices = {
     pro: process.env.STRIPE_PRO_PRICE_ID,
     enterprise: process.env.STRIPE_ENTERPRISE_PRICE_ID,
-    // Add 'ultra' if your dashboard uses that name
-    ultra: process.env.STRIPE_ULTRA_PRICE_ID, 
+    ultra: process.env.STRIPE_ULTRA_PRICE_ID,
   };
 
-  const normalizedTier = tier.toLowerCase().trim();
   const priceId = prices[normalizedTier];
 
   if (!priceId) {
-    console.error(`[Stripe Utils] No Price ID found for tier: "${tier}"`);
+    console.error(
+      `[Stripe Utils] No Price ID found for tier "${normalizedTier}". Check your environment variables.`
+    );
   }
 
   return priceId;
@@ -36,7 +38,7 @@ export async function createStripeCustomer(user) {
   try {
     const customer = await stripe.customers.create({
       email: user.email,
-      name: user.name || user.email.split('@')[0],
+      name: user.name || user.email.split("@")[0],
       metadata: { userId: user.id },
     });
     return customer.id;
@@ -57,7 +59,7 @@ export async function getSubscriptionStatus(customerId) {
       customer: customerId,
       status: "all",
       limit: 1,
-      expand: ["data.items.data.price"], // Expand price data for cleaner access
+      expand: ["data.items.data.price"],
     });
 
     if (!subs.data.length) {
@@ -66,20 +68,19 @@ export async function getSubscriptionStatus(customerId) {
 
     const sub = subs.data[0];
     const active = ["active", "trialing"].includes(sub.status);
-
     const priceId = sub.items.data[0].price.id;
-    
-    // Reverse lookup: Match priceId back to a human-readable tier
+
+    // Reverse lookup: match priceId back to tier
     let tier = "free";
     if (priceId === process.env.STRIPE_PRO_PRICE_ID) tier = "pro";
     else if (priceId === process.env.STRIPE_ENTERPRISE_PRICE_ID) tier = "enterprise";
     else if (priceId === process.env.STRIPE_ULTRA_PRICE_ID) tier = "ultra";
 
-    return { 
-      tier, 
-      active, 
+    return {
+      tier,
+      active,
       status: sub.status,
-      cancelAtPeriodEnd: sub.cancel_at_period_end 
+      cancelAtPeriodEnd: sub.cancel_at_period_end,
     };
   } catch (err) {
     console.error("Stripe subscription lookup failed:", err.message);

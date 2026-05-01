@@ -78,9 +78,4 @@ export async function streamRoutes(server) {
 }
 
 
-  // ---------------- OBJECTIVES ----------------
-  // (keep your existing objectives routes here)
 
-  // ---------------- EXECUTIONS ----------------
-  // (keep your existing executions routes here)
-}
