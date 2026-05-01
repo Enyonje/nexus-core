@@ -128,9 +128,8 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-            </Route>
 
-            {/* COMMAND SECTOR: ADMIN ONLY */}
+              {/* COMMAND SECTOR: ADMIN ONLY */}
             <Route
               path="/admin"
               element={
