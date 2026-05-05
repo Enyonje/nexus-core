@@ -1,66 +1,44 @@
+// server/src/routes/payments.js
 import Stripe from "stripe";
-import { db } from "../db/db.js";
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" });
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+function getStripePriceId(tier) {
+  if (!tier) return undefined;
+  const t = tier.toLowerCase().trim();
+  const map = {
+    pro: process.env.STRIPE_PRO_PRICE_ID,
+    enterprise: process.env.STRIPE_ENTERPRISE_PRICE_ID,
+  };
+  return map[t];
+}
 
-export async function paymentsRoutes(server) {
-  // Create a checkout session
-  server.post("/create-checkout-session", async (req, reply) => {
-    const { priceId, userId } = req.body; // priceId from Stripe dashboard
-
+export default function paymentsRoutes(server) {
+  server.post("/payments/create-checkout-session", async (req, reply) => {
     try {
+      console.log("create-checkout-session body:", req.body);
+
+      const { tier } = req.body || {};
+      const priceId = getStripePriceId(tier);
+
+      console.log("Resolved priceId for tier", tier, "=>", priceId);
+
+      if (!priceId) {
+        return reply.code(400).send({ error: "Invalid tier or missing STRIPE_*_PRICE_ID env var" });
+      }
+
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",
         payment_method_types: ["card"],
         line_items: [{ price: priceId, quantity: 1 }],
-        success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.FRONTEND_URL}/cancel`,
-        metadata: { userId },
+        success_url: `${process.env.FRONTEND_URL}/subscription?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.FRONTEND_URL}/subscription?canceled=true`,
+        metadata: { requested_tier: tier },
       });
 
-      return { url: session.url };
+      return reply.send({ url: session.url });
     } catch (err) {
-      return reply.code(500).send({ error: err.message });
-    }
-  });
-
-  // Stripe webhook to handle events
-  server.post("/webhook", {
-    config: {
-      // Disable body parsing for this route
-      bodyLimit: 1048576, // 1MB
-      rawBody: true,
-    },
-    handler: async (req, reply) => {
-      const sig = req.headers["stripe-signature"];
-      let event;
-
-      // Get raw body for Stripe signature verification
-      let rawBody = req.rawBody || req.body; // Fastify >=4 provides req.rawBody if rawBody is enabled
-
-      try {
-        event = stripe.webhooks.constructEvent(
-          rawBody,
-          sig,
-          process.env.STRIPE_WEBHOOK_SECRET
-        );
-      } catch (err) {
-        return reply.code(400).send({ error: `Webhook Error: ${err.message}` });
-      }
-
-      // Handle subscription events
-      if (event.type === "checkout.session.completed") {
-        const session = event.data.object;
-        const userId = session.metadata.userId;
-
-        await db.query(
-          `UPDATE users SET subscription = $1 WHERE id = $2`,
-          ["pro", userId]
-        );
-        console.log(`✅ User ${userId} upgraded to pro`);
-      }
-
-      return reply.send({ received: true });
+      console.error("Stripe create session error:", err);
+      return reply.code(500).send({ error: err.message || "Stripe session creation failed" });
     }
   });
 }
