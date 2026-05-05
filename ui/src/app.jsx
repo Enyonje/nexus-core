@@ -4,7 +4,7 @@ import { Toaster } from "react-hot-toast";
 
 // Components
 import Navbar from "./components/Navbar.jsx";
-import CareersPage from './components/CareersPage.jsx';
+import CareersPage from "./components/CareersPage.jsx";
 import ContactPage from "./components/ContactPage.jsx";
 import ArchitecturePage from "./components/ArchitecturePage.jsx";
 import Layout from "./components/Layout.jsx";
@@ -55,15 +55,15 @@ export default function App() {
             theme={theme}
           />
 
-          <Toaster 
-            position="top-right" 
+          <Toaster
+            position="top-right"
             toastOptions={{
               style: {
-                background: '#0f172a',
-                color: '#fff',
-                border: '1px solid rgba(255,255,255,0.1)'
-              }
-            }} 
+                background: "#0f172a",
+                color: "#fff",
+                border: "1px solid rgba(255,255,255,0.1)",
+              },
+            }}
           />
 
           <Routes>
