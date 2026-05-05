@@ -108,9 +108,9 @@ export default function App() {
                 }
               />
 
-              {/* STREAM */}
+              {/* STREAMS */}
               <Route
-                path="/stream/:executionId"
+                path="/streams/:executionId"
                 element={
                   <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
                     <Streams />
