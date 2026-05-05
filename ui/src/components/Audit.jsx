@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { formatDate } from "../lib/utils";
 
-export default function AuditPage() {
+export default function Audit() {
   const { executionId } = useParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

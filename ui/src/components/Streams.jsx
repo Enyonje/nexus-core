@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
 
-export default function StreamPage() {
+export default function Streams() {
   const { executionId } = useParams();
   const { token } = useAuth();
   const [events, setEvents] = useState([]);

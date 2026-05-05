@@ -11,13 +11,13 @@ import Layout from "./components/Layout.jsx";
 import ExecutionLogsStreamModal from "./components/ExecutionLogsStreamModal.jsx";
 import DocsPage from "./components/DocsPage.jsx";
 import SEOPillarPage from "./components/SEOPillarPage.jsx";
-import AuditPage from "./components/AuditPage.jsx";
+import Audit from "./components/Audit.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import ExecutionList from "./components/ExecutionList.jsx";
 import ExecutionDetail from "./components/ExecutionDetail.jsx";
 import Subscription from "./components/Subscription.jsx";
 import Goals from "./components/Goals.jsx";
-import StreamPage from "./components/StreamPage.jsx";
+import Streams from "./components/Streams.jsx";
 import Login from "./components/Login.jsx";
 import Register from "./components/Register.jsx";
 import ForgotPassword from "./components/ForgotPassword.jsx";
@@ -113,7 +113,7 @@ export default function App() {
                 path="/stream/:executionId"
                 element={
                   <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
-                    <StreamPage />
+                    <Streams />
                   </ProtectedRoute>
                 }
               />
@@ -123,7 +123,7 @@ export default function App() {
                 path="/audit/:executionId"
                 element={
                   <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
-                    <AuditPage />
+                    <Audit />
                   </ProtectedRoute>
                 }
               />
