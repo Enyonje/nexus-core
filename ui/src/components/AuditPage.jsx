@@ -9,7 +9,6 @@ export default function AuditPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // ✅ Correct backend path
     apiFetch(`/api/executions/${executionId}/audit`)
       .then(setData)
       .catch((err) => {
@@ -80,6 +79,17 @@ export default function AuditPage() {
             </div>
           </div>
         </header>
+
+        {/* Audit Import Button */}
+        <div className="flex justify-end">
+          <Link
+            to={`/audit/import/${executionId}`}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition"
+            aria-label="Import Audit"
+          >
+            Import Audit
+          </Link>
+        </div>
 
         {/* Execution Timeline and Sidebar */}
         {/* ... keep your existing JSX for steps, contracts, and messages ... */}

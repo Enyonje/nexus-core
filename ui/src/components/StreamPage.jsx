@@ -9,7 +9,7 @@ export default function StreamPage() {
   const [status, setStatus] = useState("connecting");
   const scrollRef = useRef(null);
 
-  // Auto-scroll
+  // Auto-scroll to bottom when events update
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({
@@ -40,7 +40,7 @@ export default function StreamPage() {
           type: payload.event || "TRACE",
           body: payload,
           timestamp: new Date().toLocaleTimeString(),
-          id: window.crypto.randomUUID(), // ✅ use window.crypto
+          id: window.crypto.randomUUID(),
         };
         setEvents((prev) => [...prev, newEvent]);
       } catch (err) {
@@ -67,7 +67,52 @@ export default function StreamPage() {
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-300 p-8 font-mono">
-      {/* ... keep your JSX as-is ... */}
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Execution Stream</h1>
+        <Link
+          to="/"
+          className="text-blue-400 hover:underline text-sm border px-2 py-1 rounded"
+        >
+          Back to Home
+        </Link>
+      </div>
+      <div
+        ref={scrollRef}
+        className="overflow-y-auto h-96 border border-slate-700 rounded p-4 bg-slate-900"
+        tabIndex={0}
+        aria-label="Event Stream"
+      >
+        <ul>
+          {events.map((event) => (
+            <li key={event.id} className={getEventColor(event.type)}>
+              [{event.timestamp}] <span className="font-semibold">{event.type}</span>:{" "}
+              <span className="break-all">{JSON.stringify(event.body)}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="mt-4 flex items-center gap-4">
+        <span>
+          Status:{" "}
+          <span
+            className={
+              status === "active"
+                ? "text-green-400"
+                : status === "interrupted"
+                ? "text-yellow-400"
+                : "text-blue-400"
+            }
+          >
+            {status}
+          </span>
+        </span>
+        {status === "interrupted" && (
+          <span className="text-yellow-400">Attempting to reconnect...</span>
+        )}
+        {status === "authenticating" && (
+          <span className="text-red-400">Authentication required.</span>
+        )}
+      </div>
     </div>
   );
 }

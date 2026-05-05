@@ -1,4 +1,3 @@
-// src/routes/payments.js
 import Stripe from "stripe";
 import { db } from "../db/db.js";
 
@@ -21,37 +20,47 @@ export async function paymentsRoutes(server) {
 
       return { url: session.url };
     } catch (err) {
-      reply.code(500).send({ error: err.message });
+      return reply.code(500).send({ error: err.message });
     }
   });
 
   // Stripe webhook to handle events
-  server.post("/webhook", async (req, reply) => {
-    const sig = req.headers["stripe-signature"];
-    let event;
+  server.post("/webhook", {
+    config: {
+      // Disable body parsing for this route
+      bodyLimit: 1048576, // 1MB
+      rawBody: true,
+    },
+    handler: async (req, reply) => {
+      const sig = req.headers["stripe-signature"];
+      let event;
 
-    try {
-      event = stripe.webhooks.constructEvent(
-        req.rawBody,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
-    } catch (err) {
-      return reply.code(400).send(`Webhook Error: ${err.message}`);
+      // Get raw body for Stripe signature verification
+      let rawBody = req.rawBody || req.body; // Fastify >=4 provides req.rawBody if rawBody is enabled
+
+      try {
+        event = stripe.webhooks.constructEvent(
+          rawBody,
+          sig,
+          process.env.STRIPE_WEBHOOK_SECRET
+        );
+      } catch (err) {
+        return reply.code(400).send({ error: `Webhook Error: ${err.message}` });
+      }
+
+      // Handle subscription events
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object;
+        const userId = session.metadata.userId;
+
+        await db.query(
+          `UPDATE users SET subscription = $1 WHERE id = $2`,
+          ["pro", userId]
+        );
+        console.log(`✅ User ${userId} upgraded to pro`);
+      }
+
+      return reply.send({ received: true });
     }
-
-    // Handle subscription events
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
-      const userId = session.metadata.userId;
-
-      await db.query(
-        `UPDATE users SET subscription = $1 WHERE id = $2`,
-        ["pro", userId]
-      );
-      console.log(`✅ User ${userId} upgraded to pro`);
-    }
-
-    reply.send({ received: true });
   });
 }
