@@ -108,9 +108,9 @@ export default function App() {
                 }
               />
 
-              {/* STREAMS */}
+              {/* STREAMS (aligned with Dashboard links) */}
               <Route
-                path="/streams/:executionId"
+                path="/executions/:executionId/stream"
                 element={
                   <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
                     <Streams />
@@ -118,9 +118,9 @@ export default function App() {
                 }
               />
 
-              {/* AUDIT */}
+              {/* AUDIT (aligned with Dashboard links) */}
               <Route
-                path="/audit/:executionId"
+                path="/executions/:executionId/audit"
                 element={
                   <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
                     <Audit />
