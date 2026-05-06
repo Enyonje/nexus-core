@@ -12,7 +12,7 @@ import { executionsRoutes } from "./routes/executions.js";
 import { auditRoutes } from "./routes/audit.js";
 import { billingRoutes } from "./routes/billing.js";
 import { paymentsRoutes } from "./routes/payments.js";
-import { streamRoutes } from "./routes/stream.js"; // note plural
+import { streamRoutes } from "./routes/stream.js";
 import { stripeRoutes } from "./routes/stripe.js";
 
 const app = Fastify({
@@ -26,24 +26,17 @@ await app.register(cookie, {
   parseOptions: {},
 });
 
+// ✅ Simplified CORS config
 await app.register(cors, {
-  origin: (origin, cb) => {
-    const allowedOrigins = [
-      "https://nexus-core-chi.vercel.app",
-      "https://nexusthecore.com",	
-      "http://localhost:3000",
-      "http://localhost:5173",
-    ];
-    if (!origin || allowedOrigins.includes(origin)) {
-      cb(null, true);
-    } else {
-      cb(new Error("Not allowed by CORS"), false);
-    }
-  },
+  origin: [
+    "https://nexus-core-chi.vercel.app",
+    "https://nexusthecore.com",
+    "http://localhost:3000",
+    "http://localhost:5173",
+  ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  preflight: true,
 });
 
 await app.register(websocket);
