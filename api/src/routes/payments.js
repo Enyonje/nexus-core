@@ -1,5 +1,5 @@
-// server/src/routes/payments.js
 import Stripe from "stripe";
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" });
 
 function getStripePriceId(tier) {
@@ -12,7 +12,8 @@ function getStripePriceId(tier) {
   return map[t];
 }
 
-export default function paymentsRoutes(server) {
+// Named export instead of default
+export async function paymentsRoutes(server) {
   server.post("/payments/create-checkout-session", async (req, reply) => {
     try {
       console.log("create-checkout-session body:", req.body);
@@ -23,7 +24,9 @@ export default function paymentsRoutes(server) {
       console.log("Resolved priceId for tier", tier, "=>", priceId);
 
       if (!priceId) {
-        return reply.code(400).send({ error: "Invalid tier or missing STRIPE_*_PRICE_ID env var" });
+        return reply
+          .code(400)
+          .send({ error: "Invalid tier or missing STRIPE_*_PRICE_ID env var" });
       }
 
       const session = await stripe.checkout.sessions.create({
@@ -38,7 +41,9 @@ export default function paymentsRoutes(server) {
       return reply.send({ url: session.url });
     } catch (err) {
       console.error("Stripe create session error:", err);
-      return reply.code(500).send({ error: err.message || "Stripe session creation failed" });
+      return reply
+        .code(500)
+        .send({ error: err.message || "Stripe session creation failed" });
     }
   });
 }
