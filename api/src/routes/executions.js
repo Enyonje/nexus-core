@@ -165,19 +165,71 @@ export async function executionsRoutes(app) {
       "Connection": "keep-alive",
       "X-Accel-Buffering": "no",
     });
+    reply.raw.flushHeaders();
 
     const send = (payload) => reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
 
     if (!subscribers.has(id)) subscribers.set(id, new Set());
     subscribers.get(id).add(send);
 
-    send({ event: "nexus_connected", details: "Uplink Secure" });
+    send({ event: "nexus_connected", details: "Stream Uplink Secure" });
 
     req.raw.on("close", () => {
       const subs = subscribers.get(id);
       if (subs) {
         subs.delete(send);
         if (subs.size === 0) subscribers.delete(id);
+      }
+    });
+  });
+
+  /* 5. SSE AUDIT */
+  app.get("/:id/audit", { preHandler: requireAuth }, async (req, reply) => {
+    const { id } = req.params;
+    const origin = req.headers.origin;
+
+    const allowedOrigins = ["https://nexusthecore.com", "http://localhost:5173"];
+    if (allowedOrigins.includes(origin)) {
+      reply.raw.setHeader("Access-Control-Allow-Origin", origin);
+      reply.raw.setHeader("Access-Control-Allow-Credentials", "true");
+    }
+
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    reply.raw.flushHeaders();
+
+    const send = (payload) => reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+
+    // Send existing audit logs immediately
+    try {
+      const { rows } = await app.pg.query(
+        `SELECT * FROM execution_audit WHERE execution_id=$1 ORDER BY created_at ASC`,
+        [id]
+      );
+      for (const row of rows) {
+        send({ event: "audit_log", ...row });
+      }
+    } catch (err) {
+      app.log.error(err, "Failed to fetch audit logs");
+      send({ event: "audit_error", error: "Failed to fetch audit logs" });
+    }
+
+    // Subscribe for future audit events
+    const key = `audit:${id}`;
+    if (!subscribers.has(key)) subscribers.set(key, new Set());
+    subscribers.get(key).add(send);
+
+    send({ event: "nexus_connected", details: "Audit Uplink Secure" });
+
+    req.raw.on("close", () => {
+      const subs = subscribers.get(key);
+      if (subs) {
+        subs.delete(send);
+        if (subs.size === 0) subscribers.delete(key);
       }
     });
   });
