@@ -153,10 +153,18 @@ export async function executionsRoutes(app) {
     const { id } = req.params;
     const origin = req.headers.origin;
 
-    const allowedOrigins = ["https://nexusthecore.com", "http://localhost:5173"];
-    if (allowedOrigins.includes(origin)) {
+    const allowedOrigins = [
+      "https://nexusthecore.com",
+      "https://nexus-core-chi.vercel.app",
+      "http://localhost:5173",
+      "http://localhost:3000"
+    ];
+
+    if (origin && allowedOrigins.includes(origin)) {
       reply.raw.setHeader("Access-Control-Allow-Origin", origin);
       reply.raw.setHeader("Access-Control-Allow-Credentials", "true");
+      reply.raw.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+      reply.raw.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     }
 
     reply.raw.writeHead(200, {
@@ -188,10 +196,18 @@ export async function executionsRoutes(app) {
     const { id } = req.params;
     const origin = req.headers.origin;
 
-    const allowedOrigins = ["https://nexusthecore.com", "http://localhost:5173"];
-    if (allowedOrigins.includes(origin)) {
+    const allowedOrigins = [
+      "https://nexusthecore.com",
+      "https://nexus-core-chi.vercel.app",
+      "http://localhost:5173",
+      "http://localhost:3000"
+    ];
+
+    if (origin && allowedOrigins.includes(origin)) {
       reply.raw.setHeader("Access-Control-Allow-Origin", origin);
       reply.raw.setHeader("Access-Control-Allow-Credentials", "true");
+      reply.raw.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+      reply.raw.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     }
 
     reply.raw.writeHead(200, {
@@ -204,7 +220,6 @@ export async function executionsRoutes(app) {
 
     const send = (payload) => reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
 
-    // Send existing audit logs immediately
     try {
       const { rows } = await app.pg.query(
         `SELECT * FROM execution_audit WHERE execution_id=$1 ORDER BY created_at ASC`,
@@ -218,7 +233,6 @@ export async function executionsRoutes(app) {
       send({ event: "audit_error", error: "Failed to fetch audit logs" });
     }
 
-    // Subscribe for future audit events
     const key = `audit:${id}`;
     if (!subscribers.has(key)) subscribers.set(key, new Set());
     subscribers.get(key).add(send);
@@ -234,16 +248,21 @@ export async function executionsRoutes(app) {
     });
   });
 
-  /* 5. GET SINGLE EXECUTION */
+    /* 6. GET SINGLE EXECUTION */
   app.get("/:id", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const { id } = req.params;
       const userId = req.user?.id;
+
       const { rows } = await app.pg.query(
         `SELECT * FROM executions WHERE id=$1 AND user_id=$2`,
         [id, userId]
       );
-      if (rows.length === 0) return reply.code(404).send({ error: "Not found" });
+
+      if (rows.length === 0) {
+        return reply.code(404).send({ error: "Execution not found or access denied" });
+      }
+
       return rows[0];
     } catch (err) {
       app.log.error(err, "Failed to fetch execution");
@@ -251,10 +270,12 @@ export async function executionsRoutes(app) {
     }
   });
 
-  /* 6. ADMIN OVERRIDES */
+  /* 7. ADMIN OVERRIDES */
   app.get("/admin/all", { preHandler: requireAdmin }, async (req, reply) => {
     try {
-      const { rows } = await app.pg.query(`SELECT * FROM executions ORDER BY started_at DESC`);
+      const { rows } = await app.pg.query(
+        `SELECT * FROM executions ORDER BY started_at DESC NULLS LAST`
+      );
       return rows;
     } catch (err) {
       app.log.error(err, "Failed to fetch all executions");
