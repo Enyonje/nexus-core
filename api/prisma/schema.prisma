@@ -130,6 +130,7 @@ model ExecutionStep {
   user_id      String
   org_id       String?
   name         String
+   reasoning   String?
   step_type    String?
   status       String
   started_at   DateTime  @default(now())
