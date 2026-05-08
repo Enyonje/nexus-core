@@ -6,20 +6,36 @@ import { requireAuth } from "./auth.js";
  * including neural reasoning, agent contracts, and inter-agent comms.
  */
 export async function auditRoutes(server) {
+  // Explicit OPTIONS handler for preflight
+  server.options("/api/executions/:executionId/audit", async (req, reply) => {
+    const origin = req.headers.origin;
+    const allowedOrigins = [
+      "https://nexusthecore.com",
+      "https://nexus-core-chi.vercel.app",
+      "http://localhost:5173",
+      "http://localhost:3000"
+    ];
+
+    if (origin && allowedOrigins.includes(origin)) {
+      reply.header("Access-Control-Allow-Origin", origin);
+      reply.header("Access-Control-Allow-Credentials", "true");
+      reply.header("Access-Control-Allow-Methods", "GET,OPTIONS");
+      reply.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    }
+
+    return reply.code(204).send();
+  });
+
+  // Actual GET handler
   server.get(
     "/api/executions/:executionId/audit", 
     { preHandler: requireAuth },
     async (req, reply) => {
       try {
         const { executionId } = req.params;
-        
-        /** 
-         * FIX: Using req.user.id to match the updated 
-         * requireAuth middleware in auth.js 
-         */
         const userId = req.user.id;
 
-        // 1. Mission Summary & Ownership Check
+        // Mission Summary & Ownership Check
         const executionHeader = await server.pg.query(
           `SELECT id, status, goal_type, started_at, completed_at, metadata
            FROM executions
@@ -34,7 +50,7 @@ export async function auditRoutes(server) {
           });
         }
 
-        // 2. Execution Chronology (Steps)
+        // Execution Chronology (Steps)
         const steps = await server.pg.query(
           `SELECT id, step_type, status, reasoning, output, error, created_at
            FROM execution_steps
@@ -43,7 +59,7 @@ export async function auditRoutes(server) {
           [executionId]
         );
 
-        // 3. Neural Contracts (Agents)
+        // Neural Contracts (Agents)
         const contracts = await server.pg.query(
           `SELECT id, agent_id, role, task_description, status
            FROM agent_contracts
@@ -51,7 +67,7 @@ export async function auditRoutes(server) {
           [executionId]
         );
 
-        // 4. Inter-Agent Comms (Messages)
+        // Inter-Agent Comms (Messages)
         const messages = await server.pg.query(
           `SELECT m.id, m.contract_id, m.sender_role, m.content, m.created_at
            FROM agent_messages m
