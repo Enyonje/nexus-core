@@ -1,6 +1,5 @@
 import { registerClient, getActiveStreams } from "../events/stream.js";
 import { requireAuth } from "./auth.js";
-// Path is likely ./executions.js if they are in the same directory
 import { publishEvent } from "./executions.js"; 
 
 export async function streamRoutes(server) {
@@ -15,7 +14,7 @@ export async function streamRoutes(server) {
         const { executionId } = req.params;
         const origin = req.headers.origin;
 
-        // Unified origin list from your previous logs
+        // Allowed origins
         const allowedOrigins = [
           "https://nexusthecore.com",
           "https://nexus-core-chi.vercel.app",
@@ -23,38 +22,40 @@ export async function streamRoutes(server) {
           "http://localhost:3000"
         ];
 
-        // Set Headers for SSE and CORS
+        // Validate origin
         if (!origin || allowedOrigins.includes(origin)) {
           reply.raw.writeHead(200, {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no", // CRITICAL for Render.com/Nginx
+            "X-Accel-Buffering": "no", // CRITICAL for Render/Cloudflare
             "Access-Control-Allow-Origin": origin || "*",
             "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "GET,OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
           });
         } else {
           return reply.code(403).send({ error: "Access Denied: Origin Mismatch" });
         }
 
-        // Initial Handshake - Matches StreamPage.jsx expectation
+        // Initial handshake event
         reply.raw.write(`data: ${JSON.stringify({
           event: "nexus_connected",
           data: { system: "Neural Link Alpha", status: "Synchronized" }
         })}\n\n`);
 
-        // Attach to the event system
+        // Register client in your event system
         registerClient(executionId, reply);
 
         // Cleanup on disconnect
         req.raw.on("close", () => {
-          server.log.info(`Nexus Link Terminated for ${executionId}`);
-          // Add logic here to unregister if your event system requires it
+          server.log.info(`SSE connection closed for execution ${executionId}`);
+          // Unregister client if needed
         });
 
       } catch (err) {
-        server.log.error("Nexus Stream Error:", err);
-        return reply.code(500).send({ error: "Neural Link Failure" });
+        server.log.error("Stream error:", err);
+        return reply.code(500).send({ error: "Stream Failure", detail: err.message });
       }
     }
   );
@@ -73,17 +74,16 @@ export async function streamRoutes(server) {
   });
 
   /* ===============================
-     GOALS (Required for Dashboard View)
+     GOALS (Dashboard View)
   =============================== */
   server.get("/api/goals", { preHandler: requireAuth }, async (req, reply) => {
     try {
-      // Use req.user.id to match the updated Auth middleware
       const userId = req.user.id; 
       const { rows } = await server.pg.query(
         `SELECT * FROM goals WHERE user_id=$1 ORDER BY created_at DESC`,
         [userId]
       );
-      return rows; // Return flat array for dashboard mapping
+      return rows;
     } catch (err) {
       server.log.error("Goal list failed:", err);
       return reply.code(500).send({ error: "Failed to list goals" });
