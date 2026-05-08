@@ -5,39 +5,28 @@ import { publishEvent } from "../routes/executions.js";
 import { runSentinel } from "../agents/sentinel.js";
 
 /* ===============================
-   Payload Validation (Improved)
+   Payload Validation
 =============================== */
 function validatePayload(goalType, payload) {
-  if (!payload || typeof payload !== "object") {
-    payload = {};
-  }
+  if (!payload || typeof payload !== "object") payload = {};
 
-  // Ensure text exists for text-based goals
   if (!payload.text || typeof payload.text !== "string" || payload.text.trim().length === 0) {
     if (goalType === "analysis" || goalType === "ai_generate") {
-      // Provide a default instead of throwing
       payload.text = "Default input for analysis";
     }
   }
 
   switch (goalType) {
     case "processFile":
-      if (!payload.filePath) {
-        // Default filePath if missing
-        payload.filePath = "uploads/default.txt";
-      }
+      if (!payload.filePath) payload.filePath = "uploads/default.txt";
       break;
     case "analysis":
-      if (payload.text.length < 5) {
-        // Pad short text with a default suffix
-        payload.text = payload.text + " (extended for analysis)";
-      }
+      if (payload.text.length < 5) payload.text = payload.text + " (extended for analysis)";
       break;
     default:
       break;
   }
 
-  // Always ensure parameters exist
   if (!payload.parameters) {
     payload.parameters = { threshold: 0.75, mode: "fast" };
   }
@@ -72,7 +61,7 @@ function validateStepOutput(stepInfo, output) {
 }
 
 /* ===============================
-   Retry Logic for Steps
+   Retry Logic
 =============================== */
 async function runStepWithRetry(stepInfo, maxAttempts = 3) {
   let attempt = 0;
@@ -93,7 +82,7 @@ async function runStepWithRetry(stepInfo, maxAttempts = 3) {
 }
 
 /* ===============================
-   Pause/Resume Support
+   Pause/Resume
 =============================== */
 async function waitUntilResumed(executionId) {
   while (true) {
@@ -194,12 +183,13 @@ export async function runExecution(executionId, payloadOverride = null) {
     let completedSteps = 0;
 
     const result = await executeGoalLogic(execution.goal_type, payload, executionId, async (stepInfo) => {
-      const { rows: stepRows } = await db.query(
-        `INSERT INTO execution_steps (execution_id,user_id,org_id,name,status,started_at)
-         VALUES ($1,$2,$3,$4,'running',NOW()) RETURNING id`,
-        [executionId, execution.user_id, execution.org_id, stepInfo.name]
+      // ✅ Generate UUID for step
+      const stepId = uuidv4();
+      await db.query(
+        `INSERT INTO execution_steps (id, execution_id, user_id, org_id, name, status, started_at)
+         VALUES ($1,$2,$3,$4,$5,'running',NOW())`,
+        [stepId, executionId, execution.user_id, execution.org_id, stepInfo.name]
       );
-      const stepId = stepRows[0].id;
 
       try {
         const rawOutput = await runStepWithRetry({ ...stepInfo, executionId }, 3);
@@ -224,7 +214,10 @@ export async function runExecution(executionId, payloadOverride = null) {
           throw new Error("Sentinel blocked execution");
         }
       } catch (err) {
-        await db.query(`UPDATE execution_steps SET status='failed', finished_at=NOW(), error=$2 WHERE id=$1`, [stepId, err.message]);
+        await db.query(
+          `UPDATE execution_steps SET status='failed', finished_at=NOW(), error=$2 WHERE id=$1`,
+          [stepId, err.message]
+        );
         publishEvent(executionId, {
           event: "execution_progress",
           stepId,
@@ -268,17 +261,3 @@ export async function runExecution(executionId, payloadOverride = null) {
     throw err;
   }
 }
-
-/* =========================
-   Recommendations for Advanced Features
-========================= */
-// 1. Add retry logic for failed steps (with max attempts).
-// 2. Support parallel execution for independent steps.
-// 3. Integrate notifications (email/webhook) for execution status.
-// 4. Add audit logging for all execution events.
-// 5. Allow custom step plugins for extensibility.
-// 6. Track resource usage and execution time for analytics.
-// 7. Add role-based access control for sensitive goal types.
-// 8. Support pausing/resuming executions for long-running tasks.
-// 9. Add detailed error reporting and troubleshooting hints for users.
-// 10. Integrate with external AI/ML APIs for advanced goal types.

@@ -9,18 +9,17 @@ export function AuthProvider({ children }) {
   const [subscription, setSubscription] = useState("free");
   const [role, setRole] = useState("user");
   const [loading, setLoading] = useState(true);
-  const [initializing, setInitializing] = useState(true); // ✅ Block UI until auth is resolved
+  const [initializing, setInitializing] = useState(true);
   const navigate = useNavigate();
 
   /* =========================
       INIT SESSION & PING
   ========================= */
   useEffect(() => {
-    // 1. "Poke" the Render backend immediately to handle cold starts
+    // Wake backend
     fetch(`${API_URL}/health`).catch(() => console.log("Backend waking up..."));
 
-    // 2. Resolve authentication
-    const token = localStorage.getItem("authToken"); // Consistent with api.js key
+    const token = localStorage.getItem("authToken");
     if (token) {
       refreshSession(token);
     } else {
@@ -55,7 +54,7 @@ export function AuthProvider({ children }) {
       return { tier: "free", role: "user" };
     } finally {
       setLoading(false);
-      setInitializing(false); // ✅ Release the UI guard
+      setInitializing(false);
     }
   }
 
@@ -63,14 +62,14 @@ export function AuthProvider({ children }) {
       LOGIN
   ========================= */
   async function login({ token }) {
-    localStorage.setItem("authToken", token); // Store key as 'authToken'
+    localStorage.setItem("authToken", token);
     const { tier, role } = await refreshSession(token);
     redirectByTier(tier, role);
   }
 
   /* =========================
       REDIRECT
-  ======================== */
+  ========================= */
   function redirectByTier(tier, role) {
     if (role === "admin") {
       navigate("/admin", { replace: true });
@@ -97,6 +96,31 @@ export function AuthProvider({ children }) {
     if (redirect) navigate("/", { replace: true });
   }
 
+  /* =========================
+      AUTH FETCH HELPER
+  ========================= */
+  async function authFetch(endpoint, options = {}) {
+    const token = user?.token || localStorage.getItem("authToken");
+    const headers = {
+      ...(options.headers || {}),
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    const res = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
+
+    if (res.status === 401) {
+      // Token invalid/expired → logout
+      logout();
+      throw new Error("Unauthorized");
+    }
+
+    return res;
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -105,9 +129,10 @@ export function AuthProvider({ children }) {
         role,
         setSubscription,
         loading,
-        initializing, // ✅ Expose initializing to protect Dashboard fetches
+        initializing,
         login,
         logout,
+        authFetch, // ✅ expose helper
       }}
     >
       {children}

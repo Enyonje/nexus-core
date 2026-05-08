@@ -8,26 +8,26 @@ datasource db {
 }
 
 model User {
-  id                  String            @id @default(uuid())
-  email               String            @unique
+  id                  String          @id @default(uuid())
+  email               String          @unique
   password_hash       String
-  created_at          DateTime          @default(now())
+  created_at          DateTime        @default(now())
   org_id              String?
-  role                String            @default("user")
-  subscription        String            @default("free")
+  role                String          @default("user")
+  subscription        String          @default("free")
   name                String?
   refresh_token       String?
-  failed_attempts     Int               @default(0)
-  locked_until        DateTime?         @db.Timestamptz(6)
-  mfa_enabled         Boolean           @default(false)
+  failed_attempts     Int             @default(0)
+  locked_until        DateTime?       @db.Timestamptz(6)
+  mfa_enabled         Boolean         @default(false)
   mfa_secret          String?
   reset_token         String?
-  reset_token_expires DateTime?         @db.Timestamptz(6)
+  reset_token_expires DateTime?       @db.Timestamptz(6)
   authAudits          AuthAudit[]
-  execution_steps     execution_steps[]
+  executionSteps      ExecutionStep[]   // ✅ use PascalCase type
   executions          Execution[]
   goals               Goal[]
-  organization        Organization?     @relation(fields: [org_id], references: [id])
+  organization        Organization?   @relation(fields: [org_id], references: [id])
 
   @@map("users")
 }
@@ -86,14 +86,14 @@ model Execution {
   version         Int?
   status          String            @default("pending")
   schedule        Json?
-  recurring Boolean? @default(false)
+  recurring       Boolean?          @default(false)
   duration_ms     Int?
   finished_at     DateTime?
   goal_payload    Json              @default("{}")
   result          Json?
   error           String?
-  execution_audit ExecutionAudit[]
-  execution_steps execution_steps[]
+  executionAudit  ExecutionAudit[]
+  executionSteps  ExecutionStep[]     // ✅ use PascalCase type
   goal            Goal              @relation(fields: [goal_id], references: [id])
   objective       Objective?        @relation(fields: [objective_id], references: [id], onDelete: Restrict)
   user            User              @relation(fields: [user_id], references: [id], onDelete: Cascade)
@@ -102,7 +102,7 @@ model Execution {
 }
 
 model AuthAudit {
-  id         String   @id
+  id         String   @id @default(uuid())
   user_id    String
   action     String
   details    Json?
@@ -119,22 +119,26 @@ model ExecutionAudit {
   meta         Json?
   created_at   DateTime  @default(now())
   event        String    @default("unknown")
-  executions   Execution @relation(fields: [execution_id], references: [id], onDelete: Cascade)
+  execution    Execution @relation(fields: [execution_id], references: [id], onDelete: Cascade)
 
   @@map("execution_audit")
 }
 
-model execution_steps {
-  id           String    @id
+model ExecutionStep {
+  id           String    @id @default(uuid())
   execution_id String
   user_id      String
   org_id       String?
   name         String
+  step_type    String?
   status       String
   started_at   DateTime  @default(now())
   finished_at  DateTime?
   output       Json?
   error        String?
-  executions   Execution @relation(fields: [execution_id], references: [id], onDelete: Cascade)
-  users        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  execution    Execution @relation(fields: [execution_id], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("execution_steps")   // ✅ maps to your existing table
 }
