@@ -20,23 +20,26 @@ const app = Fastify({
   bodyLimit: 1048576, // 1MB
 });
 
-// Plugins
-await app.register(cookie, {
-  secret: process.env.COOKIE_SECRET || "cookie_secret",
-  parseOptions: {},
-});
+/* =========================
+   PLUGINS
+========================= */
 
-// ✅ Simplified CORS config
+// ✅ Register CORS FIRST
 await app.register(cors, {
   origin: [
-    "https://nexus-core-chi.vercel.app",
     "https://nexusthecore.com",
+    "https://nexus-core-chi.vercel.app",
     "http://localhost:3000",
     "http://localhost:5173",
   ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
+});
+
+await app.register(cookie, {
+  secret: process.env.COOKIE_SECRET || "cookie_secret",
+  parseOptions: {},
 });
 
 await app.register(websocket);
@@ -56,7 +59,9 @@ await app.register(fastifyJwt, {
   secret: process.env.JWT_SECRET || "super-secret-key",
 });
 
-// Routes — all under /api
+/* =========================
+   ROUTES
+========================= */
 app.register(authRoutes, { prefix: "/api/auth" });
 app.register(goalsRoutes, { prefix: "/api/goals" });
 app.register(adminRoutes, { prefix: "/api/admin" });
@@ -67,7 +72,6 @@ app.register(paymentsRoutes, { prefix: "/api/payments" });
 app.register(streamRoutes, { prefix: "/api/stream" });
 app.register(stripeRoutes, { prefix: "/api/stripe" });
 
-// Health check
 app.get("/api/health", async () => {
   const client = await app.pg.connect();
   const result = await client.query("SELECT 1");
@@ -75,7 +79,9 @@ app.get("/api/health", async () => {
   return { status: "ok", db: result.rowCount === 1 };
 });
 
-// Error handler
+/* =========================
+   ERROR HANDLER
+========================= */
 app.setErrorHandler((error, request, reply) => {
   request.log.error(error);
   reply.code(error.statusCode || 500).send({
@@ -83,12 +89,10 @@ app.setErrorHandler((error, request, reply) => {
   });
 });
 
-// Debug: print all registered routes
 app.ready().then(() => {
   console.log(app.printRoutes());
 });
 
-// Start server
 const PORT = process.env.PORT || 3001;
 app.listen({ port: PORT, host: "0.0.0.0" }).then(() => {
   console.log(`🚀 API running on port ${PORT}`);
