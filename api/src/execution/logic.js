@@ -1,3 +1,4 @@
+// src/execution/logic.js
 import OpenAI from "openai";
 import { db } from "../db/db.js";
 import { publishEvent } from "../events/stream.js";
@@ -6,7 +7,15 @@ import { v4 as uuidv4 } from "uuid";
 /* =========================
    Helper: Record Step
 ========================= */
-async function recordStep(executionId, type, status, reasoning = "", output = null, error = null, name = null) {
+async function recordStep(
+  executionId,
+  type,
+  status,
+  reasoning = "",
+  output = null,
+  error = null,
+  name = null
+) {
   try {
     const { rows } = await db.query(
       `SELECT user_id, org_id FROM executions WHERE id = $1`,
