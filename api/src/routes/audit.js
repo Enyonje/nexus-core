@@ -2,7 +2,7 @@ import { requireAuth } from "./auth.js";
 
 /**
  * Audit Routes
- * Provides a deep-dive forensic report of a specific execution,
+ * Provides a forensic report of a specific execution,
  * including steps, contracts, messages, and Sentinel summary.
  */
 export async function auditRoutes(server) {
@@ -26,7 +26,7 @@ export async function auditRoutes(server) {
     return reply.code(204).send();
   });
 
-  // GET audit (static snapshot)
+  // GET audit
   server.get(
     "/api/executions/:executionId/audit",
     { preHandler: requireAuth },
@@ -35,8 +35,9 @@ export async function auditRoutes(server) {
         const { executionId } = req.params;
         const userId = req.user.id;
 
+        // Execution summary
         const executionHeader = await server.pg.query(
-          `SELECT id, status, goal_type, started_at, completed_at, metadata
+          `SELECT id, status, goal_type, started_at, finished_at, metadata
            FROM executions
            WHERE id = $1 AND user_id = $2`,
           [executionId, userId]
@@ -49,14 +50,16 @@ export async function auditRoutes(server) {
           });
         }
 
+        // Steps chronology (use started_at instead of created_at)
         const steps = await server.pg.query(
-          `SELECT id, step_type, status, reasoning, output, error, created_at
+          `SELECT id, step_type, status, reasoning, output, error, started_at, finished_at
            FROM execution_steps
            WHERE execution_id = $1
-           ORDER BY created_at ASC`,
+           ORDER BY started_at ASC`,
           [executionId]
         );
 
+        // Agent contracts
         const contracts = await server.pg.query(
           `SELECT id, agent_id, role, task_description, status
            FROM agent_contracts
@@ -64,6 +67,7 @@ export async function auditRoutes(server) {
           [executionId]
         );
 
+        // Agent messages
         const messages = await server.pg.query(
           `SELECT m.id, m.contract_id, m.sender_role, m.content, m.created_at
            FROM agent_messages m
@@ -73,8 +77,9 @@ export async function auditRoutes(server) {
           [executionId]
         );
 
+        // Sentinel summary (blocked steps)
         const { rows: blocked } = await server.pg.query(
-          `SELECT id, name, error
+          `SELECT id, name, error, started_at
            FROM execution_steps
            WHERE execution_id = $1 AND status = 'blocked'`,
           [executionId]
@@ -83,8 +88,10 @@ export async function auditRoutes(server) {
           stepId: step.id,
           name: step.name,
           reason: step.error,
+          started_at: step.started_at
         }));
 
+        // Response
         return reply.send({
           executionId,
           summary: executionHeader.rows[0],
@@ -100,47 +107,9 @@ export async function auditRoutes(server) {
         server.log.error(`[Audit Error] Trace ID ${req.params.executionId}:`, err);
         return reply.code(500).send({
           error: "Audit Compilation Failure",
-          message: "Internal neural link error while retrieving logs."
+          message: "Internal error while retrieving logs."
         });
       }
-    }
-  );
-
-  // SSE stream for live Sentinel events
-  server.get(
-    "/api/executions/:executionId/audit/stream",
-    { preHandler: requireAuth },
-    async (req, reply) => {
-      const { executionId } = req.params;
-
-      reply.raw.setHeader("Content-Type", "text/event-stream");
-      reply.raw.setHeader("Cache-Control", "no-cache");
-      reply.raw.setHeader("Connection", "keep-alive");
-      reply.raw.flushHeaders();
-
-      // Example: push sentinel events from DB polling
-      const interval = setInterval(async () => {
-        const { rows: blocked } = await server.pg.query(
-          `SELECT id, name, error
-           FROM execution_steps
-           WHERE execution_id = $1 AND status = 'blocked'`,
-          [executionId]
-        );
-
-        if (blocked.length > 0) {
-          const summary = blocked.map(step => ({
-            stepId: step.id,
-            name: step.name,
-            reason: step.error,
-          }));
-          reply.raw.write(`event: sentinel_summary\n`);
-          reply.raw.write(`data: ${JSON.stringify(summary)}\n\n`);
-        }
-      }, 3000);
-
-      req.raw.on("close", () => {
-        clearInterval(interval);
-      });
     }
   );
 }
