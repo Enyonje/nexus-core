@@ -132,6 +132,7 @@ model ExecutionStep {
   name         String
    reasoning   String?
   step_type    String?
+  created_at   DateTime  @default(now())
   status       String
   started_at   DateTime  @default(now())
   finished_at  DateTime?
