@@ -69,7 +69,7 @@ export default function LandingPage() {
       <section className="relative z-10 py-16 border-y border-white/[0.03] bg-white/[0.01]">
         <p className="text-center text-[9px] font-black text-slate-600 uppercase tracking-[0.4em] mb-10">System Infrastructure</p>
         <div className="flex flex-wrap justify-center items-center gap-8 md:gap-16 px-6 opacity-30 grayscale hover:grayscale-0 transition-all duration-700">
-           {['Vercel', 'Laravel', 'Docker', 'Google Cloud', 'OpenAI'].map((tech) => (
+           {['Vercel', 'Node-js', 'Docker', 'Google Cloud', 'OpenAI'].map((tech) => (
              <span key={tech} className="font-black text-lg md:text-2xl tracking-tighter text-white">{tech.toUpperCase()}</span>
            ))}
         </div>

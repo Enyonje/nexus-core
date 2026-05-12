@@ -11,7 +11,7 @@ function ExecutionLogsStreamModal({ executionId, onClose }) {
       try {
         const token = localStorage.getItem("token");
         const res = await fetch(
-          `https://nexus-core-a0px.onrender.com/executions/${executionId}/logs`,
+          `https://nexus-core-a0px.onrender.com/api/executions/${executionId}/logs`,
           {
             headers: {
               "Authorization": `Bearer ${token}`,
@@ -37,7 +37,7 @@ function ExecutionLogsStreamModal({ executionId, onClose }) {
   // Subscribe to SSE for live updates
   useEffect(() => {
     const eventSource = new EventSource(
-      `https://nexus-core-a0px.onrender.com/executions/${executionId}/stream`,
+      `https://nexus-core-a0px.onrender.com/api/executions/${executionId}/stream`,
       { withCredentials: true }
     );
 

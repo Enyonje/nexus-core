@@ -169,7 +169,7 @@ export default function Register() {
         </form>
 
         <p className="text-center mt-8 text-[10px] text-slate-600 uppercase tracking-widest">
-          Secure Agentic Protocol v1.02 • <span className="text-slate-500">Evans Nyonje Edition</span>
+          Secure Agentic Protocol v1.02 • <span className="text-slate-500">Flux Studios Edition</span>
         </p>
       </div>
     </div>
