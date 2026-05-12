@@ -3,10 +3,10 @@ import { requireAuth } from "./auth.js";
 /**
  * Audit Routes
  * Provides a deep-dive forensic report of a specific execution,
- * including neural reasoning, agent contracts, and inter-agent comms.
+ * including steps, contracts, messages, and Sentinel summary.
  */
 export async function auditRoutes(server) {
-  // Explicit OPTIONS handler for preflight
+  // OPTIONS preflight for CORS
   server.options("/api/executions/:executionId/audit", async (req, reply) => {
     const origin = req.headers.origin;
     const allowedOrigins = [
@@ -26,16 +26,15 @@ export async function auditRoutes(server) {
     return reply.code(204).send();
   });
 
-  // Actual GET handler
+  // GET audit (static snapshot)
   server.get(
-    "/api/executions/:executionId/audit", 
+    "/api/executions/:executionId/audit",
     { preHandler: requireAuth },
     async (req, reply) => {
       try {
         const { executionId } = req.params;
         const userId = req.user.id;
 
-        // Mission Summary & Ownership Check
         const executionHeader = await server.pg.query(
           `SELECT id, status, goal_type, started_at, completed_at, metadata
            FROM executions
@@ -50,7 +49,6 @@ export async function auditRoutes(server) {
           });
         }
 
-        // Execution Chronology (Steps)
         const steps = await server.pg.query(
           `SELECT id, step_type, status, reasoning, output, error, created_at
            FROM execution_steps
@@ -59,7 +57,6 @@ export async function auditRoutes(server) {
           [executionId]
         );
 
-        // Neural Contracts (Agents)
         const contracts = await server.pg.query(
           `SELECT id, agent_id, role, task_description, status
            FROM agent_contracts
@@ -67,7 +64,6 @@ export async function auditRoutes(server) {
           [executionId]
         );
 
-        // Inter-Agent Comms (Messages)
         const messages = await server.pg.query(
           `SELECT m.id, m.contract_id, m.sender_role, m.content, m.created_at
            FROM agent_messages m
@@ -77,13 +73,25 @@ export async function auditRoutes(server) {
           [executionId]
         );
 
-        // Success Response
+        const { rows: blocked } = await server.pg.query(
+          `SELECT id, name, error
+           FROM execution_steps
+           WHERE execution_id = $1 AND status = 'blocked'`,
+          [executionId]
+        );
+        const sentinelSummary = blocked.map(step => ({
+          stepId: step.id,
+          name: step.name,
+          reason: step.error,
+        }));
+
         return reply.send({
           executionId,
           summary: executionHeader.rows[0],
           steps: steps.rows,
           contracts: contracts.rows,
           messages: messages.rows,
+          sentinelSummary,
           integrity: "verified",
           timestamp: new Date().toISOString()
         });
@@ -95,6 +103,44 @@ export async function auditRoutes(server) {
           message: "Internal neural link error while retrieving logs."
         });
       }
+    }
+  );
+
+  // SSE stream for live Sentinel events
+  server.get(
+    "/api/executions/:executionId/audit/stream",
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const { executionId } = req.params;
+
+      reply.raw.setHeader("Content-Type", "text/event-stream");
+      reply.raw.setHeader("Cache-Control", "no-cache");
+      reply.raw.setHeader("Connection", "keep-alive");
+      reply.raw.flushHeaders();
+
+      // Example: push sentinel events from DB polling
+      const interval = setInterval(async () => {
+        const { rows: blocked } = await server.pg.query(
+          `SELECT id, name, error
+           FROM execution_steps
+           WHERE execution_id = $1 AND status = 'blocked'`,
+          [executionId]
+        );
+
+        if (blocked.length > 0) {
+          const summary = blocked.map(step => ({
+            stepId: step.id,
+            name: step.name,
+            reason: step.error,
+          }));
+          reply.raw.write(`event: sentinel_summary\n`);
+          reply.raw.write(`data: ${JSON.stringify(summary)}\n\n`);
+        }
+      }, 3000);
+
+      req.raw.on("close", () => {
+        clearInterval(interval);
+      });
     }
   );
 }

@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { db } from "../db/db.js";
 import { executeGoalLogic } from "./logic.js";
 import { publishEvent } from "../routes/executions.js";
-import { runSentinel } from "../agents/sentinel.js";
+import { runSentinel, summarizeBlockedSteps } from "../agents/sentinel.js";
 
 /* ===============================
    Payload Validation
@@ -183,7 +183,6 @@ export async function runExecution(executionId, payloadOverride = null) {
     let completedSteps = 0;
 
     const result = await executeGoalLogic(execution.goal_type, payload, executionId, async (stepInfo) => {
-      // ✅ Generate UUID for step
       const stepId = uuidv4();
       await db.query(
         `INSERT INTO execution_steps (id, execution_id, user_id, org_id, name, status, started_at)
@@ -192,7 +191,7 @@ export async function runExecution(executionId, payloadOverride = null) {
       );
 
       try {
-        const rawOutput = await runStepWithRetry({ ...stepInfo, executionId }, 3);
+        const rawOutput = await runStepWithRetry({ ...stepInfo, executionId, id: stepId }, 3);
         const { valid, normalized, reason } = validateStepOutput(stepInfo, rawOutput);
 
         if (!valid) {
@@ -208,10 +207,12 @@ export async function runExecution(executionId, payloadOverride = null) {
         publishEvent(executionId, { event: "execution_progress", stepId, step: stepInfo.name, result: normalized, completedSteps });
         await auditLog(executionId, "step_completed", { step: stepInfo.name });
 
-        const verdict = await runSentinel(executionId, stepInfo, normalized);
-        if (!verdict?.allowed) {
-          publishEvent(executionId, { event: "sentinel_blocked", stepId, reason: verdict?.reason, output: normalized });
-          throw new Error("Sentinel blocked execution");
+        // ✅ Sentinel check (soft block)
+        const verdict = await runSentinel(executionId, { ...stepInfo, id: stepId }, normalized);
+        if (!verdict.allowed) {
+          publishEvent(executionId, { event: "sentinel_blocked", stepId, reason: verdict.reason, output: normalized });
+          await auditLog(executionId, "step_blocked", { step: stepInfo.name, reason: verdict.reason });
+          return; // continue with next step
         }
       } catch (err) {
         await db.query(
@@ -231,13 +232,16 @@ export async function runExecution(executionId, payloadOverride = null) {
       }
     });
 
-        const duration = Date.now() - start;
+    const duration = Date.now() - start;
     await db.query(
       `UPDATE executions
        SET status='completed', finished_at=NOW(), result=$2, duration_ms=$3
        WHERE id=$1`,
       [executionId, JSON.stringify(result), duration]
     );
+
+    // ✅ Sentinel summary at the end
+    await summarizeBlockedSteps(executionId);
 
     publishEvent(executionId, { event: "execution_completed", result, duration });
     notify(executionId, "completed", { duration });

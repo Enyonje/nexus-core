@@ -2,9 +2,6 @@ import { db } from "../db/db.js";
 import { publishEvent } from "../routes/executions.js";
 import OpenAI from "openai";
 
-/* =========================
-   SAFE OPENAI CLIENT
-========================= */
 function getOpenAIClient() {
   if (!process.env.OPENAI_API_KEY) return null;
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -12,76 +9,96 @@ function getOpenAIClient() {
 
 /**
  * Sentinel Governance Agent
- * Validates execution steps in real time
+ * Validates a single execution step in real time
  */
-export async function runSentinel(executionId) {
-  const { rows: steps } = await db.query(
-    `SELECT id, step_type, output
-     FROM execution_steps
-     WHERE execution_id = $1
-       AND status = 'completed'`,
-    [executionId]
-  );
+export async function runSentinel(executionId, stepInfo, output) {
+  const verdict = await validateStep(stepInfo, output);
 
-  for (const step of steps) {
-    const verdict = await validateStep(step);
+  if (!verdict.ok) {
+    // Mark step as blocked
+    await db.query(
+      `UPDATE execution_steps
+       SET status = 'blocked', error = $1, finished_at = NOW()
+       WHERE id = $2`,
+      [verdict.reason, stepInfo.id]
+    );
 
-    if (!verdict.ok) {
-      // Mark step as failed
-      await db.query(
-        `UPDATE execution_steps
-         SET status = 'failed', error = $1
-         WHERE id = $2`,
-        [verdict.reason, step.id]
-      );
+    publishEvent(executionId, {
+      event: "sentinel_blocked",
+      stepId: stepInfo.id,
+      reason: verdict.reason,
+    });
 
-      // Fail execution
-      await db.query(
-        `UPDATE executions
-         SET status = 'failed', finished_at = NOW()
-         WHERE id = $1`,
-        [executionId]
-      );
+    console.warn("Sentinel blocked step", stepInfo.id, "reason:", verdict.reason);
 
-      // Publish sentinel event
-      publishEvent(executionId, {
-        event: "sentinel_blocked",
-        stepId: step.id,
-        reason: verdict.reason,
-      });
-
-      console.error("Sentinel blocked execution", executionId, verdict.reason);
-      return false;
-    }
+    // Return verdict but don't throw
+    return { allowed: false, reason: verdict.reason };
   }
 
   publishEvent(executionId, {
     event: "sentinel_passed",
+    stepId: stepInfo.id,
     executionId,
   });
 
-  return true;
+  return { allowed: true };
+}
+
+/**
+ * At the end of an execution, summarize blocked steps
+ */
+export async function summarizeBlockedSteps(executionId) {
+  const { rows: blocked } = await db.query(
+    `SELECT id, name, error
+     FROM execution_steps
+     WHERE execution_id = $1 AND status = 'blocked'`,
+    [executionId]
+  );
+
+  if (blocked.length > 0) {
+    const summary = blocked.map(step => ({
+      stepId: step.id,
+      name: step.name,
+      reason: step.error,
+    }));
+
+    // Publish summary event
+    publishEvent(executionId, {
+      event: "sentinel_summary",
+      executionId,
+      blockedSteps: summary,
+    });
+
+    // Optionally record in audit log
+    await db.query(
+      `INSERT INTO execution_audit (id, execution_id, event, meta, created_at)
+       VALUES (gen_random_uuid(), $1, 'sentinel_summary', $2, NOW())`,
+      [executionId, JSON.stringify({ blockedSteps: summary })]
+    );
+
+    console.log("Sentinel summary for execution", executionId, summary);
+  }
 }
 
 /**
  * Hybrid validation: rules + LLM reasoning
  */
-async function validateStep(step) {
-  if (!step.output) {
+async function validateStep(stepInfo, output) {
+  if (!output) {
     return { ok: false, reason: "Missing output (possible hallucination)" };
   }
 
   const outputStr =
-    typeof step.output === "string" ? step.output : JSON.stringify(step.output);
+    typeof output === "string" ? output : JSON.stringify(output);
 
   if (outputStr.length < 10) {
     return { ok: false, reason: "Output too small to be valid" };
   }
 
-  if (step.step_type === "API_CALL") {
+  if (stepInfo.step_type === "API_CALL") {
     try {
       const parsed =
-        typeof step.output === "object" ? step.output : JSON.parse(outputStr);
+        typeof output === "object" ? output : JSON.parse(outputStr);
       if (!parsed.result || !String(parsed.result).toLowerCase().includes("success")) {
         return { ok: false, reason: "API call did not return success" };
       }
@@ -90,17 +107,12 @@ async function validateStep(step) {
     }
   }
 
-  // 🔎 LLM semantic validation
-  const verdictLLM = await validateStepLLM(step.step_type, outputStr);
+  const verdictLLM = await validateStepLLM(stepInfo.step_type, outputStr);
   if (verdictLLM) return verdictLLM;
 
-  // Default: pass if no issues
   return { ok: true };
 }
 
-/**
- * LLM-based semantic validation helper
- */
 async function validateStepLLM(stepType, outputStr) {
   const client = getOpenAIClient();
   if (!client) return null;
@@ -115,15 +127,6 @@ async function validateStepLLM(stepType, outputStr) {
 You are Sentinel, a governance agent for Nexus Core.
 Validate execution step outputs in real time.
 
-Rules:
-- Outputs must be coherent, complete, and non-empty.
-- Financial data must include currency symbols and totals.
-- API responses must contain a "result" field with a clear success/failure indicator.
-- Plans must be actionable, with numbered steps or bullet points.
-- Analysis must reference the input data and provide measurable insights.
-- Summaries must be concise and faithful to the source text.
-- Automation steps must produce structured JSON with status fields.
-
 Respond ONLY with JSON:
 { "ok": true/false, "reason": "string explanation" }
           `,
@@ -136,8 +139,7 @@ Respond ONLY with JSON:
     });
 
     const content = completion.choices[0].message.content;
-    const verdict = JSON.parse(content);
-    return verdict;
+    return JSON.parse(content);
   } catch (err) {
     console.warn("LLM validation failed, falling back to rules:", err.message);
     return null;
