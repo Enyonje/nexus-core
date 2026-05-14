@@ -1,7 +1,8 @@
 import { stripe, getStripePriceId } from "../utils/stripe.js";
 
 export async function stripeRoutes(server) {
-  server.post("/create-checkout-session", async (req, reply) => {
+  // Register under /api/stripe prefix for clarity
+  server.post("/api/stripe/create-checkout-session", async (req, reply) => {
     const { tier, userId } = req.body;
 
     const priceId = getStripePriceId(tier);
@@ -19,7 +20,7 @@ export async function stripeRoutes(server) {
         metadata: { userId },
       });
 
-      return { url: session.url };
+      return reply.send({ url: session.url });
     } catch (err) {
       console.error("Stripe error:", err.message);
       return reply.code(500).send({ error: err.message });
