@@ -1,3 +1,4 @@
+// src/events/publish.js
 import { emitEvent, broadcastEvent } from "./stream.js";
 
 /**
@@ -6,48 +7,51 @@ import { emitEvent, broadcastEvent } from "./stream.js";
  */
 const ALLOWED_EVENTS = new Set([
   // executions
-  "execution.started",
-  "execution.step.started",
-  "execution.step.finished",
-  "execution.finished",
-  "execution.failed",
+  "execution_started",
+  "execution_progress",
+  "execution_completed",
+  "execution_failed",
+  "execution_warning",
+  "execution_heartbeat",
+
+  // sentinel
+  "sentinel_blocked",
 
   // goals
-  "goal.created",
-  "goal.updated",
+  "goal_created",
+  "goal_updated",
 
   // subscriptions
-  "subscription.upgraded",
-  "subscription.downgraded",
+  "subscription_upgraded",
+  "subscription_downgraded",
 
   // admin
-  "admin.override",
+  "admin_override",
 ]);
 
-export async function publishEvent(executionId, event) {
-  if (!event?.event) {
-    console.warn("⚠️ Event missing 'event' field:", event);
+export async function publishEvent(payload) {
+  if (!payload?.event) {
+    console.warn("⚠️ Event missing 'event' field:", payload);
     return;
   }
 
-  if (!ALLOWED_EVENTS.has(event.event)) {
-    console.warn(`⚠️ Event blocked: ${event.event}`);
+  if (!ALLOWED_EVENTS.has(payload.event)) {
+    console.warn(`⚠️ Event blocked: ${payload.event}`);
     return; // 🔑 DO NOT THROW
   }
 
   try {
     const enriched = {
-      ...event,
-      executionId,
+      ...payload,
       time: new Date().toISOString(),
     };
 
     // Log for audit
-    console.log("📣 Event:", enriched);
+    console.log("📣 Event:", enriched.executionId, enriched.event);
 
     // 🔥 Emit to specific execution stream
-    if (executionId) {
-      emitEvent(executionId, enriched);
+    if (enriched.executionId) {
+      emitEvent(enriched.executionId, enriched);
     } else {
       // 🔥 Broadcast to all clients if no executionId
       broadcastEvent(enriched);

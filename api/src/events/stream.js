@@ -1,4 +1,4 @@
-// events/stream.js
+// src/events/stream.js
 import Redis from "ioredis";
 import { v4 as uuidv4 } from "uuid";
 
@@ -48,15 +48,14 @@ export function registerClient(executionId, reply) {
     "https://nexus-core-chi.vercel.app",
     "http://localhost:3000",
     "http://localhost:5173",
+    // Add your Render preview domain here if needed
   ];
 
-  // Reject if origin not allowed
   if (origin && !allowedOrigins.includes(origin)) {
     reply.code(403).send({ error: "Origin not allowed" });
     return;
   }
 
-  // Explicit CORS headers for SSE
   reply.raw.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
@@ -65,13 +64,11 @@ export function registerClient(executionId, reply) {
     "Access-Control-Allow-Credentials": "true",
   });
 
-  // Flush headers immediately
-  if (typeof reply.raw.flushHeaders === "function") {
-    reply.raw.flushHeaders();
-  }
+  reply.raw.flushHeaders?.();
 
-  // Initial ping
-  reply.raw.write(":\n\n");
+  // ✅ Send a real event immediately so frontend sees something
+  reply.raw.write(`event: connected\n`);
+  reply.raw.write(`data: ${JSON.stringify({ executionId, status: "connected" })}\n\n`);
 
   if (!clients.has(executionId)) {
     clients.set(executionId, new Set());
@@ -81,7 +78,7 @@ export function registerClient(executionId, reply) {
   // Heartbeat every 15s
   const interval = setInterval(() => {
     try {
-      reply.raw.write(":\n\n");
+      reply.raw.write(":\n\n"); // comment line keeps connection alive
     } catch {
       clearInterval(interval);
     }

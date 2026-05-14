@@ -1,7 +1,8 @@
+// src/execution/runner.js
 import { v4 as uuidv4 } from "uuid";
 import { db } from "../db/db.js";
 import { executeGoalLogic } from "./logic.js";
-import { publishEvent } from "../routes/executions.js";
+import { publishEvent } from "../events/publish.js"; // ✅ now using corrected publish.js
 import { runSentinel, summarizeBlockedSteps } from "../agents/sentinel.js";
 
 /* ===============================
@@ -73,7 +74,7 @@ async function runStepWithRetry(stepInfo, maxAttempts = 3) {
       lastErr = err;
       attempt++;
       if (attempt < maxAttempts) {
-        publishEvent(stepInfo.executionId, { event: "step_retry", step: stepInfo.name, attempt, error: err.message });
+        publishEvent({ executionId: stepInfo.executionId, event: "execution_warning", step: stepInfo.name, attempt, error: err.message });
         await new Promise(r => setTimeout(r, 1000));
       }
     }
@@ -175,9 +176,14 @@ export async function runExecution(executionId, payloadOverride = null) {
   payload = validatePayload(execution.goal_type, payload);
 
   const start = Date.now();
+  // ✅ Heartbeat interval
+  const heartbeat = setInterval(() => {
+    publishEvent({ executionId, event: "execution_heartbeat", ts: Date.now() });
+  }, 10000);
+
   try {
     await db.query(`UPDATE executions SET status='running', started_at=NOW() WHERE id=$1`, [executionId]);
-    publishEvent(executionId, { event: "execution_started", goalType: execution.goal_type });
+    publishEvent({ executionId, event: "execution_started", goalType: execution.goal_type });
     await auditLog(executionId, "started", { goalType: execution.goal_type });
 
     let completedSteps = 0;
@@ -195,7 +201,7 @@ export async function runExecution(executionId, payloadOverride = null) {
         const { valid, normalized, reason } = validateStepOutput(stepInfo, rawOutput);
 
         if (!valid) {
-          publishEvent(executionId, { event: "execution_warning", stepId, step: stepInfo.name, reason, normalized });
+          publishEvent({ executionId, event: "execution_warning", stepId, step: stepInfo.name, reason, normalized });
         }
 
         await db.query(
@@ -204,13 +210,13 @@ export async function runExecution(executionId, payloadOverride = null) {
         );
 
         completedSteps++;
-        publishEvent(executionId, { event: "execution_progress", stepId, step: stepInfo.name, result: normalized, completedSteps });
+        publishEvent({ executionId, event: "execution_progress", stepId, step: stepInfo.name, result: normalized, completedSteps });
         await auditLog(executionId, "step_completed", { step: stepInfo.name });
 
         // ✅ Sentinel check (soft block)
         const verdict = await runSentinel(executionId, { ...stepInfo, id: stepId }, normalized);
         if (!verdict.allowed) {
-          publishEvent(executionId, { event: "sentinel_blocked", stepId, reason: verdict.reason, output: normalized });
+          publishEvent({ executionId, event: "sentinel_blocked", stepId, reason: verdict.reason, output: normalized });
           await auditLog(executionId, "step_blocked", { step: stepInfo.name, reason: verdict.reason });
           return; // continue with next step
         }
@@ -219,8 +225,9 @@ export async function runExecution(executionId, payloadOverride = null) {
           `UPDATE execution_steps SET status='failed', finished_at=NOW(), error=$2 WHERE id=$1`,
           [stepId, err.message]
         );
-        publishEvent(executionId, {
-          event: "execution_progress",
+                publishEvent({
+          executionId,
+          event: "execution_failed",
           stepId,
           step: stepInfo.name,
           error: err.message,
@@ -243,10 +250,12 @@ export async function runExecution(executionId, payloadOverride = null) {
     // ✅ Sentinel summary at the end
     await summarizeBlockedSteps(executionId);
 
-    publishEvent(executionId, { event: "execution_completed", result, duration });
+    clearInterval(heartbeat); // stop heartbeat
+    publishEvent({ executionId, event: "execution_completed", result, duration });
     notify(executionId, "completed", { duration });
     await auditLog(executionId, "completed", { duration });
   } catch (err) {
+    clearInterval(heartbeat); // stop heartbeat on error
     await db.query(
       `UPDATE executions
        SET status='failed', finished_at=NOW(), error=$2
@@ -254,7 +263,8 @@ export async function runExecution(executionId, payloadOverride = null) {
       [executionId, err.message]
     );
 
-    publishEvent(executionId, {
+    publishEvent({
+      executionId,
       event: "execution_failed",
       error: err.message,
       hint: "Check payload format, network connectivity, or plugin configuration",
@@ -265,3 +275,4 @@ export async function runExecution(executionId, payloadOverride = null) {
     throw err;
   }
 }
+
