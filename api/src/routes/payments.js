@@ -12,13 +12,13 @@ function getStripePriceId(tier) {
   return map[t];
 }
 
-// Named export instead of default
 export async function paymentsRoutes(server) {
-  server.post("/payments/create-checkout-session", async (req, reply) => {
+  // ✅ Match frontend call: /api/payments/create-checkout-session
+  server.post("/api/payments/create-checkout-session", async (req, reply) => {
     try {
       console.log("create-checkout-session body:", req.body);
 
-      const { tier } = req.body || {};
+      const { tier, userId } = req.body || {};
       const priceId = getStripePriceId(tier);
 
       console.log("Resolved priceId for tier", tier, "=>", priceId);
@@ -33,9 +33,9 @@ export async function paymentsRoutes(server) {
         mode: "subscription",
         payment_method_types: ["card"],
         line_items: [{ price: priceId, quantity: 1 }],
-        success_url: `${process.env.FRONTEND_URL}/subscription?session_id={CHECKOUT_SESSION_ID}`,
+        success_url: `${process.env.FRONTEND_URL}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${process.env.FRONTEND_URL}/subscription?canceled=true`,
-        metadata: { requested_tier: tier },
+        metadata: { userId, requested_tier: tier },
       });
 
       return reply.send({ url: session.url });
