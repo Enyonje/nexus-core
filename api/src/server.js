@@ -11,7 +11,7 @@ import { adminRoutes } from "./routes/admin.js";
 import { executionsRoutes } from "./routes/executions.js";
 import { auditRoutes } from "./routes/audit.js";
 import { billingRoutes } from "./routes/billing.js";
-import { paymentsRoutes } from "./routes/payments.js";
+import { paymentsRoutes } from "./routes/payment.js";   // ✅ make sure filename matches
 import { streamRoutes } from "./routes/stream.js";
 import { stripeRoutes } from "./routes/stripe.js";
 
@@ -36,16 +36,6 @@ await app.register(cors, {
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 });
-
-// Handle preflight OPTIONS requests for all routes
-// app.options("/*", (request, reply) => {
-//   reply
-//     .header("Access-Control-Allow-Origin", request.headers.origin || "")
-//     .header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
-//     .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-//     .header("Access-Control-Allow-Credentials", "true")
-//     .send();
-// });
 
 await app.register(cookie, {
   secret: process.env.COOKIE_SECRET || "cookie_secret",
@@ -78,7 +68,7 @@ app.register(adminRoutes, { prefix: "/api/admin" });
 app.register(executionsRoutes, { prefix: "/api/executions" });
 app.register(auditRoutes, { prefix: "/api/audit" });
 app.register(billingRoutes, { prefix: "/api/billing" });
-app.register(paymentsRoutes, { prefix: "/api/payments" });
+app.register(paymentsRoutes, { prefix: "/api/payments" }); // ✅ ensures /api/payments/create-checkout-session works
 app.register(streamRoutes, { prefix: "/api/stream" });
 app.register(stripeRoutes, { prefix: "/api/stripe" });
 
