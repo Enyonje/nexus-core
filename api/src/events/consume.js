@@ -45,8 +45,10 @@ export async function consumeNextEvent(workerId) {
     await client.query("COMMIT");
 
     // 🔥 Immediately publish to SSE bus
-    publishEvent(event.execution_id, {
-      event: event.type,
+    publishEvent({
+      executionId: event.execution_id,
+      event: "execution_progress", // ✅ matches allowed events
+      eventId: event.id,
       payload: event.payload,
       workerId,
       status: "processing",
@@ -77,8 +79,9 @@ export async function completeEvent(eventId, result) {
     [eventId, JSON.stringify(result)]
   );
 
-  publishEvent(null, {
-    event: "event.completed",
+  publishEvent({
+    executionId: null,
+    event: "execution_completed", // ✅ corrected
     eventId,
     result,
   });
@@ -99,8 +102,9 @@ export async function failEvent(eventId, error) {
     [eventId, error.message]
   );
 
-  publishEvent(null, {
-    event: "event.failed",
+  publishEvent({
+    executionId: null,
+    event: "execution_failed", // ✅ corrected
     eventId,
     error: error.message,
   });

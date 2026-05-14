@@ -19,8 +19,9 @@ export async function acknowledgeEvent(eventId, success, error = null) {
         [eventId]
       );
 
-      publishEvent(null, {
-        event: "event.completed",
+      publishEvent({
+        event: "execution_completed", // ✅ matches allowed events
+        executionId: null,            // no specific execution stream
         eventId,
         status: "completed",
       });
@@ -47,8 +48,9 @@ export async function acknowledgeEvent(eventId, success, error = null) {
           [eventId, error || "Unknown error", nextRetryAt]
         );
 
-        publishEvent(null, {
-          event: "event.retry",
+        publishEvent({
+          event: "execution_warning", // ✅ use warning for retry
+          executionId: null,
           eventId,
           status: "pending",
           attempts: attempts + 1,
@@ -68,8 +70,9 @@ export async function acknowledgeEvent(eventId, success, error = null) {
           [eventId, error || "Unknown error"]
         );
 
-        publishEvent(null, {
-          event: "event.failed",
+        publishEvent({
+          event: "execution_failed", // ✅ matches allowed events
+          executionId: null,
           eventId,
           status: "failed",
           error: error || "Unknown error",
