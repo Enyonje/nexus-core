@@ -125,6 +125,9 @@ export async function executionsRoutes(app) {
 
       const start = Date.now();
 
+      // Persist audit log for "started"
+      auditLog(app, id, "started", {});
+
       runExecution(id, req.body || {})
         .then(async () => {
           const duration = Date.now() - start;
@@ -191,7 +194,7 @@ export async function executionsRoutes(app) {
     });
   });
 
-  /* 5. SSE AUDIT */
+  /* 5. AUDIT LOGS (REST & SSE) */
   app.get("/:id/audit", { preHandler: requireAuth }, async (req, reply) => {
     const { id } = req.params;
     const origin = req.headers.origin;
@@ -210,45 +213,61 @@ export async function executionsRoutes(app) {
       reply.raw.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     }
 
-    reply.raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      "Connection": "keep-alive",
-      "X-Accel-Buffering": "no",
-    });
-    reply.raw.flushHeaders();
+    // If client requests SSE
+    if (req.headers.accept && req.headers.accept.includes("text/event-stream")) {
+      reply.raw.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      reply.raw.flushHeaders();
 
-    const send = (payload) => reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+      const send = (payload) => reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
 
+      try {
+        const { rows } = await app.pg.query(
+          `SELECT * FROM execution_audit WHERE execution_id=$1 ORDER BY created_at ASC`,
+          [id]
+        );
+        for (const row of rows) {
+          send({ event: "audit_log", ...row });
+        }
+      } catch (err) {
+        app.log.error(err, "Failed to fetch audit logs");
+        send({ event: "audit_error", error: "Failed to fetch audit logs" });
+      }
+
+      const key = `audit:${id}`;
+      if (!subscribers.has(key)) subscribers.set(key, new Set());
+      subscribers.get(key).add(send);
+
+      send({ event: "nexus_connected", details: "Audit Uplink Secure" });
+
+      req.raw.on("close", () => {
+        const subs = subscribers.get(key);
+        if (subs) {
+          subs.delete(send);
+          if (subs.size === 0) subscribers.delete(key);
+        }
+      });
+      return;
+    }
+
+    // Otherwise, REST: return all audit logs as JSON
     try {
       const { rows } = await app.pg.query(
         `SELECT * FROM execution_audit WHERE execution_id=$1 ORDER BY created_at ASC`,
         [id]
       );
-      for (const row of rows) {
-        send({ event: "audit_log", ...row });
-      }
+      return reply.send({ logs: rows });
     } catch (err) {
       app.log.error(err, "Failed to fetch audit logs");
-      send({ event: "audit_error", error: "Failed to fetch audit logs" });
+      return reply.code(500).send({ error: "Failed to fetch audit logs" });
     }
-
-    const key = `audit:${id}`;
-    if (!subscribers.has(key)) subscribers.set(key, new Set());
-    subscribers.get(key).add(send);
-
-    send({ event: "nexus_connected", details: "Audit Uplink Secure" });
-
-    req.raw.on("close", () => {
-      const subs = subscribers.get(key);
-      if (subs) {
-        subs.delete(send);
-        if (subs.size === 0) subscribers.delete(key);
-      }
-    });
   });
 
-    /* 6. GET SINGLE EXECUTION */
+  /* 6. GET SINGLE EXECUTION */
   app.get("/:id", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const { id } = req.params;

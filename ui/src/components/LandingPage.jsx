@@ -124,7 +124,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-10">
           <div className="text-center md:text-left">
             <div className="text-lg font-black tracking-tighter text-white mb-2">NEXUS CORE</div>
-            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">© {new Date().getFullYear()} Evans Nyonje // Nairobi, Kenya</p>
+            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">© {new Date().getFullYear()} Nexus Core // Nairobi, Kenya</p>
           </div>
           <nav className="flex flex-wrap justify-center gap-10 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
             <Link to="/docs" className="hover:text-white transition">Docs</Link>

@@ -8,7 +8,8 @@ const ContactPage = () => {
           <h1 className="text-6xl font-black mb-8 tracking-tighter">CONTACT</h1>
           <p className="text-gray-400 mb-8">Direct line to the Nexus development team in Nairobi.</p>
           <div className="space-y-4 text-sm font-mono">
-            <p className="text-blue-500">EMAIL: hello@nexuscore.com</p>
+            <p className="text-blue-500">EMAIL: hello@nexusthecore.com</p>
+            <p className="text-blue-500">PHONE: +254720377373</p>
             <p>LOC: Nairobi, Kenya // HQ-1</p>
           </div>
         </div>
