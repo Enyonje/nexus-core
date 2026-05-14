@@ -11,7 +11,7 @@ import { adminRoutes } from "./routes/admin.js";
 import { executionsRoutes } from "./routes/executions.js";
 import { auditRoutes } from "./routes/audit.js";
 import { billingRoutes } from "./routes/billing.js";
-import { paymentsRoutes } from "./routes/payment.js";   // ✅ make sure filename matches
+import { paymentsRoutes } from "./routes/payments.js";   // ✅ make sure filename matches
 import { streamRoutes } from "./routes/stream.js";
 import { stripeRoutes } from "./routes/stripe.js";
 
