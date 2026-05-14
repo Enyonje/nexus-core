@@ -6,6 +6,7 @@ export default function Streams() {
   const { executionId } = useParams();
   const { token } = useAuth();
   const [events, setEvents] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [status, setStatus] = useState("connecting");
   const scrollRef = useRef(null);
 
@@ -17,8 +18,9 @@ export default function Streams() {
         behavior: "smooth",
       });
     }
-  }, [events]);
+  }, [events, auditLogs]);
 
+  // Stream execution events (SSE)
   useEffect(() => {
     if (!token) {
       setStatus("authenticating");
@@ -33,7 +35,6 @@ export default function Streams() {
       setStatus("active");
     };
 
-    // ✅ Listen for named events
     const handleEvent = (type) => (e) => {
       try {
         const payload = JSON.parse(e.data);
@@ -63,6 +64,26 @@ export default function Streams() {
     };
 
     return () => sse.close();
+  }, [executionId, token]);
+
+  // Fetch audit logs (REST)
+  useEffect(() => {
+    if (!token) return;
+    const fetchAudit = async () => {
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_API_URL}/api/executions/${executionId}/audit`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        const data = await res.json();
+        setAuditLogs(data.logs || []);
+      } catch (err) {
+        setAuditLogs([]);
+      }
+    };
+    fetchAudit();
   }, [executionId, token]);
 
   const getEventColor = (type) => {
@@ -97,6 +118,19 @@ export default function Streams() {
             <li key={event.id} className={getEventColor(event.type)}>
               [{event.timestamp}] <span className="font-semibold">{event.type}</span>:{" "}
               <span className="break-all">{JSON.stringify(event.body)}</span>
+            </li>
+          ))}
+        </ul>
+        <hr className="my-4 border-slate-700" />
+        <h2 className="text-lg font-bold mb-2">Audit Logs</h2>
+        <ul>
+          {auditLogs.length === 0 && (
+            <li className="text-slate-500">No audit logs found.</li>
+          )}
+          {auditLogs.map((log) => (
+            <li key={log.id} className="text-xs">
+              [{new Date(log.created_at).toLocaleTimeString()}] <span className="font-semibold">{log.status}</span>:{" "}
+              <span className="break-all">{log.meta}</span>
             </li>
           ))}
         </ul>

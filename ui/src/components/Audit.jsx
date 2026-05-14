@@ -5,15 +5,15 @@ import { formatDate } from "../lib/utils";
 
 export default function Audit() {
   const { executionId } = useParams();
-  const [data, setData] = useState(null);
+  const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     apiFetch(`/api/executions/${executionId}/audit`)
-      .then(setData)
+      .then((data) => setLogs(data.logs || []))
       .catch((err) => {
         console.error("Audit fetch failed:", err);
-        setData(null);
+        setLogs([]);
       })
       .finally(() => setLoading(false));
   }, [executionId]);
@@ -26,7 +26,7 @@ export default function Audit() {
     );
   }
 
-  if (!data || !data.summary) {
+  if (!logs || logs.length === 0) {
     return (
       <div className="min-h-screen bg-[#020617] flex items-center justify-center font-mono text-red-500 text-xs tracking-[0.5em]">
         AUDIT TRACE NOT FOUND
@@ -34,9 +34,14 @@ export default function Audit() {
     );
   }
 
+  // Try to extract a summary from the logs
+  const first = logs[0];
+  const last = logs[logs.length - 1];
+  const finalStatus = last?.status || "unknown";
+
   return (
     <div className="min-h-screen bg-[#020617] text-slate-300 p-8">
-      <div className="max-w-6xl mx-auto space-y-8">
+      <div className="max-w-4xl mx-auto space-y-8">
         {/* Header / Summary Section */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-b border-white/5 pb-8">
           <div>
@@ -53,7 +58,6 @@ export default function Audit() {
               UUID: {executionId}
             </p>
           </div>
-
           <div className="flex gap-4">
             <div className="bg-slate-900/50 p-4 border border-white/5 rounded-xl">
               <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest mb-1">
@@ -61,68 +65,42 @@ export default function Audit() {
               </p>
               <p
                 className={`text-sm font-black uppercase ${
-                  data.summary.status === "completed"
+                  finalStatus === "completed"
                     ? "text-green-400"
-                    : "text-red-400"
+                    : finalStatus === "failed"
+                    ? "text-red-400"
+                    : "text-yellow-400"
                 }`}
               >
-                {data.summary.status}
+                {finalStatus}
               </p>
             </div>
             <div className="bg-slate-900/50 p-4 border border-white/5 rounded-xl">
               <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest mb-1">
-                Nodes Engaged
+                Audit Events
               </p>
               <p className="text-sm font-black text-white">
-                {data.contracts?.length || 0} Agents
+                {logs.length}
               </p>
             </div>
           </div>
         </header>
 
-        {/* Audit Import Button */}
-        <div className="flex justify-end">
-          <Link
-            to={`/audit/import/${executionId}`}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition"
-            aria-label="Import Audit"
-          >
-            Import Audit
-          </Link>
-        </div>
-
-        {/* Execution Timeline */}
+        {/* Audit Timeline */}
         <section>
-          <h2 className="text-lg font-bold mb-2">Execution Steps</h2>
+          <h2 className="text-lg font-bold mb-2">Audit Timeline</h2>
           <ul className="bg-slate-900/40 rounded p-4 space-y-2">
-            {data.steps?.map((s) => (
-              <li key={s.id} className="text-xs">
-                <span className="font-bold">{s.name}</span> – {s.status} at{" "}
-                {formatDate(s.created_at || s.started_at)}
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        {/* Contracts */}
-        <section>
-          <h2 className="text-lg font-bold mb-2">Agent Contracts</h2>
-          <ul className="bg-slate-900/40 rounded p-4 space-y-2">
-            {data.contracts?.map((c) => (
-              <li key={c.id} className="text-xs">
-                Agent {c.agent_id} ({c.role}) – {c.status}
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        {/* Messages */}
-        <section>
-          <h2 className="text-lg font-bold mb-2">Inter-Agent Messages</h2>
-          <ul className="bg-slate-900/40 rounded p-4 space-y-2">
-            {data.messages?.map((m) => (
-              <li key={m.id} className="text-xs">
-                [{formatDate(m.created_at)}] {m.sender_role}: {m.content}
+            {logs.map((log) => (
+              <li key={log.id} className="text-xs">
+                <span className="font-bold">{log.status}</span>
+                {" – "}
+                {formatDate(log.created_at)}
+                {log.meta && (
+                  <>
+                    {" | "}
+                    <span className="text-slate-400">{typeof log.meta === "string" ? log.meta : JSON.stringify(log.meta)}</span>
+                  </>
+                )}
               </li>
             ))}
           </ul>
