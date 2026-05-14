@@ -26,7 +26,7 @@ export default function Audit() {
     );
   }
 
-  if (!data) {
+  if (!data || !data.summary) {
     return (
       <div className="min-h-screen bg-[#020617] flex items-center justify-center font-mono text-red-500 text-xs tracking-[0.5em]">
         AUDIT TRACE NOT FOUND
@@ -74,7 +74,7 @@ export default function Audit() {
                 Nodes Engaged
               </p>
               <p className="text-sm font-black text-white">
-                {data.contracts.length} Agents
+                {data.contracts?.length || 0} Agents
               </p>
             </div>
           </div>
@@ -91,8 +91,42 @@ export default function Audit() {
           </Link>
         </div>
 
-        {/* Execution Timeline and Sidebar */}
-        {/* ... keep your existing JSX for steps, contracts, and messages ... */}
+        {/* Execution Timeline */}
+        <section>
+          <h2 className="text-lg font-bold mb-2">Execution Steps</h2>
+          <ul className="bg-slate-900/40 rounded p-4 space-y-2">
+            {data.steps?.map((s) => (
+              <li key={s.id} className="text-xs">
+                <span className="font-bold">{s.name}</span> – {s.status} at{" "}
+                {formatDate(s.created_at || s.started_at)}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* Contracts */}
+        <section>
+          <h2 className="text-lg font-bold mb-2">Agent Contracts</h2>
+          <ul className="bg-slate-900/40 rounded p-4 space-y-2">
+            {data.contracts?.map((c) => (
+              <li key={c.id} className="text-xs">
+                Agent {c.agent_id} ({c.role}) – {c.status}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* Messages */}
+        <section>
+          <h2 className="text-lg font-bold mb-2">Inter-Agent Messages</h2>
+          <ul className="bg-slate-900/40 rounded p-4 space-y-2">
+            {data.messages?.map((m) => (
+              <li key={m.id} className="text-xs">
+                [{formatDate(m.created_at)}] {m.sender_role}: {m.content}
+              </li>
+            ))}
+          </ul>
+        </section>
       </div>
     </div>
   );

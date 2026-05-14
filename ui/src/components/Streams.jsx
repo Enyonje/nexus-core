@@ -26,18 +26,19 @@ export default function Streams() {
     }
 
     const url = `${import.meta.env.VITE_API_URL}/api/executions/${executionId}/stream?token=${token}`;
-    const sse = new EventSource(url, { withCredentials: true });
+    const sse = new EventSource(url);
 
     sse.onopen = () => {
       console.log("Nexus Link: Synchronized");
       setStatus("active");
     };
 
-    sse.onmessage = (e) => {
+    // ✅ Listen for named events
+    const handleEvent = (type) => (e) => {
       try {
         const payload = JSON.parse(e.data);
         const newEvent = {
-          type: payload.event || "TRACE",
+          type,
           body: payload,
           timestamp: new Date().toLocaleTimeString(),
           id: window.crypto.randomUUID(),
@@ -48,10 +49,17 @@ export default function Streams() {
       }
     };
 
+    sse.addEventListener("execution_started", handleEvent("execution_started"));
+    sse.addEventListener("execution_progress", handleEvent("execution_progress"));
+    sse.addEventListener("execution_completed", handleEvent("execution_completed"));
+    sse.addEventListener("execution_failed", handleEvent("execution_failed"));
+    sse.addEventListener("execution_warning", handleEvent("execution_warning"));
+    sse.addEventListener("sentinel_blocked", handleEvent("sentinel_blocked"));
+    sse.addEventListener("execution_heartbeat", handleEvent("execution_heartbeat"));
+
     sse.onerror = () => {
       console.warn("SSE connection error");
       setStatus("interrupted");
-      // Let browser auto-retry instead of closing immediately
     };
 
     return () => sse.close();
@@ -61,8 +69,10 @@ export default function Streams() {
     const t = type.toLowerCase();
     if (t.includes("fail") || t.includes("error")) return "text-red-400";
     if (t.includes("complete") || t.includes("success")) return "text-green-400";
-    if (t.includes("connect")) return "text-blue-400";
-    return "text-indigo-400";
+    if (t.includes("start")) return "text-blue-400";
+    if (t.includes("progress")) return "text-indigo-400";
+    if (t.includes("heartbeat")) return "text-yellow-400";
+    return "text-slate-400";
   };
 
   return (
