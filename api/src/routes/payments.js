@@ -12,9 +12,9 @@ function getStripePriceId(tier) {
   return map[t];
 }
 
-export async function paymentsRoutes(server) {
-  // ✅ Match frontend call: /api/payments/create-checkout-session
-  server.post("/api/payments/create-checkout-session", async (req, reply) => {
+export async function paymentsRoutes(app) {
+  // Correct route: /create-checkout-session (no /api prefix here, Fastify adds it)
+  app.post("/create-checkout-session", async (req, reply) => {
     try {
       console.log("create-checkout-session body:", req.body);
 
