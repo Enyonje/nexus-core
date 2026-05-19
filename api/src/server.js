@@ -4,7 +4,7 @@ import websocket from "@fastify/websocket";
 import fastifyPostgres from "@fastify/postgres";
 import fastifyJwt from "@fastify/jwt";
 import cookie from "@fastify/cookie";
-
+import { webhooksRoutes } from "./routes/webhooks.js";
 import { authRoutes } from "./routes/auth.js";
 import { goalsRoutes } from "./routes/goals.js";
 import { adminRoutes } from "./routes/admin.js";
@@ -71,6 +71,7 @@ app.register(billingRoutes, { prefix: "/api/billing" });
 app.register(paymentsRoutes, { prefix: "/api/payments" }); // ✅ ensures /api/payments/create-checkout-session works
 app.register(streamRoutes, { prefix: "/api/stream" });
 app.register(stripeRoutes, { prefix: "/api/stripe" });
+app.register(webhooksRoutes);
 
 app.get("/api/health", async () => {
   const client = await app.pg.connect();
