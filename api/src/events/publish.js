@@ -16,6 +16,7 @@ const ALLOWED_EVENTS = new Set([
 
   // sentinel
   "sentinel_blocked",
+  "sentinel_summary",   // ✅ add summary events if you want unified trace
 
   // goals
   "goal_created",
@@ -42,12 +43,14 @@ export async function publishEvent(payload) {
 
   try {
     const enriched = {
+      id: payload.id || crypto.randomUUID(), // ✅ ensure unique id
+      ts: Date.now(),
       ...payload,
       time: new Date().toISOString(),
     };
 
     // Log for audit
-    console.log("📣 Event:", enriched.executionId, enriched.event);
+    console.log("📣 Event:", enriched.executionId || "-", enriched.event);
 
     // 🔥 Emit to specific execution stream
     if (enriched.executionId) {

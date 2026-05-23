@@ -47,11 +47,12 @@ export async function consumeNextEvent(workerId) {
     // 🔥 Immediately publish to SSE bus
     publishEvent({
       executionId: event.execution_id,
-      event: "execution_progress", // ✅ matches allowed events
+      event: "execution_progress", // ✅ allowed event
       eventId: event.id,
       payload: event.payload,
       workerId,
       status: "processing",
+      trace: `Worker ${workerId} picked up event ${event.id}`,
     });
 
     return event;
@@ -81,9 +82,10 @@ export async function completeEvent(eventId, result) {
 
   publishEvent({
     executionId: null,
-    event: "execution_completed", // ✅ corrected
+    event: "execution_completed", // ✅ allowed event
     eventId,
     result,
+    trace: `Event ${eventId} completed successfully`,
   });
 }
 
@@ -104,8 +106,9 @@ export async function failEvent(eventId, error) {
 
   publishEvent({
     executionId: null,
-    event: "execution_failed", // ✅ corrected
+    event: "execution_failed", // ✅ allowed event
     eventId,
     error: error.message,
+    trace: `Event ${eventId} failed: ${error.message}`,
   });
 }

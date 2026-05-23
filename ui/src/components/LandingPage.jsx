@@ -8,12 +8,34 @@ export default function LandingPage() {
     transition: { duration: 0.6 }
   };
 
+  const specialisedAgents = [
+    {
+      title: "Cross-Border Compliance System",
+      slug: "cross-border-compliance-system",
+      desc: "Real-time international statutory screening, localized regulatory risk mitigation, and automated cross-border legal checks.",
+      path: "/compliance", // Links directly to the compliance pages built
+      status: "Production Ready",
+      color: "from-emerald-400 to-teal-500",
+      accent: "emerald"
+    },
+    {
+      title: "Support-Ops AI",
+      slug: "support-ops-ai",
+      desc: "Autonomous triage, self-healing integration setups, and SLA escalation tracking powered by internal engineering context.",
+      path: "/agents/support-ops-ai",
+      status: "Beta Access",
+      color: "from-blue-400 to-indigo-500",
+      accent: "blue"
+    }
+  ];
+
   return (
     <div className="min-h-screen bg-[#020617] text-white selection:bg-blue-500/30 overflow-x-hidden font-sans">
-      {/* 1. FIXED BACKGROUND GLOWS (Ensures depth) */}
+      {/* 1. FIXED BACKGROUND GLOWS */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-blue-600/10 blur-[120px] rounded-full" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-purple-600/10 blur-[120px] rounded-full" />
+        <div className="absolute top-[40%] right-[-5%] w-[600px] h-[600px] bg-indigo-600/[0.07] blur-[150px] rounded-full" />
       </div>
 
       {/* 2. REFINED NAVIGATION */}
@@ -23,6 +45,7 @@ export default function LandingPage() {
         </div>
         <div className="hidden md:flex items-center gap-10 text-[11px] font-black uppercase tracking-widest text-slate-500">
           <Link to="/docs" className="hover:text-blue-400 transition-colors">Platform</Link>
+          <Link to="/agents" className="text-blue-400 border-b border-blue-500/30 pb-0.5 tracking-widest">Specialised Agents</Link>
           <Link to="/subscription" className="hover:text-blue-400 transition-colors">Pricing</Link>
           <Link to="/architecture" className="hover:text-blue-400 transition-colors">Architecture</Link>
         </div>
@@ -55,11 +78,11 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
-            <Link to="/register" className="w-full sm:w-auto px-10 py-5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-widest shadow-[0_0_40px_rgba(37,99,235,0.2)] transition-all hover:scale-[1.02] active:scale-95">
-              Launch Your Swarm
+            <Link to="/agents" className="w-full sm:w-auto px-10 py-5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black uppercase tracking-widest shadow-[0_0_40px_rgba(37,99,235,0.25)] transition-all hover:scale-[1.02] active:scale-95">
+              Explore Specialised Agents
             </Link>
-            <Link to="/subscription" className="w-full sm:w-auto px-10 py-5 rounded-2xl bg-slate-900/50 border border-white/10 hover:border-blue-500/50 text-white text-xs font-black uppercase tracking-widest transition-all backdrop-blur-md">
-              View Architecture
+            <Link to="/register" className="w-full sm:w-auto px-10 py-5 rounded-2xl bg-slate-900/50 border border-white/10 hover:border-blue-500/50 text-white text-xs font-black uppercase tracking-widest transition-all backdrop-blur-md">
+              Launch Generic Swarm
             </Link>
           </div>
         </motion.div>
@@ -75,8 +98,66 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* 5. FEATURE GRID */}
-      <section className="relative z-10 px-6 py-32">
+      {/* 5. NEW DETAILED SPECIALISED AGENTS SECTION */}
+      <section className="relative z-10 px-6 py-32 bg-gradient-to-b from-transparent via-blue-950/10 to-transparent">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
+            <div className="space-y-4">
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400">Targeted Business Execution</div>
+              <h2 className="text-4xl md:text-5xl font-black tracking-tighter">Specialised Agent Suites</h2>
+              <p className="text-slate-400 font-medium max-w-xl text-sm leading-relaxed">
+                Skip generalist models. Nexus Core now deploys purpose-built, sandboxed digital operatives hardwired for complex domains.
+              </p>
+            </div>
+            <Link to="/agents" className="text-xs font-black uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-2 border-b border-blue-400/20 pb-1">
+              View Agent Directory <span>→</span>
+            </Link>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8">
+            {specialisedAgents.map((agent, idx) => (
+              <motion.div
+                key={idx}
+                whileHover={{ y: -6 }}
+                className="relative group p-10 rounded-[32px] bg-gradient-to-b from-slate-900/60 to-slate-900/20 border border-white/5 hover:border-blue-500/20 transition-all overflow-hidden backdrop-blur-md"
+              >
+                {/* Background Accent Element */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/[0.01] group-hover:bg-blue-500/[0.02] rounded-bl-full transition-colors pointer-events-none" />
+                
+                <div className="flex justify-between items-start mb-6">
+                  <span className={`px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-wider bg-white/5 border border-white/10 ${agent.accent === 'emerald' ? 'text-emerald-400' : 'text-blue-400'}`}>
+                    {agent.status}
+                  </span>
+                  <span className="text-xs font-mono text-slate-600 font-bold">L3_SYSTEM_ID // 0{idx + 1}</span>
+                </div>
+
+                <h3 className={`text-2xl font-black tracking-tight mb-4 bg-gradient-to-r ${agent.color} bg-clip-text text-transparent`}>
+                  {agent.title}
+                </h3>
+                
+                <p className="text-slate-400 text-sm leading-relaxed mb-8 font-medium">
+                  {agent.desc}
+                </p>
+
+                <div className="pt-4 border-t border-white/[0.04] flex items-center justify-between">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-slate-500 group-hover:text-slate-400 transition-colors">
+                    Core Dependency: {agent.slug}.config
+                  </span>
+                  <Link 
+                    to={agent.path} 
+                    className="px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white text-[11px] font-black uppercase tracking-widest hover:text-slate-950 transition-all duration-300"
+                  >
+                    Access System
+                  </Link>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 6. FEATURE GRID (THE NEXUS ENGINE) */}
+      <section className="relative z-10 px-6 py-16">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-20 gap-6">
             <div className="space-y-4">
@@ -106,7 +187,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* 6. CALL TO ACTION */}
+      {/* 7. CALL TO ACTION */}
       <section className="relative z-10 px-6 py-24">
         <div className="max-w-5xl mx-auto rounded-[40px] bg-gradient-to-br from-blue-600 to-indigo-700 p-1 md:p-1.5 shadow-2xl shadow-blue-900/20">
           <div className="bg-[#020617] rounded-[36px] p-12 md:p-20 text-center relative overflow-hidden">
@@ -119,7 +200,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* 7. FOOTER */}
+      {/* 8. FOOTER */}
       <footer className="relative z-10 px-6 py-20 border-t border-white/[0.03] bg-[#020617]">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-10">
           <div className="text-center md:text-left">
@@ -128,6 +209,7 @@ export default function LandingPage() {
           </div>
           <nav className="flex flex-wrap justify-center gap-10 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
             <Link to="/docs" className="hover:text-white transition">Docs</Link>
+            <Link to="/agents" className="hover:text-white transition">Specialised Agents</Link>
             <Link to="/architecture" className="hover:text-white transition">Architecture</Link>
             <Link to="/careers" className="hover:text-white transition">Careers</Link>
             <Link to="/contact" className="hover:text-white transition">Contact</Link>

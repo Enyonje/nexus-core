@@ -12,15 +12,19 @@ const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2022-11-15" });
 
+// Helper to hash tokens before storing them in DB
+function hashToken(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
 /* =========================
    AUTH MIDDLEWARE
 ========================= */
 export function requireAuth(req, reply, done) {
   try {
-    let token =
-      req.headers.authorization?.startsWith("Bearer ")
-        ? req.headers.authorization.split(" ")[1]
-        : req.cookies?.authToken || req.query?.token;
+    let token = req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.split(" ")[1]
+      : req.cookies?.authToken || req.query?.token;
 
     if (!token) {
       return reply.code(401).send({ error: "AUTH_MISSING_TOKEN" });
@@ -28,7 +32,6 @@ export function requireAuth(req, reply, done) {
 
     const payload = jwt.verify(token, JWT_SECRET);
 
-    // Normalize payload into req.user
     req.identity = payload;
     req.user = {
       id: payload.sub,
@@ -56,15 +59,19 @@ export function requireRole(role) {
    AUDIT LOGGING
 ========================= */
 async function auditLog(userId, action, meta = {}) {
-  await prisma.authAudit.create({
-    data: {
-      id: uuidv4(),
-      user_id: userId,
-      action,
-      details: meta,
-      created_at: new Date(),
-    },
-  });
+  try {
+    await prisma.authAudit.create({
+      data: {
+        id: uuidv4(),
+        user_id: userId,
+        action,
+        details: meta,
+        created_at: new Date(),
+      },
+    });
+  } catch (err) {
+    console.error("Audit log failed to write:", err);
+  }
 }
 
 /* =========================
@@ -84,13 +91,16 @@ export async function authRoutes(server) {
         return reply.code(409).send({ error: "AUTH_EMAIL_EXISTS" });
       }
 
-      let org = await prisma.organization.findFirst({ where: { name: organization } });
-      if (!org) {
-        org = await prisma.organization.create({ data: { id: uuidv4(), name: organization } });
-      }
+      // Safe organization resolution using an upsert to avoid race conditions
+      const org = await prisma.organization.upsert({
+        where: { name: organization }, // Assumes unique constraint on name field
+        update: {},
+        create: { id: uuidv4(), name: organization },
+      });
 
       const hash = await bcrypt.hash(accessKey, 10);
-      const refreshToken = crypto.randomBytes(64).toString("hex");
+      const rawRefreshToken = crypto.randomBytes(64).toString("hex");
+      const hashedRefreshToken = hashToken(rawRefreshToken);
 
       const user = await prisma.user.create({
         data: {
@@ -100,7 +110,7 @@ export async function authRoutes(server) {
           role: "user",
           subscription: "free",
           org_id: org.id,
-          refresh_token: refreshToken,
+          refresh_token: hashedRefreshToken, // Storing cryptographic hash
           failed_attempts: 0,
           locked_until: null,
           mfa_enabled: false,
@@ -114,7 +124,7 @@ export async function authRoutes(server) {
         { expiresIn: "15m" }
       );
 
-      reply.setCookie("refreshToken", refreshToken, {
+      reply.setCookie("refreshToken", rawRefreshToken, {
         httpOnly: true,
         secure: true,
         sameSite: "strict",
@@ -174,8 +184,13 @@ export async function authRoutes(server) {
         }
       }
 
-      const refreshToken = crypto.randomBytes(64).toString("hex");
-      await prisma.user.update({ where: { id: user.id }, data: { refresh_token: refreshToken } });
+      const rawRefreshToken = crypto.randomBytes(64).toString("hex");
+      const hashedRefreshToken = hashToken(rawRefreshToken);
+      
+      await prisma.user.update({ 
+        where: { id: user.id }, 
+        data: { refresh_token: hashedRefreshToken } 
+      });
 
       const token = jwt.sign(
         { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
@@ -183,7 +198,7 @@ export async function authRoutes(server) {
         { expiresIn: "15m" }
       );
 
-      reply.setCookie("refreshToken", refreshToken, {
+      reply.setCookie("refreshToken", rawRefreshToken, {
         httpOnly: true,
         secure: true,
         sameSite: "strict",
@@ -211,18 +226,25 @@ export async function authRoutes(server) {
   // REFRESH
   server.post("/refresh", async (req, reply) => {
     try {
-      const refreshToken = req.cookies?.refreshToken;
-      if (!refreshToken) {
+      const rawRefreshToken = req.cookies?.refreshToken;
+      if (!rawRefreshToken) {
         return reply.code(401).send({ error: "AUTH_MISSING_REFRESH" });
       }
 
-      const user = await prisma.user.findFirst({ where: { refresh_token: refreshToken } });
+      const hashedRefreshToken = hashToken(rawRefreshToken);
+      // Fixed: Lookup by hashed value to shield database compromises
+      const user = await prisma.user.findFirst({ where: { refresh_token: hashedRefreshToken } });
       if (!user) {
         return reply.code(401).send({ error: "AUTH_INVALID_REFRESH" });
       }
 
-      const newRefreshToken = crypto.randomBytes(64).toString("hex");
-      await prisma.user.update({ where: { id: user.id }, data: { refresh_token: newRefreshToken } });
+      const newRawRefreshToken = crypto.randomBytes(64).toString("hex");
+      const newHashedRefreshToken = hashToken(newRawRefreshToken);
+      
+      await prisma.user.update({ 
+        where: { id: user.id }, 
+        data: { refresh_token: newHashedRefreshToken } 
+      });
 
       const newAccessToken = jwt.sign(
         { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
@@ -230,7 +252,7 @@ export async function authRoutes(server) {
         { expiresIn: "15m" }
       );
 
-      reply.setCookie("refreshToken", newRefreshToken, {
+      reply.setCookie("refreshToken", newRawRefreshToken, {
         httpOnly: true,
         secure: true,
         sameSite: "strict",
@@ -248,35 +270,57 @@ export async function authRoutes(server) {
 
   // PASSWORD RESET
   server.post("/forgot-password", async (req, reply) => {
-    const { email } = req.body;
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return reply.code(404).send({ error: "AUTH_USER_NOT_FOUND" });
+    try {
+      const { email } = req.body;
+      const user = await prisma.user.findUnique({ where: { email } });
+      
+      // Security note: In enterprise apps, consider returning a 200 generic message 
+      // even if user isn't found to protect against account enumeration.
+      if (!user) return reply.code(404).send({ error: "AUTH_USER_NOT_FOUND" });
 
-    const resetToken = crypto.randomBytes(32).toString("hex");
-    await prisma.user.update({
-      where: { id: user.id },
-          data: { reset_token: resetToken, reset_token_expires: new Date(Date.now() + 3600 * 1000) }
-    });
+      const resetToken = crypto.randomBytes(32).toString("hex");
+      const hashedResetToken = hashToken(resetToken);
 
-    await auditLog(user.id, "password_reset_requested", {});
-    reply.send({ success: true, message: "Password reset link sent" });
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { 
+          reset_token: hashedResetToken, 
+          reset_token_expires: new Date(Date.now() + 3600 * 1000) 
+        }
+      });
+
+      await auditLog(user.id, "password_reset_requested", {});
+      
+      // NOTE: You'll want to append the raw `resetToken` to your outbound link.
+      reply.send({ success: true, message: "Password reset link generated successfully" });
+    } catch (err) {
+      console.error("Forgot password error:", err);
+      reply.code(500).send({ error: "AUTH_FORGOT_PASSWORD_ERROR", detail: err.message });
+    }
   });
 
   server.post("/reset-password", async (req, reply) => {
-    const { token, newPassword } = req.body;
-    const user = await prisma.user.findFirst({
-      where: { reset_token: token, reset_token_expires: { gt: new Date() } }
-    });
-    if (!user) return reply.code(400).send({ error: "AUTH_INVALID_RESET_TOKEN" });
+    try {
+      const { token, newPassword } = req.body;
+      const hashedToken = hashToken(token);
 
-    const hash = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { password_hash: hash, reset_token: null, reset_token_expires: null }
-    });
+      const user = await prisma.user.findFirst({
+        where: { reset_token: hashedToken, reset_token_expires: { gt: new Date() } }
+      });
+      if (!user) return reply.code(400).send({ error: "AUTH_INVALID_RESET_TOKEN" });
 
-    await auditLog(user.id, "password_reset_success", {});
-    reply.send({ success: true });
+      const hash = await bcrypt.hash(newPassword, 10);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password_hash: hash, reset_token: null, reset_token_expires: null }
+      });
+
+      await auditLog(user.id, "password_reset_success", {});
+      reply.send({ success: true });
+    } catch (err) {
+      console.error("Reset password error:", err);
+      reply.code(500).send({ error: "AUTH_RESET_PASSWORD_ERROR", detail: err.message });
+    }
   });
 
   // SUBSCRIPTION STATUS
@@ -329,13 +373,16 @@ export async function authRoutes(server) {
     }
   });
 
-  // Placeholder for OAuth/social login
+  /* =========================
+     IDENTITY INTEGRATION PADS
+  ========================= */
   server.get("/oauth/:provider/callback", async (req, reply) => {
+    // Ready for passport-fastify or basic OAuth2 strategy hooks
     reply.send({ success: true, provider: req.params.provider });
   });
 
-  // Placeholder for external identity provider integration (Azure AD, etc.)
   server.post("/external-login", async (req, reply) => {
+    // Ready for SAML2 / OIDC token translation hooks (e.g. Azure AD)
     reply.send({ success: true, provider: "external" });
   });
 }
