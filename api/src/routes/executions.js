@@ -100,6 +100,9 @@ export async function executionsRoutes(app) {
         [executionId, goal.id, goal.goal_type, userId, schedule || null, recurring || false]
       );
 
+      // Persist audit log for "created"
+      await auditLog(app, executionId, "created", { goalId: goal.id, goalType: goal.goal_type });
+
       return reply.code(201).send(execRes.rows[0]);
     } catch (err) {
       app.log.error(err, "Failed to create execution");
@@ -126,7 +129,7 @@ export async function executionsRoutes(app) {
       const start = Date.now();
 
       // Persist audit log for "started"
-      auditLog(app, id, "started", {});
+      await auditLog(app, id, "started", {});
 
       runExecution(id, req.body || {})
         .then(async () => {
@@ -136,12 +139,12 @@ export async function executionsRoutes(app) {
             [id, duration]
           );
           publishEvent(id, { event: "execution_completed", duration });
-          auditLog(app, id, "completed", { duration });
+          await auditLog(app, id, "completed", { duration });
         })
         .catch(async (err) => {
           await app.pg.query(`UPDATE executions SET status='failed' WHERE id=$1`, [id]);
           publishEvent(id, { event: "execution_failed", error: err.message });
-          auditLog(app, id, "failed", { error: err.message });
+          await auditLog(app, id, "failed", { error: err.message });
         });
 
       return execRes.rows[0];

@@ -1,8 +1,7 @@
-// src/execution/runner.js
 import { v4 as uuidv4 } from "uuid";
 import { db } from "../db/db.js";
 import { executeGoalLogic } from "./logic.js";
-import { publishEvent } from "../events/publish.js"; // ✅ now using corrected publish.js
+import { publishEvent } from "../events/publish.js";
 import { runSentinel, summarizeBlockedSteps } from "../agents/sentinel.js";
 
 /* ===============================
@@ -99,11 +98,11 @@ async function waitUntilResumed(executionId) {
 function notify(executionId, status, meta) {
   console.log(`[Notify] Execution ${executionId} status=${status}`, meta);
 }
-async function auditLog(executionId, event, meta = {}) {
+async function auditLog(executionId, status, meta = {}) {
   await db.query(
-    `INSERT INTO execution_audit (id, execution_id, event, meta, created_at)
+    `INSERT INTO execution_audit (id, execution_id, status, meta, created_at)
      VALUES ($1,$2,$3,$4,NOW())`,
-    [uuidv4(), executionId, event, JSON.stringify(meta)]
+    [uuidv4(), executionId, status, JSON.stringify(meta)]
   );
 }
 
@@ -225,7 +224,7 @@ export async function runExecution(executionId, payloadOverride = null) {
           `UPDATE execution_steps SET status='failed', finished_at=NOW(), error=$2 WHERE id=$1`,
           [stepId, err.message]
         );
-                publishEvent({
+        publishEvent({
           executionId,
           event: "execution_failed",
           stepId,
@@ -275,4 +274,3 @@ export async function runExecution(executionId, payloadOverride = null) {
     throw err;
   }
 }
-
