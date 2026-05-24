@@ -175,7 +175,6 @@ export async function runExecution(executionId, payloadOverride = null) {
   payload = validatePayload(execution.goal_type, payload);
 
   const start = Date.now();
-  // ✅ Heartbeat interval
   const heartbeat = setInterval(() => {
     publishEvent({ executionId, event: "execution_heartbeat", ts: Date.now() });
   }, 10000);
@@ -184,6 +183,9 @@ export async function runExecution(executionId, payloadOverride = null) {
     await db.query(`UPDATE executions SET status='running', started_at=NOW() WHERE id=$1`, [executionId]);
     publishEvent({ executionId, event: "execution_started", goalType: execution.goal_type });
     await auditLog(executionId, "started", { goalType: execution.goal_type });
+
+    // ✅ Increment executions count for user
+    await db.query(`UPDATE users SET executions = executions + 1 WHERE id=$1`, [execution.user_id]);
 
     let completedSteps = 0;
 
@@ -212,15 +214,19 @@ export async function runExecution(executionId, payloadOverride = null) {
         publishEvent({ executionId, event: "execution_progress", stepId, step: stepInfo.name, result: normalized, completedSteps });
         await auditLog(executionId, "step_completed", { step: stepInfo.name });
 
-        // ✅ Sentinel check (soft block)
+        // ✅ Increment AI token usage if output contains tokens
+        if (normalized.tokensUsed) {
+          await db.query(`UPDATE users SET ai_used = ai_used + $2 WHERE id=$1`, [execution.user_id, normalized.tokensUsed]);
+        }
+
         const verdict = await runSentinel(executionId, { ...stepInfo, id: stepId }, normalized);
         if (!verdict.allowed) {
           publishEvent({ executionId, event: "sentinel_blocked", stepId, reason: verdict.reason, output: normalized });
           await auditLog(executionId, "step_blocked", { step: stepInfo.name, reason: verdict.reason });
-          return; // continue with next step
+          return;
         }
       } catch (err) {
-        await db.query(
+                await db.query(
           `UPDATE execution_steps SET status='failed', finished_at=NOW(), error=$2 WHERE id=$1`,
           [stepId, err.message]
         );
@@ -249,12 +255,12 @@ export async function runExecution(executionId, payloadOverride = null) {
     // ✅ Sentinel summary at the end
     await summarizeBlockedSteps(executionId);
 
-    clearInterval(heartbeat); // stop heartbeat
+    clearInterval(heartbeat);
     publishEvent({ executionId, event: "execution_completed", result, duration });
     notify(executionId, "completed", { duration });
     await auditLog(executionId, "completed", { duration });
   } catch (err) {
-    clearInterval(heartbeat); // stop heartbeat on error
+    clearInterval(heartbeat);
     await db.query(
       `UPDATE executions
        SET status='failed', finished_at=NOW(), error=$2

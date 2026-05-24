@@ -16,7 +16,6 @@ export function AuthProvider({ children }) {
       INIT SESSION & PING
   ========================= */
   useEffect(() => {
-    // Wake backend
     fetch(`${API_URL}/health`).catch(() => console.log("Backend waking up..."));
 
     const token = localStorage.getItem("authToken");
@@ -43,7 +42,14 @@ export function AuthProvider({ children }) {
 
       const data = await res.json();
 
-      setUser({ token, email: data.email, id: data.id });
+      // ✅ include createdAt from backend payload
+      setUser({
+        token,
+        email: data.email,
+        id: data.id,
+        createdAt: data.created_at || null, // backend should send this
+      });
+
       setSubscription(data.tier || "free");
       setRole(data.role || "user");
 
@@ -113,7 +119,6 @@ export function AuthProvider({ children }) {
     });
 
     if (res.status === 401) {
-      // Token invalid/expired → logout
       logout();
       throw new Error("Unauthorized");
     }
@@ -132,7 +137,7 @@ export function AuthProvider({ children }) {
         initializing,
         login,
         logout,
-        authFetch, // ✅ expose helper
+        authFetch,
       }}
     >
       {children}

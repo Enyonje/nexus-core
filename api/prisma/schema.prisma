@@ -7,9 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// =======================
-// ENUMS FOR TYPE SAFETY
-// =======================
+// ENUMS
 enum UserRole {
   user
   admin
@@ -34,10 +32,7 @@ enum GoalStatus {
   completed
 }
 
-// =======================
 // MODELS
-// =======================
-
 model User {
   id                  String          @id @default(uuid())
   email               String          @unique
@@ -54,11 +49,15 @@ model User {
   mfa_secret          String?
   reset_token         String?
   reset_token_expires DateTime?       @db.Timestamptz(6)
-  deleted_at          DateTime?       // Soft delete
+  deleted_at          DateTime?
+  ai_used             Int             @default(0)
+
+  // Relations
   authAudits          AuthAudit[]
   executionSteps      ExecutionStep[]
   executions          Execution[]
   goals               Goal[]
+  adminAudits         AdminAudit[]
   organization        Organization?   @relation(fields: [org_id], references: [id])
 
   @@map("users")
@@ -71,7 +70,7 @@ model Organization {
   name       String
   created_at DateTime @default(now())
   users      User[]
-  deleted_at DateTime? // Soft delete
+  deleted_at DateTime?
 
   @@map("organizations")
 }
@@ -89,7 +88,7 @@ model Goal {
   executions   Execution[]
   user         User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
   objectives   Objective[]
-  deleted_at   DateTime?   // Soft delete
+  deleted_at   DateTime?
 
   @@map("goals")
   @@index([user_id])
@@ -107,7 +106,7 @@ model Objective {
   goal_payload Json?
   executions   Execution[]
   goal         Goal        @relation(fields: [goal_id], references: [id], onDelete: Cascade)
-  deleted_at   DateTime?   // Soft delete
+  deleted_at   DateTime?
 
   @@map("objectives")
   @@index([goal_id])
@@ -115,31 +114,33 @@ model Objective {
 }
 
 model Execution {
-  id              String            @id @default(uuid())
+  id              String          @id @default(uuid())
   user_id         String
   goal_id         String
   objective_id    String?
   action          String?
   details         Json?
-  created_at      DateTime          @default(now())
+  created_at      DateTime        @default(now())
   started_at      DateTime?
   goal_type       String?
   org_id          String?
   version         Int?
-  status          ExecutionStatus   @default(pending)
+  status          ExecutionStatus @default(pending)
   schedule        Json?
-  recurring       Boolean?          @default(false)
+  recurring       Boolean?        @default(false)
   duration_ms     Int?
   finished_at     DateTime?
-  goal_payload    Json              @default("{}")
+  goal_payload    Json            @default("{}")
   result          Json?
   error           String?
-  deleted_at      DateTime?         // Soft delete
-  executionAudit  ExecutionAudit[]
+  deleted_at      DateTime?
+
+  // Relations
+  executionAudits ExecutionAudit[]
   executionSteps  ExecutionStep[]
-  goal            Goal              @relation(fields: [goal_id], references: [id])
-  objective       Objective?        @relation(fields: [objective_id], references: [id], onDelete: Restrict)
-  user            User              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user            User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  goal            Goal       @relation(fields: [goal_id], references: [id])
+  objective       Objective? @relation(fields: [objective_id], references: [id], onDelete: Restrict)
 
   @@map("executions")
   @@index([user_id])
@@ -147,8 +148,9 @@ model Execution {
   @@index([org_id])
   @@index([created_at])
   @@index([status])
-  @@unique([goal_id, user_id, created_at]) // Prevent duplicate executions for same goal/user/time
+  @@unique([goal_id, user_id, created_at])
 }
+
 
 model AuthAudit {
   id         String   @id @default(uuid())
@@ -191,7 +193,7 @@ model ExecutionStep {
   finished_at  DateTime?
   output       Json?
   error        String?
-  deleted_at   DateTime? // Soft delete
+  deleted_at   DateTime?
 
   execution    Execution @relation(fields: [execution_id], references: [id], onDelete: Cascade)
   user         User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
@@ -200,4 +202,15 @@ model ExecutionStep {
   @@index([execution_id])
   @@index([user_id])
   @@index([created_at])
+}
+
+model AdminAudit {
+  id         String   @id @default(uuid())
+  admin_id   String
+  action     String
+  target_id  String?
+  meta       Json?
+  created_at DateTime @default(now())
+
+  admin User @relation(fields: [admin_id], references: [id], onDelete: Cascade)
 }

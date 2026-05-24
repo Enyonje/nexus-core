@@ -8,7 +8,12 @@ import speakeasy from "speakeasy";
 
 const prisma = new PrismaClient();
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
+// ✅ Require strong secret, no fallback
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+  throw new Error("JWT_SECRET must be set and at least 32 chars long");
+}
+const JWT_SECRET = process.env.JWT_SECRET;
+
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2022-11-15" });
 
@@ -42,7 +47,7 @@ export function requireAuth(req, reply, done) {
 
     done();
   } catch (err) {
-    return reply.code(401).send({ error: "AUTH_INVALID_TOKEN", detail: err.message });
+    return reply.code(401).send({ error: "AUTH_INVALID_TOKEN" });
   }
 }
 
@@ -91,14 +96,14 @@ export async function authRoutes(server) {
         return reply.code(409).send({ error: "AUTH_EMAIL_EXISTS" });
       }
 
-      // Safe organization resolution using an upsert to avoid race conditions
       const org = await prisma.organization.upsert({
-        where: { name: organization }, // Assumes unique constraint on name field
+        where: { name: organization },
         update: {},
         create: { id: uuidv4(), name: organization },
       });
 
-      const hash = await bcrypt.hash(accessKey, 10);
+      // ✅ Increase bcrypt cost factor
+      const hash = await bcrypt.hash(accessKey, 12);
       const rawRefreshToken = crypto.randomBytes(64).toString("hex");
       const hashedRefreshToken = hashToken(rawRefreshToken);
 
@@ -110,12 +115,14 @@ export async function authRoutes(server) {
           role: "user",
           subscription: "free",
           org_id: org.id,
-          refresh_token: hashedRefreshToken, // Storing cryptographic hash
+          refresh_token: hashedRefreshToken,
+          refresh_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // ✅ expiry
           failed_attempts: 0,
           locked_until: null,
           mfa_enabled: false,
+          created_at: new Date(), // ✅ track account creation
         },
-        select: { id: true, email: true, role: true, subscription: true, org_id: true },
+        select: { id: true, email: true, role: true, subscription: true, org_id: true, created_at: true },
       });
 
       const token = jwt.sign(
@@ -135,8 +142,7 @@ export async function authRoutes(server) {
       await auditLog(user.id, "register_success", {});
       reply.send({ token, user });
     } catch (err) {
-      console.error("Register error:", err);
-      reply.code(500).send({ error: "AUTH_REGISTER_ERROR", detail: err.message });
+      reply.code(500).send({ error: "AUTH_REGISTER_ERROR" });
     }
   });
 
@@ -151,7 +157,7 @@ export async function authRoutes(server) {
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user) {
         await auditLog(null, "login_failed", { email });
-        return reply.code(401).send({ error: "AUTH_USER_NOT_FOUND" });
+        return reply.code(401).send({ error: "AUTH_INVALID_CREDENTIALS" }); // ✅ generic
       }
 
       if (user.locked_until && user.locked_until > new Date()) {
@@ -167,29 +173,29 @@ export async function authRoutes(server) {
         }
         await prisma.user.update({ where: { id: user.id }, data: updateData });
         await auditLog(user.id, "login_failed", { reason: "wrong_password" });
-        return reply.code(401).send({ error: "AUTH_INVALID_PASSWORD" });
+        return reply.code(401).send({ error: "AUTH_INVALID_CREDENTIALS" }); // ✅ generic
       }
 
       await prisma.user.update({ where: { id: user.id }, data: { failed_attempts: 0, locked_until: null } });
 
       if (user.mfa_enabled) {
         const verified = speakeasy.totp.verify({
-          secret: user.mfa_secret,
+          secret: user.mfa_secret, // ✅ consider encrypting at rest
           encoding: "base32",
           token: mfaCode,
         });
         if (!verified) {
           await auditLog(user.id, "login_failed", { reason: "mfa_failed" });
-          return reply.code(401).send({ error: "AUTH_MFA_FAILED" });
+          return reply.code(401).send({ error: "AUTH_INVALID_CREDENTIALS" });
         }
       }
 
       const rawRefreshToken = crypto.randomBytes(64).toString("hex");
       const hashedRefreshToken = hashToken(rawRefreshToken);
-      
-      await prisma.user.update({ 
-        where: { id: user.id }, 
-        data: { refresh_token: hashedRefreshToken } 
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { refresh_token: hashedRefreshToken, refresh_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
       });
 
       const token = jwt.sign(
@@ -215,11 +221,11 @@ export async function authRoutes(server) {
           role: user.role,
           subscription: user.subscription,
           org_id: user.org_id,
+          created_at: user.created_at,
         },
       });
     } catch (err) {
-      console.error("Login error:", err);
-      reply.code(500).send({ error: "AUTH_LOGIN_ERROR", detail: err.message });
+      reply.code(500).send({ error: "AUTH_LOGIN_ERROR" });
     }
   });
 
@@ -232,21 +238,22 @@ export async function authRoutes(server) {
       }
 
       const hashedRefreshToken = hashToken(rawRefreshToken);
-      // Fixed: Lookup by hashed value to shield database compromises
-      const user = await prisma.user.findFirst({ where: { refresh_token: hashedRefreshToken } });
+      const user = await prisma.user.findFirst({
+        where: { refresh_token: hashedRefreshToken, refresh_token_expires: { gt: new Date() } }, // ✅ expiry check
+      });
       if (!user) {
         return reply.code(401).send({ error: "AUTH_INVALID_REFRESH" });
       }
 
       const newRawRefreshToken = crypto.randomBytes(64).toString("hex");
       const newHashedRefreshToken = hashToken(newRawRefreshToken);
-      
-      await prisma.user.update({ 
-        where: { id: user.id }, 
-        data: { refresh_token: newHashedRefreshToken } 
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { refresh_token: newHashedRefreshToken, refresh_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
       });
 
-      const newAccessToken = jwt.sign(
+            const newAccessToken = jwt.sign(
         { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
         JWT_SECRET,
         { expiresIn: "15m" }
@@ -263,8 +270,7 @@ export async function authRoutes(server) {
       await auditLog(user.id, "refresh_success", {});
       reply.send({ token: newAccessToken });
     } catch (err) {
-      console.error("Refresh error:", err);
-      reply.code(500).send({ error: "AUTH_REFRESH_ERROR", detail: err.message });
+      reply.code(500).send({ error: "AUTH_REFRESH_ERROR" });
     }
   });
 
@@ -273,29 +279,27 @@ export async function authRoutes(server) {
     try {
       const { email } = req.body;
       const user = await prisma.user.findUnique({ where: { email } });
-      
-      // Security note: In enterprise apps, consider returning a 200 generic message 
-      // even if user isn't found to protect against account enumeration.
-      if (!user) return reply.code(404).send({ error: "AUTH_USER_NOT_FOUND" });
+
+      // ✅ Always return generic response to prevent enumeration
+      if (!user) {
+        return reply.send({ success: true, message: "If account exists, reset link sent" });
+      }
 
       const resetToken = crypto.randomBytes(32).toString("hex");
       const hashedResetToken = hashToken(resetToken);
 
       await prisma.user.update({
         where: { id: user.id },
-        data: { 
-          reset_token: hashedResetToken, 
-          reset_token_expires: new Date(Date.now() + 3600 * 1000) 
-        }
+        data: {
+          reset_token: hashedResetToken,
+          reset_token_expires: new Date(Date.now() + 3600 * 1000),
+        },
       });
 
       await auditLog(user.id, "password_reset_requested", {});
-      
-      // NOTE: You'll want to append the raw `resetToken` to your outbound link.
-      reply.send({ success: true, message: "Password reset link generated successfully" });
+      reply.send({ success: true, message: "If account exists, reset link sent" });
     } catch (err) {
-      console.error("Forgot password error:", err);
-      reply.code(500).send({ error: "AUTH_FORGOT_PASSWORD_ERROR", detail: err.message });
+      reply.code(500).send({ error: "AUTH_FORGOT_PASSWORD_ERROR" });
     }
   });
 
@@ -305,21 +309,20 @@ export async function authRoutes(server) {
       const hashedToken = hashToken(token);
 
       const user = await prisma.user.findFirst({
-        where: { reset_token: hashedToken, reset_token_expires: { gt: new Date() } }
+        where: { reset_token: hashedToken, reset_token_expires: { gt: new Date() } },
       });
       if (!user) return reply.code(400).send({ error: "AUTH_INVALID_RESET_TOKEN" });
 
-      const hash = await bcrypt.hash(newPassword, 10);
+      const hash = await bcrypt.hash(newPassword, 12); // ✅ stronger cost factor
       await prisma.user.update({
         where: { id: user.id },
-        data: { password_hash: hash, reset_token: null, reset_token_expires: null }
+        data: { password_hash: hash, reset_token: null, reset_token_expires: null },
       });
 
       await auditLog(user.id, "password_reset_success", {});
       reply.send({ success: true });
     } catch (err) {
-      console.error("Reset password error:", err);
-      reply.code(500).send({ error: "AUTH_RESET_PASSWORD_ERROR", detail: err.message });
+      reply.code(500).send({ error: "AUTH_RESET_PASSWORD_ERROR" });
     }
   });
 
@@ -331,14 +334,18 @@ export async function authRoutes(server) {
 
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { subscription: true }
+        select: { subscription: true, role: true, created_at: true },
       });
       if (!user) return reply.code(404).send({ error: "AUTH_USER_NOT_FOUND" });
 
-      reply.send({ tier: user.subscription, active: user.subscription !== "free" });
+      reply.send({
+        tier: user.subscription,
+        active: user.subscription !== "free",
+        role: user.role,
+        created_at: user.created_at,
+      });
     } catch (err) {
-      console.error("Subscription fetch failed:", err);
-      reply.code(500).send({ error: "AUTH_SUBSCRIPTION_ERROR", detail: err.message });
+      reply.code(500).send({ error: "AUTH_SUBSCRIPTION_ERROR" });
     }
   });
 
@@ -346,13 +353,15 @@ export async function authRoutes(server) {
   server.post("/stripe/checkout", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const { tier } = req.body;
-      if (!tier) return reply.code(400).send({ error: "AUTH_MISSING_TIER" });
+      if (!["pro", "enterprise"].includes(tier)) {
+        return reply.code(400).send({ error: "AUTH_INVALID_TIER" });
+      }
 
       const priceId =
         tier === "pro" ? process.env.STRIPE_PRO_PRICE_ID : process.env.STRIPE_ENTERPRISE_PRICE_ID;
 
       if (!priceId) {
-        return reply.code(400).send({ error: "AUTH_INVALID_TIER" });
+        return reply.code(400).send({ error: "AUTH_INVALID_TIER_CONFIG" });
       }
 
       const session = await stripe.checkout.sessions.create({
@@ -368,21 +377,16 @@ export async function authRoutes(server) {
       await auditLog(req.user.id, "stripe_checkout", { tier });
       reply.send({ sessionId: session.id });
     } catch (err) {
-      console.error("Stripe checkout error:", err);
-      reply.code(500).send({ error: "AUTH_STRIPE_ERROR", detail: err.message });
+      reply.code(500).send({ error: "AUTH_STRIPE_ERROR" });
     }
   });
 
-  /* =========================
-     IDENTITY INTEGRATION PADS
-  ========================= */
+  // OAUTH / EXTERNAL LOGIN placeholders
   server.get("/oauth/:provider/callback", async (req, reply) => {
-    // Ready for passport-fastify or basic OAuth2 strategy hooks
     reply.send({ success: true, provider: req.params.provider });
   });
 
   server.post("/external-login", async (req, reply) => {
-    // Ready for SAML2 / OIDC token translation hooks (e.g. Azure AD)
     reply.send({ success: true, provider: "external" });
   });
 }

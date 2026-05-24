@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { formatDate } from "../lib/utils";
+import SubscriptionGuard from "./SubscriptionGuard";
 
-export default function Audit() {
+function AuditContent() {
   const { executionId } = useParams();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,8 +35,6 @@ export default function Audit() {
     );
   }
 
-  // Try to extract a summary from the logs
-  const first = logs[0];
   const last = logs[logs.length - 1];
   const finalStatus = last?.status || "unknown";
 
@@ -79,9 +78,7 @@ export default function Audit() {
               <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest mb-1">
                 Audit Events
               </p>
-              <p className="text-sm font-black text-white">
-                {logs.length}
-              </p>
+              <p className="text-sm font-black text-white">{logs.length}</p>
             </div>
           </div>
         </header>
@@ -98,7 +95,11 @@ export default function Audit() {
                 {log.meta && (
                   <>
                     {" | "}
-                    <span className="text-slate-400">{typeof log.meta === "string" ? log.meta : JSON.stringify(log.meta)}</span>
+                    <span className="text-slate-400">
+                      {typeof log.meta === "string"
+                        ? log.meta
+                        : JSON.stringify(log.meta)}
+                    </span>
                   </>
                 )}
               </li>
@@ -107,5 +108,14 @@ export default function Audit() {
         </section>
       </div>
     </div>
+  );
+}
+
+// ✅ Wrap with SubscriptionGuard
+export default function Audit() {
+  return (
+    <SubscriptionGuard>
+      <AuditContent />
+    </SubscriptionGuard>
   );
 }
