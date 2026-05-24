@@ -4,7 +4,7 @@ import { apiFetch, safeApiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
 import LoadingSpinner from "./LoadingSpinner.jsx";
 import { useAuth } from "../context/AuthProvider.jsx";
-import SubscriptionGuard from "./SubscriptionGuard"; // ✅ import guard from its own file
+import SubscriptionGuard from "./SubscriptionGuard";
 
 // Accessibility helper for ARIA
 function ariaLabel(label) {
@@ -15,7 +15,7 @@ function ExecutionDetailContent() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { addToast } = useToast();
-  const { initializing } = useAuth();
+  const { initializing, subscription } = useAuth();
 
   const [execution, setExecution] = useState(null);
   const [steps, setSteps] = useState([]);
@@ -28,6 +28,13 @@ function ExecutionDetailContent() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [showHelp, setShowHelp] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Redirect free users to subscription page
+  useEffect(() => {
+    if (!loading && !initializing && subscription === "free") {
+      navigate("/subscription", { replace: true });
+    }
+  }, [loading, initializing, subscription, navigate]);
 
   /* =========================
       DATA INITIALIZATION & SSE STREAM
@@ -49,7 +56,6 @@ function ExecutionDetailContent() {
         const token = localStorage.getItem("authToken");
         if (!token) return;
 
-        // ❌ Removed unsupported { withCredentials: true }
         evtSource = new EventSource(
           `${import.meta.env.VITE_API_URL}/api/executions/${id}/stream?token=${encodeURIComponent(token)}`
         );
@@ -63,7 +69,6 @@ function ExecutionDetailContent() {
                 const stepId = data.stepId || data.step;
                 const normalizedStepId = String(stepId);
 
-                // ✅ Simplified duplicate check
                 if (prev.find(s => s.id === `${id}-${normalizedStepId}`)) return prev;
 
                 return [
@@ -79,7 +84,7 @@ function ExecutionDetailContent() {
             } else if (["execution_completed", "execution_failed"].includes(data.event)) {
               const status = data.event.split("_")[1];
               setExecution((prev) => ({ ...prev, status }));
-              addToast(`Trace ${status}`, status === "failed" ? "error" : "success"); // ✅ correct toast severity
+              addToast(`Trace ${status}`, status === "failed" ? "error" : "success");
             }
           } catch (err) {
             console.error("Stream parse error", err);
@@ -126,7 +131,7 @@ function ExecutionDetailContent() {
       HANDLERS
   ========================= */
   const copyTraceId = () => {
-    navigator.clipboard.writeText(id).catch(() => addToast("Clipboard copy failed", "error")); // ✅ safer
+    navigator.clipboard.writeText(id).catch(() => addToast("Clipboard copy failed", "error"));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
     addToast("ID copied to clipboard", "success");
@@ -149,7 +154,7 @@ function ExecutionDetailContent() {
       await safeApiFetch(`/executions/${id}`, { method: "DELETE" }, addToast);
       navigate("/executions");
     } catch {
-      addToast("Failed to purge trace", "error"); // ✅ better error handling
+      addToast("Failed to purge trace", "error");
     }
   };
 

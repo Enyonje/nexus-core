@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "./AuthProvider";
+import { useAuth } from "../context/AuthProvider.jsx"; // ✅ Correct import path
 
 /**
  * SubscriptionGuard
@@ -19,17 +19,17 @@ export default function SubscriptionGuard({
   redirectTo = "/subscription",
   graceDays = 0,
 }) {
-  const { subscription, loading, user, requiresSubscription } = useAuth(); 
+  const { subscription, loading, user, requiresSubscription } = useAuth();
   const navigate = useNavigate();
 
-  // ✅ Calculate account age in days
+  // Calculate account age in days
   const accountAgeDays = user?.createdAt
     ? Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24))
     : null;
 
   const isWithinGrace = graceDays > 0 && accountAgeDays !== null && accountAgeDays <= graceDays;
 
-  // ✅ Use backend flag if available, otherwise fall back to subscription check
+  // Use backend flag if available, otherwise fall back to subscription check
   const hasAccess = !requiresSubscription || required.includes(subscription) || isWithinGrace;
 
   useEffect(() => {
