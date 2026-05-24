@@ -49,6 +49,7 @@ model User {
   mfa_secret          String?
   reset_token         String?
   reset_token_expires DateTime?       @db.Timestamptz(6)
+  refresh_token_expires DateTime? @db.Timestamptz(6)
   deleted_at          DateTime?
   ai_used             Int             @default(0)
 
