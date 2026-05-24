@@ -8,16 +8,16 @@ import speakeasy from "speakeasy";
 
 const prisma = new PrismaClient();
 
-// ✅ Require strong secret, no fallback
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
   throw new Error("JWT_SECRET must be set and at least 32 chars long");
 }
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error("STRIPE_SECRET_KEY must be set");
+}
 const JWT_SECRET = process.env.JWT_SECRET;
-
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2022-11-15" });
 
-// Helper to hash tokens before storing them in DB
 function hashToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
@@ -102,7 +102,6 @@ export async function authRoutes(server) {
         create: { id: uuidv4(), name: organization },
       });
 
-      // ✅ Increase bcrypt cost factor
       const hash = await bcrypt.hash(accessKey, 12);
       const rawRefreshToken = crypto.randomBytes(64).toString("hex");
       const hashedRefreshToken = hashToken(rawRefreshToken);
@@ -116,11 +115,11 @@ export async function authRoutes(server) {
           subscription: "free",
           org_id: org.id,
           refresh_token: hashedRefreshToken,
-          refresh_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // ✅ expiry
+          refresh_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
           failed_attempts: 0,
           locked_until: null,
           mfa_enabled: false,
-          created_at: new Date(), // ✅ track account creation
+          created_at: new Date(),
         },
         select: { id: true, email: true, role: true, subscription: true, org_id: true, created_at: true },
       });
@@ -142,6 +141,7 @@ export async function authRoutes(server) {
       await auditLog(user.id, "register_success", {});
       reply.send({ token, user });
     } catch (err) {
+      console.error("Register error:", err);
       reply.code(500).send({ error: "AUTH_REGISTER_ERROR" });
     }
   });
@@ -157,7 +157,7 @@ export async function authRoutes(server) {
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user) {
         await auditLog(null, "login_failed", { email });
-        return reply.code(401).send({ error: "AUTH_INVALID_CREDENTIALS" }); // ✅ generic
+        return reply.code(401).send({ error: "AUTH_INVALID_CREDENTIALS" });
       }
 
       if (user.locked_until && user.locked_until > new Date()) {
@@ -173,14 +173,14 @@ export async function authRoutes(server) {
         }
         await prisma.user.update({ where: { id: user.id }, data: updateData });
         await auditLog(user.id, "login_failed", { reason: "wrong_password" });
-        return reply.code(401).send({ error: "AUTH_INVALID_CREDENTIALS" }); // ✅ generic
+        return reply.code(401).send({ error: "AUTH_INVALID_CREDENTIALS" });
       }
 
       await prisma.user.update({ where: { id: user.id }, data: { failed_attempts: 0, locked_until: null } });
 
       if (user.mfa_enabled) {
         const verified = speakeasy.totp.verify({
-          secret: user.mfa_secret, // ✅ consider encrypting at rest
+          secret: user.mfa_secret,
           encoding: "base32",
           token: mfaCode,
         });
@@ -225,6 +225,7 @@ export async function authRoutes(server) {
         },
       });
     } catch (err) {
+      console.error("Login error:", err);
       reply.code(500).send({ error: "AUTH_LOGIN_ERROR" });
     }
   });
@@ -239,7 +240,7 @@ export async function authRoutes(server) {
 
       const hashedRefreshToken = hashToken(rawRefreshToken);
       const user = await prisma.user.findFirst({
-        where: { refresh_token: hashedRefreshToken, refresh_token_expires: { gt: new Date() } }, // ✅ expiry check
+        where: { refresh_token: hashedRefreshToken, refresh_token_expires: { gt: new Date() } },
       });
       if (!user) {
         return reply.code(401).send({ error: "AUTH_INVALID_REFRESH" });
@@ -253,7 +254,7 @@ export async function authRoutes(server) {
         data: { refresh_token: newHashedRefreshToken, refresh_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
       });
 
-            const newAccessToken = jwt.sign(
+      const newAccessToken = jwt.sign(
         { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
         JWT_SECRET,
         { expiresIn: "15m" }
@@ -270,6 +271,7 @@ export async function authRoutes(server) {
       await auditLog(user.id, "refresh_success", {});
       reply.send({ token: newAccessToken });
     } catch (err) {
+      console.error("Refresh error:", err);
       reply.code(500).send({ error: "AUTH_REFRESH_ERROR" });
     }
   });
@@ -280,7 +282,6 @@ export async function authRoutes(server) {
       const { email } = req.body;
       const user = await prisma.user.findUnique({ where: { email } });
 
-      // ✅ Always return generic response to prevent enumeration
       if (!user) {
         return reply.send({ success: true, message: "If account exists, reset link sent" });
       }
@@ -296,9 +297,11 @@ export async function authRoutes(server) {
         },
       });
 
+      // TODO: Send resetToken via email in production
       await auditLog(user.id, "password_reset_requested", {});
       reply.send({ success: true, message: "If account exists, reset link sent" });
     } catch (err) {
+      console.error("Forgot password error:", err);
       reply.code(500).send({ error: "AUTH_FORGOT_PASSWORD_ERROR" });
     }
   });
@@ -313,7 +316,7 @@ export async function authRoutes(server) {
       });
       if (!user) return reply.code(400).send({ error: "AUTH_INVALID_RESET_TOKEN" });
 
-      const hash = await bcrypt.hash(newPassword, 12); // ✅ stronger cost factor
+      const hash = await bcrypt.hash(newPassword, 12);
       await prisma.user.update({
         where: { id: user.id },
         data: { password_hash: hash, reset_token: null, reset_token_expires: null },
@@ -322,6 +325,7 @@ export async function authRoutes(server) {
       await auditLog(user.id, "password_reset_success", {});
       reply.send({ success: true });
     } catch (err) {
+      console.error("Reset password error:", err);
       reply.code(500).send({ error: "AUTH_RESET_PASSWORD_ERROR" });
     }
   });
@@ -345,6 +349,7 @@ export async function authRoutes(server) {
         created_at: user.created_at,
       });
     } catch (err) {
+      console.error("Subscription error:", err);
       reply.code(500).send({ error: "AUTH_SUBSCRIPTION_ERROR" });
     }
   });
@@ -377,6 +382,7 @@ export async function authRoutes(server) {
       await auditLog(req.user.id, "stripe_checkout", { tier });
       reply.send({ sessionId: session.id });
     } catch (err) {
+      console.error("Stripe checkout error:", err);
       reply.code(500).send({ error: "AUTH_STRIPE_ERROR" });
     }
   });
@@ -390,3 +396,6 @@ export async function authRoutes(server) {
     reply.send({ success: true, provider: "external" });
   });
 }
+
+// Optionally, disconnect Prisma on server close
+// server.addHook('onClose', async () => { await prisma.$disconnect(); });
