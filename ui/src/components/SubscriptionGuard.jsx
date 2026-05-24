@@ -19,7 +19,7 @@ export default function SubscriptionGuard({
   redirectTo = "/subscription",
   graceDays = 0,
 }) {
-  const { subscription, loading, user } = useAuth(); 
+  const { subscription, loading, user, requiresSubscription } = useAuth(); 
   const navigate = useNavigate();
 
   // ✅ Calculate account age in days
@@ -28,13 +28,15 @@ export default function SubscriptionGuard({
     : null;
 
   const isWithinGrace = graceDays > 0 && accountAgeDays !== null && accountAgeDays <= graceDays;
-  const hasAccess = required.includes(subscription) || isWithinGrace;
+
+  // ✅ Use backend flag if available, otherwise fall back to subscription check
+  const hasAccess = !requiresSubscription || required.includes(subscription) || isWithinGrace;
 
   useEffect(() => {
     if (!loading && !hasAccess) {
       navigate(redirectTo, { replace: true });
     }
-  }, [subscription, loading, navigate, required, redirectTo, hasAccess]);
+  }, [subscription, loading, navigate, required, redirectTo, hasAccess, requiresSubscription]);
 
   if (loading) {
     return (

@@ -70,8 +70,9 @@ export async function executionsRoutes(app) {
       );
 
       return reply.send({
-        user: userRows[0] || null,
-        executions
+        user: userRows[0] || { id: userId, email: "", role: "user", subscription: "free" },
+        executions,
+        requiresSubscription: (userRows[0]?.subscription === "free")
       });
     } catch (err) {
       req.log.error(err, "Failed to fetch executions");
@@ -117,8 +118,9 @@ export async function executionsRoutes(app) {
       );
 
       return reply.code(201).send({
-        user: userRows[0] || null,
-        execution: execRes.rows[0]
+        user: userRows[0] || { id: userId, email: "", role: "user", subscription: "free" },
+        execution: execRes.rows[0],
+        requiresSubscription: (userRows[0]?.subscription === "free")
       });
     } catch (err) {
       app.log.error(err, "Failed to create execution");
@@ -167,8 +169,9 @@ export async function executionsRoutes(app) {
       );
 
       return reply.send({
-        user: userRows[0] || null,
-        execution: execRes.rows[0]
+        user: userRows[0] || { id: userId, email: "", role: "user", subscription: "free" },
+        execution: execRes.rows[0],
+        requiresSubscription: (userRows[0]?.subscription === "free")
       });
     } catch (err) {
       app.log.error(err, "Failed to run execution");
@@ -177,5 +180,5 @@ export async function executionsRoutes(app) {
   });
 
   /* 4. SSE STREAM, 5. AUDIT LOGS, 6. GET SINGLE EXECUTION, 7. ADMIN OVERRIDES */
-  // (unchanged from your original file — they don’t need subscription info)
+  // These routes remain unchanged since they don’t need subscription info.
 }
