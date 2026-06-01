@@ -1,50 +1,72 @@
+// ...existing code...
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../lib/api";
 import { formatDate } from "../lib/utils";
 import SubscriptionGuard from "./SubscriptionGuard"; // ✅ import reusable guard
+import { useToast } from "./ToastContext.jsx";
 
 function ExecutionListContent() {
   const [executions, setExecutions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [runningId, setRunningId] = useState(null);
+  const navigate = useNavigate();
+  const { addToast } = useToast();
 
   useEffect(() => {
+    let mounted = true;
     async function loadExecutions() {
       try {
         const data = await apiFetch("/executions");
+
+        // backend may return { requiresSubscription, executions, user } or an array
+        if (data?.requiresSubscription) {
+          navigate("/upgrade", { replace: true });
+          return;
+        }
+
         if (Array.isArray(data)) {
+          if (!mounted) return;
           setExecutions(data);
         } else if (Array.isArray(data.executions)) {
+          if (!mounted) return;
           setExecutions(data.executions);
         } else {
+          if (!mounted) return;
           setExecutions([]);
         }
       } catch (err) {
-        setError(err.message || "Archive Access Denied");
+        setError(err?.message || "Archive Access Denied");
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     }
     loadExecutions();
-  }, []);
+    return () => { mounted = false; };
+  }, [navigate]);
 
   const runExecution = async (execution) => {
-    if (!execution || !execution.id) {
-      console.error("Execution ID missing");
+    // derive id from possible shapes returned by backend
+    const execId = execution?.id || execution?.execution?.id || null;
+    if (!execId) {
+      addToast("Execution ID missing — cannot run", "error");
+      console.error("Attempted to run execution with no id:", execution);
       return;
     }
-    setRunningId(execution.id);
+
+    setRunningId(execId);
     try {
-      const res = await apiFetch(`/executions/${execution.id}/run`, {
+      const res = await apiFetch(`/executions/${encodeURIComponent(execId)}/run`, {
         method: "POST",
         body: {},
       });
       console.log("Execution started:", res);
+      addToast("Execution started", "success");
     } catch (err) {
       console.error("Run failed:", err);
+      addToast("Failed to start execution", "error");
     } finally {
       setRunningId(null);
     }
@@ -82,20 +104,24 @@ function ExecutionListContent() {
       <h2 className="text-xl font-bold mb-4">Executions</h2>
       <ul className="space-y-4">
         {executions.map((exec) => (
-          <li key={exec.id} className="flex items-center justify-between bg-slate-800 p-4 rounded-lg">
+          <li key={exec.id || exec.execution?.id || Math.random()} className="flex items-center justify-between bg-slate-800 p-4 rounded-lg">
             <div>
-              <div className="font-semibold">{exec.goal_type}</div>
-              <div className="text-xs text-slate-400">{formatDate(exec.started_at)}</div>
+              <div className="font-semibold">{exec.goal_type ?? exec.execution?.goal_type ?? "Execution"}</div>
+              <div className="text-xs text-slate-400">{formatDate(exec.started_at ?? exec.execution?.started_at)}</div>
             </div>
             <div className="flex items-center gap-3">
-              <StatusBadge status={exec.status} />
+              <StatusBadge status={exec.status ?? exec.execution?.status} />
               <button
                 onClick={() => runExecution(exec)}
-                disabled={runningId === exec.id}
-                className="px-3 py-1 text-xs font-bold uppercase tracking-widest bg-blue-600 text-white rounded hover:bg-blue-500 transition"
+                disabled={runningId === (exec.id || exec.execution?.id) || !(exec.id || exec.execution?.id)}
+                className="px-3 py-1 text-xs font-bold uppercase tracking-widest bg-blue-600 text-white rounded hover:bg-blue-500 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                title={!(exec.id || exec.execution?.id) ? "Execution id missing" : "Run execution"}
               >
-                {runningId === exec.id ? "Running..." : "Run"}
+                {runningId === (exec.id || exec.execution?.id) ? "Running..." : "Run"}
               </button>
+              <Link to={`/executions/${exec.id ?? exec.execution?.id}`} className="text-xs font-bold uppercase tracking-widest text-slate-300/80">
+                View
+              </Link>
             </div>
           </li>
         ))}
@@ -128,7 +154,7 @@ export default function ExecutionList() {
       required={["pro", "enterprise"]} 
       message="Pro or Enterprise subscription required" 
       redirectTo="/upgrade"
-      graceDays={7}   // ✅ allow new users 7 days of access
+      graceDays={7}
     >
       <ExecutionListContent />
     </SubscriptionGuard>
