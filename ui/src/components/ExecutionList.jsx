@@ -1,5 +1,6 @@
+// ...existing code...
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../lib/api";
 import { formatDate } from "../lib/utils";
@@ -9,26 +10,39 @@ function ExecutionListContent() {
   const [executions, setExecutions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
+    let mounted = true;
     async function loadExecutions() {
       try {
         const data = await apiFetch("/executions");
+
+        // If backend signals the user needs a subscription, redirect immediately
+        if (data && data.requiresSubscription) {
+          navigate("/upgrade", { replace: true });
+          return;
+        }
+
         if (Array.isArray(data)) {
+          if (!mounted) return;
           setExecutions(data);
         } else if (Array.isArray(data.executions)) {
+          if (!mounted) return;
           setExecutions(data.executions);
         } else {
+          if (!mounted) return;
           setExecutions([]);
         }
       } catch (err) {
-        setError(err.message || "Archive Access Denied");
+        setError(err?.message || "Archive Access Denied");
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     }
     loadExecutions();
-  }, []);
+    return () => { mounted = false; };
+  }, [navigate]);
 
   if (loading) return (
     <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center">

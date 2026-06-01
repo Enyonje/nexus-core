@@ -10,6 +10,8 @@ const ContactPage = () => {
           <div className="space-y-4 text-sm font-mono">
             <p className="text-blue-500">EMAIL: hello@nexusthecore.com</p>
             <p className="text-blue-500">PHONE: +254720377373</p>
+            <p className="text-blue-500">facebook: Nexus-Core</p>
+            <p className="text-blue-500">Linkedin : Nexus Core</p>
             <p>LOC: Nairobi, Kenya // HQ-1</p>
           </div>
         </div>
