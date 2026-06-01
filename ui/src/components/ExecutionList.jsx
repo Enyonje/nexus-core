@@ -1,6 +1,5 @@
-// ...existing code...
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../lib/api";
 import { formatDate } from "../lib/utils";
@@ -10,39 +9,46 @@ function ExecutionListContent() {
   const [executions, setExecutions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const navigate = useNavigate();
+  const [runningId, setRunningId] = useState(null);
 
   useEffect(() => {
-    let mounted = true;
     async function loadExecutions() {
       try {
         const data = await apiFetch("/executions");
-
-        // If backend signals the user needs a subscription, redirect immediately
-        if (data && data.requiresSubscription) {
-          navigate("/upgrade", { replace: true });
-          return;
-        }
-
         if (Array.isArray(data)) {
-          if (!mounted) return;
           setExecutions(data);
         } else if (Array.isArray(data.executions)) {
-          if (!mounted) return;
           setExecutions(data.executions);
         } else {
-          if (!mounted) return;
           setExecutions([]);
         }
       } catch (err) {
-        setError(err?.message || "Archive Access Denied");
+        setError(err.message || "Archive Access Denied");
       } finally {
-        if (mounted) setLoading(false);
+        setLoading(false);
       }
     }
     loadExecutions();
-    return () => { mounted = false; };
-  }, [navigate]);
+  }, []);
+
+  const runExecution = async (execution) => {
+    if (!execution || !execution.id) {
+      console.error("Execution ID missing");
+      return;
+    }
+    setRunningId(execution.id);
+    try {
+      const res = await apiFetch(`/executions/${execution.id}/run`, {
+        method: "POST",
+        body: {},
+      });
+      console.log("Execution started:", res);
+    } catch (err) {
+      console.error("Run failed:", err);
+    } finally {
+      setRunningId(null);
+    }
+  };
 
   if (loading) return (
     <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center">
@@ -73,7 +79,27 @@ function ExecutionListContent() {
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-300 p-6 md:p-12 font-sans relative overflow-hidden">
-      {/* ...rest of your JSX unchanged... */}
+      <h2 className="text-xl font-bold mb-4">Executions</h2>
+      <ul className="space-y-4">
+        {executions.map((exec) => (
+          <li key={exec.id} className="flex items-center justify-between bg-slate-800 p-4 rounded-lg">
+            <div>
+              <div className="font-semibold">{exec.goal_type}</div>
+              <div className="text-xs text-slate-400">{formatDate(exec.started_at)}</div>
+            </div>
+            <div className="flex items-center gap-3">
+              <StatusBadge status={exec.status} />
+              <button
+                onClick={() => runExecution(exec)}
+                disabled={runningId === exec.id}
+                className="px-3 py-1 text-xs font-bold uppercase tracking-widest bg-blue-600 text-white rounded hover:bg-blue-500 transition"
+              >
+                {runningId === exec.id ? "Running..." : "Run"}
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
