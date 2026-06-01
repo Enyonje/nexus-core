@@ -49,6 +49,7 @@ function ExecutionDetailContent() {
         setLoading(true);
         // 1. Initial State Fetch
         const res = await apiFetch(`/executions/${id}`);
+        // ✅ Ensure we store the execution object
         setExecution(res);
         setSteps(Array.isArray(res.steps) ? res.steps : []);
 
@@ -107,29 +108,27 @@ function ExecutionDetailContent() {
   }, [id, initializing, addToast]);
 
   /* =========================
-      LOGIC & CALCULATIONS
-  ========================= */
-  const groupedSteps = useMemo(() => {
-    return steps.reduce((acc, s) => {
-      const status = s.status || "running";
-      acc[status] = acc[status] || [];
-      acc[status].push(s);
-      return acc;
-    }, { running: [], completed: [], failed: [], blocked: [] });
-  }, [steps]);
-
-  const progressPercent = steps.length > 0
-    ? Math.round((groupedSteps.completed.length / steps.length) * 100)
-    : 0;
-
-  const filteredSteps = useMemo(() => {
-    if (filterStatus === "all") return [...steps].reverse();
-    return steps.filter(s => s.status === filterStatus).reverse();
-  }, [steps, filterStatus]);
-
-  /* =========================
       HANDLERS
   ========================= */
+  const handleRun = async () => {
+    if (!execution || !execution.id) {
+      addToast("Execution ID missing", "error");
+      console.error("Execution object:", execution);
+      return;
+    }
+    try {
+      const res = await apiFetch(`/executions/${execution.id}/run`, {
+        method: "POST",
+        body: {},
+      });
+      addToast("Execution started", "success");
+      console.log("Run response:", res);
+    } catch (err) {
+      addToast("Failed to run execution", "error");
+      console.error("Run error:", err);
+    }
+  };
+
   const copyTraceId = () => {
     navigator.clipboard.writeText(id).catch(() => addToast("Clipboard copy failed", "error"));
     setCopied(true);
@@ -166,6 +165,13 @@ function ExecutionDetailContent() {
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-300 p-4 md:p-8 relative overflow-hidden font-sans">
+      {/* Example Run button */}
+      <button
+        onClick={handleRun}
+        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 transition"
+      >
+        Run Execution
+      </button>
       {/* ...rest of your JSX remains unchanged... */}
     </div>
   );
