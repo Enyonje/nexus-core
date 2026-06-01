@@ -1,3 +1,4 @@
+// ...existing code...
 import { v4 as uuidv4 } from "uuid";
 import { runExecution } from "../execution/runner.js";
 import { requireAuth } from "./auth.js";
@@ -132,12 +133,19 @@ export async function executionsRoutes(app) {
   app.post("/:id/run", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.user?.id;
-      const { id } = req.params;
+      const execId = req.params.id;
+
+      // Defensive validation to avoid handling "undefined" or missing ids
+      if (!execId || execId === "undefined") {
+        app.log.warn({ url: req.url, params: req.params, user: userId }, "Missing or invalid execution id in request");
+        return reply.code(400).send({ error: "MISSING_EXECUTION_ID", message: "Execution id is required" });
+      }
+      if (!userId) return reply.code(401).send({ error: "AUTH_INVALID_SESSION" });
 
       const execRes = await app.pg.query(
         `UPDATE executions SET status = 'running', started_at = NOW() 
          WHERE id = $1 AND user_id = $2 RETURNING *`,
-        [id, userId]
+        [execId, userId]
       );
 
       if (execRes.rows.length === 0) {
@@ -145,22 +153,23 @@ export async function executionsRoutes(app) {
       }
 
       const start = Date.now();
-      await auditLog(app, id, "started", {});
+      await auditLog(app, execId, "started", {});
 
-      runExecution(id, req.body || {})
+      // Run asynchronously; keep client response quick
+      runExecution(execId, req.body || {})
         .then(async () => {
           const duration = Date.now() - start;
           await app.pg.query(
             `UPDATE executions SET duration_ms=$2, status='completed' WHERE id=$1`,
-            [id, duration]
+            [execId, duration]
           );
-          publishEvent(id, { event: "execution_completed", duration });
-          await auditLog(app, id, "completed", { duration });
+          publishEvent(execId, { event: "execution_completed", duration });
+          await auditLog(app, execId, "completed", { duration });
         })
         .catch(async (err) => {
-          await app.pg.query(`UPDATE executions SET status='failed' WHERE id=$1`, [id]);
-          publishEvent(id, { event: "execution_failed", error: err.message });
-          await auditLog(app, id, "failed", { error: err.message });
+          await app.pg.query(`UPDATE executions SET status='failed' WHERE id=$1`, [execId]);
+          publishEvent(execId, { event: "execution_failed", error: err?.message ?? String(err) });
+          await auditLog(app, execId, "failed", { error: err?.message ?? String(err) });
         });
 
       const { rows: userRows } = await app.pg.query(
@@ -182,3 +191,4 @@ export async function executionsRoutes(app) {
   /* 4. SSE STREAM, 5. AUDIT LOGS, 6. GET SINGLE EXECUTION, 7. ADMIN OVERRIDES */
   // These routes remain unchanged since they don’t need subscription info.
 }
+// ...existing code...
