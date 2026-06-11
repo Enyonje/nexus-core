@@ -13,6 +13,34 @@ export default function Goals() {
   const { addToast } = useToast();
   const [progress, setProgress] = useState({});
 
+  // helper: attempt to extract execution id from many shapes
+  function extractExecutionId(obj) {
+    if (!obj) return null;
+    // if string, try parse
+    if (typeof obj === "string") {
+      try {
+        obj = JSON.parse(obj);
+      } catch {
+        return null;
+      }
+    }
+    const candidate =
+      obj?.execution ??
+      obj?.data ??
+      obj?.result ??
+      obj ??
+      null;
+    const id =
+      candidate?.id ||
+      candidate?.execution?.id ||
+      obj?.id ||
+      obj?.executionId ||
+      obj?.execution_id ||
+      obj?.executionId ||
+      candidate?.execution_id;
+    return id ?? null;
+  }
+
   useEffect(() => {
     // ensure payload initialized for the current goalType
     resetPayload(goalType);
@@ -38,6 +66,7 @@ export default function Goals() {
     setCreating(true);
     setErrorMessage("");
     try {
+      // send JSON string explicitly to avoid mismatched headers/body
       const res = await apiFetch("/goals", {
         method: "POST",
         body: JSON.stringify({ goalType, payload }),
@@ -79,37 +108,39 @@ export default function Goals() {
   }
 
   async function runGoal(goalId) {
+    // guard
+    if (!goalId) {
+      addToast("Invalid goal id", "error");
+      return;
+    }
+
     setRunning(goalId);
     try {
-      // 1) create execution
+      // 1) create execution — send stringified body to avoid Content-Type mismatch
       const createRes = await apiFetch("/executions", {
         method: "POST",
         body: JSON.stringify({ goalId }),
       });
 
-      // 2) normalize execution id from various server shapes
-      const execCandidate = createRes?.execution ?? createRes?.data ?? createRes;
-      const execId =
-        execCandidate?.id ||
-        execCandidate?.execution?.id ||
-        createRes?.id ||
-        createRes?.executionId ||
-        createRes?.execution_id;
+      // 2) extract execution id robustly
+      const execId = extractExecutionId(createRes);
 
       if (!execId) {
-        addToast("Server returned no execution id", "error");
+        // server didn't return an id — log and notify, abort run
         console.error("Unexpected execution response:", createRes);
+        addToast("Server returned no execution id; run aborted", "error");
         return;
       }
 
-      // 3) start run — send explicit JSON body to avoid header/body mismatch
+      // 3) start run — send explicit JSON body (empty object) to avoid header/body mismatch
       await apiFetch(`/executions/${encodeURIComponent(execId)}/run`, {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify({}), // explicit valid JSON body
       });
 
       addToast("Swarm Dispatched", "success");
     } catch (err) {
+      // surface server message when available
       console.error("Run failed:", err);
       addToast(err?.message || "Dispatch Failed", "error");
     } finally {
