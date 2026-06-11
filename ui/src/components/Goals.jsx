@@ -14,17 +14,23 @@ export default function Goals() {
   const [progress, setProgress] = useState({});
 
   useEffect(() => {
+    // ensure payload initialized for the current goalType
+    resetPayload(goalType);
+
     async function load() {
       try {
         const res = await apiFetch("/goals");
-        setGoals(Array.isArray(res) ? res : res.goals || []);
-      } catch {
-        addToast("Critical: Failed to load objectives", "error");
+        // handle array or wrapper { goals: [...] }
+        const list = Array.isArray(res) ? res : res?.goals ?? [];
+        setGoals(list);
+      } catch (err) {
+        addToast(err?.message || "Critical: Failed to load objectives", "error");
       } finally {
         setLoading(false);
       }
     }
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function createGoal(e) {
@@ -32,16 +38,31 @@ export default function Goals() {
     setCreating(true);
     setErrorMessage("");
     try {
-      const goal = await apiFetch("/goals", {
+      const res = await apiFetch("/goals", {
         method: "POST",
         body: JSON.stringify({ goalType, payload }),
       });
-      setGoals((g) => [goal, ...g]);
+
+      // Normalize possible response shapes and pick an object with an id
+      const created =
+        res?.goal ?? res?.data ?? res?.created ?? res?.execution ?? res ?? null;
+      const createdObj = Array.isArray(created) ? created[0] : created;
+
+      if (createdObj && (createdObj.id || createdObj.goal_id || createdObj._id)) {
+        // normalize id field
+        const normalized = { ...createdObj, id: createdObj.id ?? createdObj.goal_id ?? createdObj._id };
+        setGoals((g) => [normalized, ...g]);
+      } else {
+        // fallback: reload list if server didn't return created object
+        const fresh = await apiFetch("/goals");
+        setGoals(Array.isArray(fresh) ? fresh : fresh?.goals ?? []);
+      }
+
       resetPayload(goalType);
       addToast("Objective Uploaded", "success");
     } catch (err) {
-      setErrorMessage(err?.error || "Submission rejected");
-      addToast("Protocol Error", "error");
+      setErrorMessage(err?.message || err?.error || "Submission rejected");
+      addToast(err?.message || "Protocol Error", "error");
     } finally {
       setCreating(false);
     }
@@ -49,25 +70,48 @@ export default function Goals() {
 
   async function deleteGoal(goalId) {
     try {
-      await apiFetch(`/goals/${goalId}`, { method: "DELETE" });
+      await apiFetch(`/goals/${encodeURIComponent(goalId)}`, { method: "DELETE" });
       setGoals((g) => g.filter((goal) => goal.id !== goalId));
       addToast("Objective Terminated", "success");
     } catch (err) {
-      addToast("Deletion Interrupted", "error");
+      addToast(err?.message || "Deletion Interrupted", "error");
     }
   }
 
   async function runGoal(goalId) {
     setRunning(goalId);
     try {
-      const execution = await apiFetch("/executions", {
+      // 1) create execution
+      const createRes = await apiFetch("/executions", {
         method: "POST",
         body: JSON.stringify({ goalId }),
       });
-      await apiFetch(`/executions/${execution.id}/run`, { method: "POST" });
+
+      // 2) normalize execution id from various server shapes
+      const execCandidate = createRes?.execution ?? createRes?.data ?? createRes;
+      const execId =
+        execCandidate?.id ||
+        execCandidate?.execution?.id ||
+        createRes?.id ||
+        createRes?.executionId ||
+        createRes?.execution_id;
+
+      if (!execId) {
+        addToast("Server returned no execution id", "error");
+        console.error("Unexpected execution response:", createRes);
+        return;
+      }
+
+      // 3) start run — send explicit JSON body to avoid header/body mismatch
+      await apiFetch(`/executions/${encodeURIComponent(execId)}/run`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+
       addToast("Swarm Dispatched", "success");
     } catch (err) {
-      addToast("Dispatch Failed", "error");
+      console.error("Run failed:", err);
+      addToast(err?.message || "Dispatch Failed", "error");
     } finally {
       setRunning(null);
     }
@@ -84,7 +128,8 @@ export default function Goals() {
     else setPayload({});
   }
 
-  const inputClass = "w-full bg-slate-950/50 border-none text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all placeholder:text-slate-700";
+  const inputClass =
+    "w-full bg-slate-950/50 border-none text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all placeholder:text-slate-700";
 
   function renderPayloadFields() {
     switch (goalType) {
@@ -99,21 +144,30 @@ export default function Goals() {
       case "automation":
         return (
           <div className="space-y-3">
-            {payload.steps.map((step, idx) => (
+            {(payload.steps || []).map((step, idx) => (
               <div key={idx} className="flex gap-2">
-                <input value={step} onChange={(e) => {
-                  const newSteps = [...payload.steps];
-                  newSteps[idx] = e.target.value;
-                  setPayload({ steps: newSteps });
-                }} placeholder={`Step ${idx + 1}`} className={inputClass} />
-                <button type="button" onClick={() => setPayload({ steps: payload.steps.filter((_, i) => i !== idx) })} className="px-3 text-red-500 hover:bg-red-500/10 rounded-xl transition">✖</button>
+                <input
+                  value={step}
+                  onChange={(e) => {
+                    const newSteps = [...(payload.steps || [])];
+                    newSteps[idx] = e.target.value;
+                    setPayload({ ...payload, steps: newSteps });
+                  }}
+                  placeholder={`Step ${idx + 1}`}
+                  className={inputClass}
+                />
+                <button type="button" onClick={() => setPayload({ ...payload, steps: (payload.steps || []).filter((_, i) => i !== idx) })} className="px-3 text-red-500 hover:bg-red-500/10 rounded-xl transition">✖</button>
               </div>
             ))}
-            <button type="button" onClick={() => setPayload({ steps: [...payload.steps, ""] })} className="text-xs font-bold text-blue-400 uppercase tracking-widest">+ Add Sub-Process</button>
+            <button type="button" onClick={() => setPayload({ ...payload, steps: [...(payload.steps || []), ""] })} className="text-xs font-bold text-blue-400 uppercase tracking-widest">+ Add Sub-Process</button>
           </div>
         );
       default:
-        return <textarea value={payload.prompt || payload.text || payload.objective || ""} onChange={(e) => setPayload({ ...payload, [Object.keys(payload)[0]]: e.target.value })} placeholder="Configure Parameters..." className={inputClass} rows="4" />;
+        // safe single-field editor
+        const key = Object.keys(payload)[0] || "value";
+        return (
+          <textarea value={payload[key] ?? ""} onChange={(e) => setPayload({ ...payload, [key]: e.target.value })} placeholder="Configure Parameters..." className={inputClass} rows="4" />
+        );
     }
   }
 
