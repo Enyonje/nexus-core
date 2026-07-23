@@ -1,4 +1,4 @@
-// ...existing code...
+// routes/executions.js
 import { v4 as uuidv4 } from "uuid";
 import { runExecution } from "../execution/runner.js";
 import { requireAuth } from "./auth.js";
@@ -23,16 +23,6 @@ export function publishEvent(executionId, event) {
 }
 
 /* ===============================
-    ADMIN GUARD
-=============================== */
-function requireAdmin(req, reply, next) {
-  if (!req.user || req.user.role !== "admin") {
-    return reply.code(403).send({ error: "Admin access required" });
-  }
-  next();
-}
-
-/* ===============================
     AUDIT & UTILS
 =============================== */
 async function auditLog(app, executionId, status, meta = {}) {
@@ -51,7 +41,7 @@ async function auditLog(app, executionId, status, meta = {}) {
     ROUTES
 =============================== */
 export async function executionsRoutes(app) {
-  
+
   /* 1. LIST EXECUTIONS */
   app.get("/", { preHandler: requireAuth }, async (req, reply) => {
     try {
@@ -135,10 +125,8 @@ export async function executionsRoutes(app) {
       const userId = req.user?.id;
       const execId = req.params.id;
 
-      // Defensive validation to avoid handling "undefined" or missing ids
       if (!execId || execId === "undefined") {
-        app.log.warn({ url: req.url, params: req.params, user: userId }, "Missing or invalid execution id in request");
-        return reply.code(400).send({ error: "MISSING_EXECUTION_ID", message: "Execution id is required" });
+        return reply.code(400).send({ error: "MISSING_EXECUTION_ID" });
       }
       if (!userId) return reply.code(401).send({ error: "AUTH_INVALID_SESSION" });
 
@@ -155,7 +143,6 @@ export async function executionsRoutes(app) {
       const start = Date.now();
       await auditLog(app, execId, "started", {});
 
-      // Run asynchronously; keep client response quick
       runExecution(execId, req.body || {})
         .then(async () => {
           const duration = Date.now() - start;
@@ -172,23 +159,85 @@ export async function executionsRoutes(app) {
           await auditLog(app, execId, "failed", { error: err?.message ?? String(err) });
         });
 
-      const { rows: userRows } = await app.pg.query(
-        `SELECT id, email, role, subscription FROM users WHERE id=$1`,
-        [userId]
-      );
-
-      return reply.send({
-        user: userRows[0] || { id: userId, email: "", role: "user", subscription: "free" },
-        execution: execRes.rows[0],
-        requiresSubscription: (userRows[0]?.subscription === "free")
-      });
+      return reply.send(execRes.rows[0]);
     } catch (err) {
       app.log.error(err, "Failed to run execution");
       return reply.code(500).send({ error: "Run failed" });
     }
   });
 
-  /* 4. SSE STREAM, 5. AUDIT LOGS, 6. GET SINGLE EXECUTION, 7. ADMIN OVERRIDES */
-  // These routes remain unchanged since they don’t need subscription info.
+  /* 4. GET SINGLE EXECUTION */
+  app.get("/:id", { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      const userId = req.user?.id;
+      const execId = req.params.id;
+
+      if (!execId || execId === "undefined") {
+        return reply.code(400).send({ error: "MISSING_EXECUTION_ID" });
+      }
+      if (!userId) return reply.code(401).send({ error: "AUTH_INVALID_SESSION" });
+
+      const { rows } = await app.pg.query(
+        `SELECT * FROM executions WHERE id = $1 AND user_id = $2`,
+        [execId, userId]
+      );
+
+      if (rows.length === 0) {
+        return reply.code(404).send({ error: "Execution not found or access denied" });
+      }
+
+      return reply.send(rows[0]);
+    } catch (err) {
+      req.log.error(err, "Failed to fetch execution");
+      return reply.code(500).send({ error: "Internal Server Error" });
+    }
+  });
+
+  /* 5. SSE STREAM */
+  app.get("/:id/stream", async (req, reply) => {
+    const execId = req.params.id;
+
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive",
+    });
+
+    const send = (event) => {
+      reply.raw.write(`event: ${event.event}\n`);
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    if (!subscribers.has(execId)) {
+      subscribers.set(execId, new Set());
+    }
+    subscribers.get(execId).add(send);
+
+    // Initial event
+    send({ event: "connected", executionId: execId });
+
+    req.raw.on("close", () => {
+      const subs = subscribers.get(execId);
+      if (subs) {
+        subs.delete(send);
+        if (subs.size === 0) subscribers.delete(execId);
+      }
+    });
+  });
+
+  /* 6. AUDIT LOGS */
+  app.get("/:id/audit", { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      const execId = req.params.id;
+      const { rows } = await app.pg.query(
+        `SELECT * FROM execution_audit WHERE execution_id = $1 ORDER BY created_at ASC`,
+        [execId]
+      );
+      return reply.send({ logs: rows });
+    } catch (err) {
+      req.log.error(err, "Failed to fetch audit logs");
+      return reply.code(500).send({ error: "Internal Server Error" });
+    }
+  });
 }
-// ...existing code...
+

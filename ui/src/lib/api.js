@@ -1,82 +1,112 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:3001").replace(/\/$/, "");
 
-/**
- * Core API fetch function
- */
 export async function apiFetch(path, options = {}) {
-  // 1. Check for token in localStorage
-  const token = localStorage.getItem("authToken");
+  const token = localStorage.getItem("token") || localStorage.getItem("authToken");
 
-  // 2. Prepare headers
-  const headers = {
-    ...options.headers,
-  };
+  // normalize path and ensure /api prefix if not present
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const fullPath = normalizedPath.startsWith("/api") ? normalizedPath : `/api${normalizedPath}`;
+  const url = `${API_URL}${fullPath}`;
 
-  // 3. Explicitly attach Bearer token
-  if (token) {
-    headers["Authorization"] = `Bearer ${token.trim()}`;
+  const controller = new AbortController();
+  const timeoutMs = options.timeout ?? 15000;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  // start with caller headers then add auth
+  const headers = { ...(options.headers || {}) };
+  if (token && !headers.Authorization && !headers.authorization) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // 4. Handle JSON body detection
-  if (options.body && !(options.body instanceof FormData)) {
-    headers["Content-Type"] = "application/json";
-  }
+  // Prepare body safely (avoid double-stringify and avoid invalid JSON header)
+  let body = options.body;
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  const isBlob = typeof Blob !== "undefined" && body instanceof Blob;
+  const isArrayBuffer = typeof ArrayBuffer !== "undefined" && body instanceof ArrayBuffer;
 
-  // 5. Normalizing Path (Ensuring no double /api/api)
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  const apiPath = cleanPath.startsWith("/api") ? cleanPath : `/api${cleanPath}`;
+  if (body != null && !isFormData && !isBlob && !isArrayBuffer) {
+    if (typeof body === "object") {
+      try {
+        body = JSON.stringify(body);
+        if (!headers["Content-Type"] && !headers["content-type"]) {
+          headers["Content-Type"] = "application/json";
+        }
+      } catch (e) {
+        clearTimeout(timeout);
+        throw new Error("Failed to serialize request body");
+      }
+    } else if (typeof body === "string") {
+      // If caller passed a string and Content-Type is application/json, validate it.
+      const ct = (headers["Content-Type"] || headers["content-type"] || "").toLowerCase();
+      if (ct.includes("application/json")) {
+        try {
+          JSON.parse(body);
+        } catch {
+          // invalid JSON string but header set -> remove header to avoid server 400
+          delete headers["Content-Type"];
+          delete headers["content-type"];
+        }
+      } else if (!ct) {
+        // If no content-type and string looks like JSON, set header
+        try {
+          JSON.parse(body);
+          headers["Content-Type"] = "application/json";
+        } catch {
+          // leave as plain text (no content-type)
+        }
+      }
+    }
+  }
 
   try {
-    const res = await fetch(`${API_URL}${apiPath}`, {
-      ...options,
+    const res = await fetch(url, {
+      method: options.method || "GET",
       headers,
-      // Removed credentials: "include" unless using HttpOnly cookies
-      // Using JWT Bearer is usually sufficient for Fastify
+      body,
+      signal: controller.signal,
+      credentials: options.credentials ?? "include",
     });
+    clearTimeout(timeout);
 
-    // Handle Unauthorized (401)
-    if (res.status === 401) {
-      localStorage.removeItem("authToken");
-      localStorage.removeItem("user");
-      
-      // Optional: Force a page refresh to trigger AuthProvider redirect
-      if (typeof window !== "undefined" && !window.location.pathname.includes("/login")) {
-        window.location.href = "/login?error=session_expired";
-      }
-      throw new Error("Unauthorized: Session expired");
+    if (res.status === 204) return null; // No Content
+
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
     }
 
-    // Handle No Content
-    if (res.status === 204) return null;
+    if (res.status === 401) {
+      localStorage.removeItem("token");
+      const err = new Error("Session expired. Please log in again.");
+      err.status = 401;
+      err.body = data;
+      throw err;
+    }
 
-    // Parse Response
-    const data = await res.json();
+    if (res.status === 404) {
+      const err = new Error(`API route not found: ${fullPath}`);
+      err.status = 404;
+      err.body = data;
+      throw err;
+    }
 
     if (!res.ok) {
-      throw new Error(data.error || data.message || "Request failed");
+      const msg = (data && (data.error || data.message)) || res.statusText || `Request failed (${res.status})`;
+      const err = new Error(msg);
+      err.status = res.status;
+      err.body = data;
+      throw err;
     }
 
     return data;
   } catch (err) {
-    // Catching network errors (like CORS or DNS issues on Render)
-    if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
-      throw new Error("Network error: Check your connection or Backend CORS settings");
-    }
-    throw err;
-  }
-}
-
-/**
- * Safe wrapper around apiFetch with centralized error handling
- */
-export async function safeApiFetch(path, options = {}, addToast) {
-  try {
-    return await apiFetch(path, options);
-  } catch (err) {
-    console.error(`[API Error] ${path}:`, err.message);
-    if (addToast) {
-      addToast(err.message, "error");
-    }
-    throw err;
+    clearTimeout(timeout);
+    if (err && err.name === "AbortError") throw new Error("Request timed out");
+    throw new Error(err?.message || "Network request failed");
+  } finally {
+    clearTimeout(timeout);
   }
 }
