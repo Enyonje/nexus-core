@@ -115,6 +115,7 @@ export function broadcastEvent(payload) {
 
 /**
  * Publish event via Postgres NOTIFY
+ * Channel: execution_events
  */
 export async function publishEvent(payload) {
   try {
@@ -126,7 +127,7 @@ export async function publishEvent(payload) {
 }
 
 /**
- * Publish audit log entry via Postgres NOTIFY
+ * Publish audit log entry via Postgres NOTIFY + insert into execution_audit
  */
 export async function publishAudit(executionId, status, meta = {}) {
   try {
@@ -138,12 +139,15 @@ export async function publishAudit(executionId, status, meta = {}) {
       ts: Date.now(),
     };
     const message = JSON.stringify(payload).replace(/'/g, "''");
+
+    // Notify channel (not table)
     await db.query(`NOTIFY execution_events, '${message}'`);
 
+    // Insert into execution_audit table (schema maps to execution_audit)
     await db.query(
-      `INSERT INTO execution_audit (id, execution_id, status, meta, created_at)
-       VALUES ($1, $2, $3, $4, NOW())`,
-      [uuidv4(), executionId, status, JSON.stringify(meta)]
+      `INSERT INTO execution_audit (id, execution_id, status, meta, created_at, event)
+       VALUES ($1, $2, $3, $4, NOW(), $5)`,
+      [uuidv4(), executionId, status, JSON.stringify(meta), "audit_log"]
     );
   } catch (err) {
     console.error("Postgres NOTIFY audit failed:", err);
