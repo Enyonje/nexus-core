@@ -1,42 +1,9 @@
 // src/events/stream.js
-import Redis from "ioredis";
 import { v4 as uuidv4 } from "uuid";
+import { db } from "../db/db.js"; // Postgres pool/connection
 
 // Local map of executionId -> Set of SSE reply objects
 const clients = new Map();
-
-// Redis connection options (TLS for rediss://)
-const redisOptions = {};
-if (process.env.REDIS_URL?.startsWith("rediss://")) {
-  redisOptions.tls = { rejectUnauthorized: false };
-}
-
-const redisPublisher = new Redis(process.env.REDIS_URL, redisOptions);
-const redisSubscriber = new Redis(process.env.REDIS_URL, redisOptions);
-
-// Subscribe to the "stream-events" channel
-redisSubscriber.subscribe("stream-events", (err) => {
-  if (err) {
-    console.error("Redis subscription failed:", err);
-  } else {
-    console.log("Subscribed to stream-events channel");
-  }
-});
-
-// Handle incoming events from Redis and broadcast locally
-redisSubscriber.on("message", (channel, message) => {
-  if (channel !== "stream-events") return;
-  try {
-    const payload = JSON.parse(message);
-    if (payload.executionId) {
-      emitEvent(payload.executionId, payload);
-    } else {
-      broadcastEvent(payload);
-    }
-  } catch (err) {
-    console.error("Failed to parse Redis message:", err);
-  }
-});
 
 /**
  * Register SSE client for a given executionId
@@ -48,7 +15,6 @@ export function registerClient(executionId, reply) {
     "https://nexus-core-chi.vercel.app",
     "http://localhost:3000",
     "http://localhost:5173",
-    // Add your Render preview domain here if needed
   ];
 
   if (origin && !allowedOrigins.includes(origin)) {
@@ -66,9 +32,11 @@ export function registerClient(executionId, reply) {
 
   reply.raw.flushHeaders?.();
 
-  // ✅ Send a real event immediately so frontend sees something
+  // Initial handshake
   reply.raw.write(`event: connected\n`);
-  reply.raw.write(`data: ${JSON.stringify({ executionId, status: "connected" })}\n\n`);
+  reply.raw.write(
+    `data: ${JSON.stringify({ executionId, status: "connected" })}\n\n`
+  );
 
   if (!clients.has(executionId)) {
     clients.set(executionId, new Set());
@@ -146,13 +114,35 @@ export function broadcastEvent(payload) {
 }
 
 /**
- * Publish event to Redis
+ * Publish event via Postgres NOTIFY
  */
-export function publishEvent(payload) {
+export async function publishEvent(payload) {
   try {
-    redisPublisher.publish("stream-events", JSON.stringify(payload));
+    await db.query("NOTIFY execution_events, $1", [
+      JSON.stringify(payload),
+    ]);
   } catch (err) {
-    console.error("Redis publish failed:", err);
+    console.error("Postgres NOTIFY failed:", err);
+  }
+}
+
+/**
+ * Publish audit log entry via Postgres NOTIFY
+ */
+export async function publishAudit(executionId, status, meta = {}) {
+  try {
+    const payload = {
+      executionId,
+      event: "audit_log",
+      status,
+      meta,
+      ts: Date.now(),
+    };
+    await db.query("NOTIFY execution_events, $1", [
+      JSON.stringify(payload),
+    ]);
+  } catch (err) {
+    console.error("Postgres NOTIFY audit failed:", err);
   }
 }
 
@@ -166,3 +156,24 @@ export function getActiveStreams() {
   }
   return summary;
 }
+
+/**
+ * Subscribe to Postgres notifications
+ */
+(async () => {
+  const client = await db.connect();
+  await client.query("LISTEN execution_events");
+
+  client.on("notification", (msg) => {
+    try {
+      const payload = JSON.parse(msg.payload);
+      if (payload.executionId) {
+        emitEvent(payload.executionId, payload);
+      } else {
+        broadcastEvent(payload);
+      }
+    } catch (err) {
+      console.error("Failed to parse NOTIFY payload:", err);
+    }
+  });
+})();
