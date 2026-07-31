@@ -1,3 +1,4 @@
+// src/lib/api.js
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:3001").replace(/\/$/, "");
 
 export async function apiFetch(path, options = {}) {
@@ -18,7 +19,7 @@ export async function apiFetch(path, options = {}) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // Prepare body safely (avoid double-stringify and avoid invalid JSON header)
+  // Prepare body safely
   let body = options.body;
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const isBlob = typeof Blob !== "undefined" && body instanceof Blob;
@@ -36,23 +37,20 @@ export async function apiFetch(path, options = {}) {
         throw new Error("Failed to serialize request body");
       }
     } else if (typeof body === "string") {
-      // If caller passed a string and Content-Type is application/json, validate it.
       const ct = (headers["Content-Type"] || headers["content-type"] || "").toLowerCase();
       if (ct.includes("application/json")) {
         try {
           JSON.parse(body);
         } catch {
-          // invalid JSON string but header set -> remove header to avoid server 400
           delete headers["Content-Type"];
           delete headers["content-type"];
         }
       } else if (!ct) {
-        // If no content-type and string looks like JSON, set header
         try {
           JSON.parse(body);
           headers["Content-Type"] = "application/json";
         } catch {
-          // leave as plain text (no content-type)
+          // leave as plain text
         }
       }
     }
@@ -68,7 +66,7 @@ export async function apiFetch(path, options = {}) {
     });
     clearTimeout(timeout);
 
-    if (res.status === 204) return null; // No Content
+    if (res.status === 204) return null;
 
     const text = await res.text();
     let data = null;
@@ -108,5 +106,20 @@ export async function apiFetch(path, options = {}) {
     throw new Error(err?.message || "Network request failed");
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+/**
+ * Safe wrapper around apiFetch that catches errors and optionally shows a toast.
+ */
+export async function safeApiFetch(path, options = {}, addToast) {
+  try {
+    return await apiFetch(path, options);
+  } catch (err) {
+    console.error("safeApiFetch error:", err);
+    if (addToast) {
+      addToast(err.message || "Request failed", "error");
+    }
+    return null;
   }
 }
