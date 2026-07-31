@@ -1,4 +1,4 @@
-// routes/executions.js
+// src/routes/executions.js
 import { v4 as uuidv4 } from "uuid";
 import { runExecution } from "../execution/runner.js";
 import { requireAuth } from "./auth.js";
@@ -77,7 +77,7 @@ export async function executionsRoutes(app) {
       const userId = req.user?.id;
       if (!userId) return reply.code(400).send({ error: "Missing user ID" });
 
-      const { goalId, schedule, recurring } = req.body;
+      const { goalId, schedule, recurring } = req.body || {};
       if (!goalId) return reply.code(400).send({ error: "goalId is required" });
 
       const goalRes = await app.pg.query(
@@ -143,7 +143,11 @@ export async function executionsRoutes(app) {
       const start = Date.now();
       await auditLog(app, execId, "started", {});
 
-      runExecution(execId, req.body || {})
+      // Normalize body: ensure object or empty
+      const body = req.body && typeof req.body === "object" ? req.body : {};
+      const payloadOverride = body.payloadOverride || null;
+
+      runExecution(execId, payloadOverride)
         .then(async () => {
           const duration = Date.now() - start;
           await app.pg.query(
@@ -236,8 +240,7 @@ export async function executionsRoutes(app) {
       return reply.send({ logs: rows });
     } catch (err) {
       req.log.error(err, "Failed to fetch audit logs");
-      return reply.code(500).send({ error: "Internal Server Error" });
+      return reply.send({ logs: rows });
     }
   });
 }
-
