@@ -118,9 +118,8 @@ export function broadcastEvent(payload) {
  */
 export async function publishEvent(payload) {
   try {
-    await db.query("NOTIFY execution_events, $1", [
-      JSON.stringify(payload),
-    ]);
+    const message = JSON.stringify(payload).replace(/'/g, "''");
+    await db.query(`NOTIFY execution_events, '${message}'`);
   } catch (err) {
     console.error("Postgres NOTIFY failed:", err);
   }
@@ -138,9 +137,14 @@ export async function publishAudit(executionId, status, meta = {}) {
       meta,
       ts: Date.now(),
     };
-    await db.query("NOTIFY execution_events, $1", [
-      JSON.stringify(payload),
-    ]);
+    const message = JSON.stringify(payload).replace(/'/g, "''");
+    await db.query(`NOTIFY execution_events, '${message}'`);
+
+    await db.query(
+      `INSERT INTO execution_audit (id, execution_id, status, meta, created_at)
+       VALUES ($1, $2, $3, $4, NOW())`,
+      [uuidv4(), executionId, status, JSON.stringify(meta)]
+    );
   } catch (err) {
     console.error("Postgres NOTIFY audit failed:", err);
   }
