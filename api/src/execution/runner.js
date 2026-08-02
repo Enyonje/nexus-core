@@ -1,7 +1,8 @@
+// src/execution/runner.js
 import { v4 as uuidv4 } from "uuid";
 import { db } from "../db/db.js";
 import { executeGoalLogic } from "./logic.js";
-import { publishEvent } from "../events/publish.js";
+import { publishEvent, publishAudit } from "../events/publish.js";
 import { runSentinel, summarizeBlockedSteps } from "../agents/sentinel.js";
 
 /* ===============================
@@ -104,6 +105,9 @@ async function auditLog(executionId, status, meta = {}) {
      VALUES ($1,$2,$3,$4,NOW())`,
     [uuidv4(), executionId, status, JSON.stringify(meta)]
   );
+
+  // 🔥 Also push into SSE stream
+  await publishAudit(executionId, status, meta);
 }
 
 /* ===============================
@@ -214,7 +218,6 @@ export async function runExecution(executionId, payloadOverride = null) {
         publishEvent({ executionId, event: "execution_progress", stepId, step: stepInfo.name, result: normalized, completedSteps });
         await auditLog(executionId, "step_completed", { step: stepInfo.name });
 
-        // ✅ Increment AI token usage if output contains tokens
         if (normalized.tokensUsed) {
           await db.query(`UPDATE users SET ai_used = ai_used + $2 WHERE id=$1`, [execution.user_id, normalized.tokensUsed]);
         }
@@ -226,7 +229,7 @@ export async function runExecution(executionId, payloadOverride = null) {
           return;
         }
       } catch (err) {
-                await db.query(
+        await db.query(
           `UPDATE execution_steps SET status='failed', finished_at=NOW(), error=$2 WHERE id=$1`,
           [stepId, err.message]
         );

@@ -1,5 +1,5 @@
 // src/events/publish.js
-import { emitEvent, broadcastEvent } from "./stream.js";
+import { emitEvent, broadcastEvent, publishEvent as notifyEvent } from "./stream.js";
 
 /**
  * Central event publisher
@@ -16,7 +16,7 @@ const ALLOWED_EVENTS = new Set([
 
   // sentinel
   "sentinel_blocked",
-  "sentinel_summary",   // ✅ add summary events if you want unified trace
+  "sentinel_summary",   // ✅ summary events for unified trace
 
   // goals
   "goal_created",
@@ -43,7 +43,7 @@ export async function publishEvent(payload) {
 
   try {
     const enriched = {
-      id: payload.id || crypto.randomUUID(), // ✅ ensure unique id
+      id: payload.id || crypto.randomUUID(),
       ts: Date.now(),
       ...payload,
       time: new Date().toISOString(),
@@ -60,8 +60,8 @@ export async function publishEvent(payload) {
       broadcastEvent(enriched);
     }
 
-    // Optional: forward to external bus (Redis/Kafka/RabbitMQ)
-    // await externalBus.publish(enriched);
+    // 🔥 Forward to Postgres NOTIFY channel
+    await notifyEvent(enriched);
 
   } catch (err) {
     console.error("❌ Event publish failed:", err.message);
