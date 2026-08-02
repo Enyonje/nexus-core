@@ -1,5 +1,6 @@
 // src/events/publish.js
 import { emitEvent, broadcastEvent, publishEvent as notifyEvent } from "./stream.js";
+import { db } from "../db/db.js";
 
 /**
  * Central event publisher
@@ -65,5 +66,34 @@ export async function publishEvent(payload) {
 
   } catch (err) {
     console.error("❌ Event publish failed:", err.message);
+  }
+}
+
+/**
+ * Publish audit log entry via Postgres NOTIFY
+ */
+export async function publishAudit(executionId, status, meta = {}) {
+  try {
+    const payload = {
+      executionId,
+      event: "audit_log",
+      status,
+      meta,
+      ts: Date.now(),
+    };
+
+    // 🔥 Emit locally
+    if (executionId) {
+      emitEvent(executionId, payload);
+    } else {
+      broadcastEvent(payload);
+    }
+
+    // 🔥 Forward to Postgres NOTIFY channel
+    await notifyEvent(payload);
+
+    console.log("📝 Audit:", executionId, status);
+  } catch (err) {
+    console.error("❌ Audit publish failed:", err.message);
   }
 }
