@@ -52,6 +52,7 @@ model User {
   refresh_token_expires DateTime? @db.Timestamptz(6)
   deleted_at          DateTime?
   ai_used             Int             @default(0)
+  executions_count      Int             @default(0)
 
   // Relations
   authAudits          AuthAudit[]
