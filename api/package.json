@@ -9,6 +9,7 @@
     "migrate": "node src/db/migrate.js",
     "start": "node src/server.js",
     "prisma:generate": "prisma generate",
+    "postinstall": "prisma generate",
     "postbuild": "node scripts/generate-sitemap.js",
     "prisma:migrate": "prisma migrate deploy"
   },
@@ -36,14 +37,13 @@
     "speakeasy": "^2.0.0",
     "stripe": "^20.3.1",
     "uuid": "^13.0.0",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@prisma/client": "5.0.0"
   },
   "devDependencies": {
-    "@prisma/client": "^5.0.0",
-    "prisma": "^5.0.0"
+    "prisma": "5.0.0"
   },
-  "prisma": {
-    "schema": "prisma/schema.prisma",
-    "seed": "node prisma/seed.js"
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
