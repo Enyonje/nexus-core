@@ -69,27 +69,48 @@ async function recordStep(
 ========================= */
 async function runAnalysisGoal(payload, executionId, cb) {
   const text = payload?.text || "No data provided";
-  await recordStep(executionId, "analysis", "running", "Analyzing provided text...", null, null, "analysis");
+
+  const runningId = await recordStep(executionId, "analysis", "running", "Analyzing provided text...", null, null, "analysis");
+  cb?.({ id: runningId, name: "analysis", status: "running" });
+
   const result = { length: text.length, wordCount: text.split(" ").length };
-  await recordStep(executionId, "analysis", "completed", "Analysis complete.", result, null, "analysis");
-  cb?.({ name: "analysis", status: "completed", result });
+  const completedId = await recordStep(executionId, "analysis", "completed", "Analysis complete.", result, null, "analysis");
+  cb?.({ id: completedId, name: "analysis", status: "completed", result });
+
   return result;
 }
 
 async function runAutomationGoal(payload, executionId, cb) {
   if (!Array.isArray(payload?.steps)) throw new Error("Automation requires steps[]");
+
   for (const stepName of payload.steps) {
-    await recordStep(executionId, "automation_task", "running", `Initiating task: ${stepName}`, null, null, stepName);
+    const runningId = await recordStep(executionId, "automation_task", "running", `Initiating task: ${stepName}`, null, null, stepName);
+    cb?.({ id: runningId, name: stepName, status: "running" });
+
     await new Promise(r => setTimeout(r, 800));
-    await recordStep(executionId, "automation_task", "completed", `Finished: ${stepName}`, { task: stepName, status: "success" }, null, stepName);
+
+    const completedId = await recordStep(
+      executionId,
+      "automation_task",
+      "completed",
+      `Finished: ${stepName}`,
+      { task: stepName, status: "success" },
+      null,
+      stepName
+    );
+    cb?.({ id: completedId, name: stepName, status: "completed", result: { task: stepName, status: "success" } });
   }
+
   return { status: "all_tasks_dispatched" };
 }
 
 async function runAiPlanGoal(payload, executionId, cb) {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const prompt = payload?.prompt || "Create a structured plan for the given goal.";
-  await recordStep(executionId, "ai_plan", "running", "Generating AI-driven plan...", null, null, "ai_plan");
+
+  const runningId = await recordStep(executionId, "ai_plan", "running", "Generating AI-driven plan...", null, null, "ai_plan");
+  cb?.({ id: runningId, name: "ai_plan", status: "running" });
+
   try {
     const response = await client.chat.completions.create({
       model: "gpt-4o-mini",
@@ -101,13 +122,30 @@ async function runAiPlanGoal(payload, executionId, cb) {
     });
     const planText = response.choices[0].message.content;
     const result = { plan: planText };
-    await recordStep(executionId, "ai_plan", "completed", "AI plan generated.", result, null, "ai_plan");
-    cb?.({ name: "ai_plan", status: "completed", result });
+
+    const completedId = await recordStep(executionId, "ai_plan", "completed", "AI plan generated.", result, null, "ai_plan");
+    cb?.({ id: completedId, name: "ai_plan", status: "completed", result });
+
     return result;
   } catch (err) {
-    await recordStep(executionId, "ai_plan", "failed", "Failed to generate AI plan.", null, err.message, "ai_plan");
+    const failedId = await recordStep(executionId, "ai_plan", "failed", "Failed to generate AI plan.", null, err.message, "ai_plan");
+    cb?.({ id: failedId, name: "ai_plan", status: "failed", error: err.message });
     throw err;
   }
+}
+
+/* =========================
+   Default Fallback Goal
+========================= */
+async function runNoopGoal(payload, executionId, cb) {
+  const runningId = await recordStep(executionId, "noop", "running", "Starting noop goal...", null, null, "noop");
+  cb?.({ id: runningId, name: "noop", status: "running" });
+
+  const result = { echo: payload || "no payload provided" };
+  const completedId = await recordStep(executionId, "noop", "completed", "Noop goal finished.", result, null, "noop");
+  cb?.({ id: completedId, name: "noop", status: "completed", result });
+
+  return result;
 }
 
 /* =========================
@@ -122,6 +160,7 @@ export async function executeGoalLogic(goalType, payload, executionId, cb) {
     case "ai_plan":
       return await runAiPlanGoal(payload, executionId, cb);
     default:
-      throw new Error(`Unknown goal type: ${goalType}`);
+      // ✅ fallback ensures at least one step is always recorded
+      return await runNoopGoal(payload, executionId, cb);
   }
 }
