@@ -189,7 +189,12 @@ export async function runExecution(executionId, payloadOverride = null) {
     await auditLog(executionId, "started", { goalType: execution.goal_type });
 
     // ✅ Increment executions count for user
-    await db.query(`UPDATE users SET executions = executions + 1 WHERE id=$1`, [execution.user_id]);
+    // ✅ Correct
+    await db.query(
+      `UPDATE users SET executions_count = executions_count + 1 WHERE id=$1`,
+      [execution.user_id]
+    );
+
 
     let completedSteps = 0;
 
