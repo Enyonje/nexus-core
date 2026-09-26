@@ -11,6 +11,7 @@ import Layout from "./components/Layout.jsx";
 import ExecutionLogsStreamModal from "./components/ExecutionLogsStreamModal.jsx";
 import DocsPage from "./components/DocsPage.jsx";
 import SEOPillarPage from "./components/SEOPillarPage.jsx";
+import ToolsIndex from "./components/ToolsIndex";
 import Audit from "./components/Audit.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import ExecutionList from "./components/ExecutionList.jsx";
@@ -24,6 +25,7 @@ import ForgotPassword from "./components/ForgotPassword.jsx";
 import ResetPassword from "./components/ResetPassword.jsx";
 import LandingPage from "./components/LandingPage.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
+import AuditLogAnalyzer from './components/AuditLogAnalyzer';
 
 // Logic & Providers
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
@@ -75,6 +77,8 @@ export default function App() {
             <Route path="/contact" element={<ContactPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/tools" element={<ToolsIndex />} />
+            <Route path="/tools/auditloganalyzer" element={<AuditLogAnalyzer />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
 
