@@ -1,59 +1,30 @@
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
-enum AgentType {
-  SUPPORT_OPS
-  CROSS_BORDER_COMPLIANCE
-}
-
-enum ExecutionStatus {
-  QUEUED
-  RUNNING
-  COMPLETED
-  FLAGGED
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  ESCALATED
+  RESOLVED
   FAILED
 }
 
-model Tenant {
-  id            String               @id @default(uuid())
-  name          String
-  apiKey        String               @unique @default(uuid())
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-  executions    AgentExecutionLog[]
-  dossiers      ComplianceDossier[]
-}
-
-model AgentExecutionLog {
-  id            String               @id @default(uuid())
-  tenantId      String
-  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  agentType     AgentType
-  executionId   String               @unique
-  status        ExecutionStatus      @default(RUNNING)
-  stepsJson     Json                 // Array of reasoning steps streamable via SSE
-  executionMs   Int?
-  createdAt     DateTime             @default(now())
-
-  @@index([tenantId, agentType])
-}
-
-model ComplianceDossier {
+model SupportTicket {
   id               String            @id @default(uuid())
   tenantId         String
   tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  declarationId    String
-  originCountry    String
-  destCountry      String
-  inferredHsCode   String
-  sanctionsPassed  Boolean
-  dutyRate         Float
-  overallStatus    String
+  customerEmail    String
+  customerQuery    String
+  priority         TicketPriority    @default(MEDIUM)
+  status           TicketStatus      @default(OPEN)
+  temporalWorkflowId String?         @unique
+  executions       AgentExecutionLog[]
   createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([tenantId, status])
 }

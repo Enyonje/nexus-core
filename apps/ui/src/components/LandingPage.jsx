@@ -12,7 +12,7 @@ import {
   CheckCircle2,
   Database,
   Globe,
-  Terminal
+  Terminal,
 } from "lucide-react";
 
 export default function LandingPage() {
@@ -21,7 +21,7 @@ export default function LandingPage() {
   const fadeInUp = {
     initial: { opacity: 0, y: 20 },
     animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.6 }
+    transition: { duration: 0.6 },
   };
 
   const specialisedAgents = [
@@ -35,20 +35,20 @@ export default function LandingPage() {
       color: "from-emerald-400 to-teal-500",
       accent: "emerald",
       icon: ShieldCheck,
-      metrics: { latency: "14ms", throughput: "12.4k/sec", accuracy: "99.9%" }
+      metrics: { latency: "14ms", throughput: "12.4k/sec", accuracy: "99.9%" },
     },
     {
       id: "support",
       title: "Support-Ops AI",
       slug: "support-ops-ai",
       desc: "Autonomous triage, self-healing integration setups, and SLA escalation tracking powered by internal engineering context.",
-      path: "/agents/support-ops-ai",
+      path: "/support-ops-ai",
       status: "Beta Access",
       color: "from-blue-400 to-indigo-500",
       accent: "blue",
       icon: Bot,
-      metrics: { latency: "42ms", throughput: "3.1k/sec", accuracy: "98.5%" }
-    }
+      metrics: { latency: "42ms", throughput: "3.1k/sec", accuracy: "98.5%" },
+    },
   ];
 
   return (
@@ -83,7 +83,7 @@ export default function LandingPage() {
         </Link>
       </nav>
 
-      {/* 3. HERO SECTION WITH GRAPHICAL INTERACTIVE NODE CANVAS */}
+      {/* 3. HERO SECTION */}
       <section className="relative z-10 px-6 pt-24 pb-20 max-w-7xl mx-auto">
         <motion.div {...fadeInUp} className="text-center max-w-4xl mx-auto mb-16">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 text-blue-400 text-[10px] font-black tracking-[0.2em] uppercase mb-8 shadow-[0_0_20px_rgba(59,130,246,0.2)]">
@@ -115,14 +115,13 @@ export default function LandingPage() {
           </div>
         </motion.div>
 
-        {/* HERO GRAPHIC: INTERACTIVE AGENT CANVAS WITH TERMINAL ICON */}
+        {/* HERO GRAPHIC: INTERACTIVE AGENT CANVAS */}
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.2 }}
           className="relative max-w-5xl mx-auto rounded-3xl border border-white/10 bg-slate-950/80 p-6 md:p-8 backdrop-blur-xl shadow-2xl shadow-blue-950/50 overflow-hidden"
         >
-          {/* Mock Canvas Header */}
           <div className="flex items-center justify-between pb-6 mb-6 border-b border-white/10 text-xs font-mono">
             <div className="flex items-center gap-2 text-slate-400">
               <Terminal className="w-4 h-4 text-blue-400" />
@@ -135,7 +134,6 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Node Graph Container */}
           <div className="grid md:grid-cols-3 gap-6 relative z-10">
             <div className="p-5 rounded-2xl bg-slate-900/80 border border-blue-500/30 relative group hover:border-blue-500 transition-all shadow-lg">
               <div className="text-[10px] font-mono text-blue-400 mb-2 uppercase tracking-wider flex items-center justify-between">
@@ -193,7 +191,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* 5. INTERACTIVE AGENTS SECTION WITH ANIMATEPRESENCE */}
+      {/* 5. INTERACTIVE AGENTS SECTION */}
       <section className="relative z-10 px-6 py-28 bg-gradient-to-b from-transparent via-blue-950/10 to-transparent">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">

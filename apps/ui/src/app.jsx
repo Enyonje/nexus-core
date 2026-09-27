@@ -1,6 +1,7 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { Toaster } from "react-hot-toast";
+import { AnimatePresence, motion } from "framer-motion";
 
 // Components
 import Navbar from "./components/Navbar.jsx";
@@ -9,7 +10,6 @@ import ContactPage from "./components/ContactPage.jsx";
 import ArchitecturePage from "./components/ArchitecturePage.jsx";
 import Layout from "./components/Layout.jsx";
 import ExecutionLogsStreamModal from "./components/ExecutionLogsStreamModal.jsx";
-import DocsPage from "./components/DocsPage.jsx";
 import SEOPillarPage from "./components/SEOPillarPage.jsx";
 import ToolsIndex from "./components/ToolsIndex";
 import Audit from "./components/Audit.jsx";
@@ -26,7 +26,12 @@ import ForgotPassword from "./components/ForgotPassword.jsx";
 import ResetPassword from "./components/ResetPassword.jsx";
 import LandingPage from "./components/LandingPage.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
-import AuditLogAnalyzer from './components/AuditLogAnalyzer';
+import AuditLogAnalyzer from "./components/AuditLogAnalyzer";
+import AgentsDirectory from "./components/AgentsDirectory.jsx";
+
+// Agent Components
+import { CrossBorderCompliance } from "./components/CrossBorderCompliance";
+import { SupportOps } from "./components/Support0ps.jsx";
 
 // Logic & Providers
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
@@ -39,6 +44,7 @@ export default function App() {
   const theme = isDark ? darkTheme : lightTheme;
 
   const [selectedExecutionId, setSelectedExecutionId] = useState(null);
+  const location = useLocation();
 
   return (
     <AuthProvider>
@@ -69,95 +75,115 @@ export default function App() {
             }}
           />
 
-          <Routes>
-            {/* PUBLIC SECTOR */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/docs" element={<SEOPillarPage />} />
-            <Route path="/architecture" element={<ArchitecturePage />} />
-            <Route path="/careers" element={<CareersPage />} />
-            <Route path="/contact" element={<ContactPage />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/tools" element={<ToolsIndex />} />
-
-            {/* TOOLS ROUTING */}
-            <Route path="/tools/webhook-validator" element={<WebhookValidator />} />
-            <Route path="/tools/auditloganalyzer" element={<AuditLogAnalyzer />} />
-
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-
-            {/* PROTECTED SECTOR */}
-            <Route
-              element={
-                <ProtectedRoute allowed={["free", "pro", "enterprise", "admin"]}>
-                  <Layout theme={theme} />
-                </ProtectedRoute>
-              }
+          {/* AnimatePresence for single-child route transitions */}
+          <AnimatePresence mode="sync">
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.15 }}
             >
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/goals" element={<Goals />} />
-              <Route path="/subscription" element={<Subscription />} />
+              <Routes location={location}>
+                {/* PUBLIC SECTOR */}
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/docs" element={<SEOPillarPage />} />
+                <Route path="/architecture" element={<ArchitecturePage />} />
+                <Route path="/careers" element={<CareersPage />} />
+                <Route path="/contact" element={<ContactPage />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/subscription" element={<Subscription />} />
+                <Route path="/tools" element={<ToolsIndex />} />
+                <Route path="/agents" element={<AgentsDirectory />} />
 
-              {/* EXECUTIONS */}
-              <Route
-                path="/executions"
-                element={
-                  <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
-                    <ExecutionList setSelectedExecutionId={setSelectedExecutionId} />
-                  </ProtectedRoute>
-                }
+                {/* SPECIALISED AGENTS ROUTES */}
+                <Route path="/compliance" element={<CrossBorderCompliance />} />
+                <Route path="/agents/cross-border-compliance" element={<CrossBorderCompliance />} />
+                <Route path="/support-ops-ai" element={<SupportOps />} />
+                <Route path="/agents/support-ops" element={<SupportOps />} />
+
+                {/* TOOLS ROUTING */}
+                <Route path="/tools/webhook-validator" element={<WebhookValidator />} />
+                <Route path="/tools/auditloganalyzer" element={<AuditLogAnalyzer />} />
+
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+
+                {/* PROTECTED SECTOR */}
+                <Route
+                  element={
+                    <ProtectedRoute allowed={["free", "pro", "enterprise", "admin"]}>
+                      <Layout theme={theme} />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/goals" element={<Goals />} />
+
+                  {/* EXECUTIONS */}
+                  <Route
+                    path="/executions"
+                    element={
+                      <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
+                        <ExecutionList setSelectedExecutionId={setSelectedExecutionId} />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/executions/:id"
+                    element={
+                      <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
+                        <ExecutionDetail />
+                      </ProtectedRoute>
+                    }
+                  />
+
+                  {/* STREAMS */}
+                  <Route
+                    path="/executions/:executionId/stream"
+                    element={
+                      <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
+                        <Streams />
+                      </ProtectedRoute>
+                    }
+                  />
+
+                  {/* AUDIT */}
+                  <Route
+                    path="/executions/:executionId/audit"
+                    element={
+                      <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
+                        <Audit />
+                      </ProtectedRoute>
+                    }
+                  />
+
+                  {/* ADMIN */}
+                  <Route
+                    path="/admin"
+                    element={
+                      <ProtectedRoute allowed={["admin"]}>
+                        <AdminDashboard />
+                      </ProtectedRoute>
+                    }
+                  />
+                </Route>
+
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Separate AnimatePresence for modals */}
+          <AnimatePresence>
+            {selectedExecutionId && (
+              <ExecutionLogsStreamModal
+                executionId={selectedExecutionId}
+                onClose={() => setSelectedExecutionId(null)}
               />
-              <Route
-                path="/executions/:id"
-                element={
-                  <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
-                    <ExecutionDetail />
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* STREAMS (aligned with Dashboard links) */}
-              <Route
-                path="/executions/:executionId/stream"
-                element={
-                  <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
-                    <Streams />
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* AUDIT (aligned with Dashboard links) */}
-              <Route
-                path="/executions/:executionId/audit"
-                element={
-                  <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
-                    <Audit />
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* ADMIN */}
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute allowed={["admin"]}>
-                    <AdminDashboard />
-                  </ProtectedRoute>
-                }
-              />
-            </Route>
-
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-
-          {/* GLOBAL OVERLAYS */}
-          {selectedExecutionId && (
-            <ExecutionLogsStreamModal
-              executionId={selectedExecutionId}
-              onClose={() => setSelectedExecutionId(null)}
-            />
-          )}
+            )}
+          </AnimatePresence>
         </div>
       </ToastProvider>
     </AuthProvider>
