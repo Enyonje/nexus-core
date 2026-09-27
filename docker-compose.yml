@@ -1,0 +1,32 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexus_postgres
+    environment:
+      POSTGRES_USER: nexus_user
+      POSTGRES_PASSWORD: nexus_password
+      POSTGRES_DB: nexus_core_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexus_redis
+    ports:
+      - "6379:6379"
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: nexus_neo4j
+    environment:
+      NEO4J_AUTH: neo4j/nexus_password
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+
+volumes:
+  postgres_data:

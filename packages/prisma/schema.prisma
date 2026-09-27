@@ -1,0 +1,59 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum AgentType {
+  SUPPORT_OPS
+  CROSS_BORDER_COMPLIANCE
+}
+
+enum ExecutionStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FLAGGED
+  FAILED
+}
+
+model Tenant {
+  id            String               @id @default(uuid())
+  name          String
+  apiKey        String               @unique @default(uuid())
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  executions    AgentExecutionLog[]
+  dossiers      ComplianceDossier[]
+}
+
+model AgentExecutionLog {
+  id            String               @id @default(uuid())
+  tenantId      String
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agentType     AgentType
+  executionId   String               @unique
+  status        ExecutionStatus      @default(RUNNING)
+  stepsJson     Json                 // Array of reasoning steps streamable via SSE
+  executionMs   Int?
+  createdAt     DateTime             @default(now())
+
+  @@index([tenantId, agentType])
+}
+
+model ComplianceDossier {
+  id               String            @id @default(uuid())
+  tenantId         String
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  declarationId    String
+  originCountry    String
+  destCountry      String
+  inferredHsCode   String
+  sanctionsPassed  Boolean
+  dutyRate         Float
+  overallStatus    String
+  createdAt        DateTime          @default(now())
+}

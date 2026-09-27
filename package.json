@@ -1,0 +1,26 @@
+{
+    "name": "nexus-core",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Nexus Core Monorepo — Agentic Swarms, Support-Ops AI & Compliance Engine",
+    "packageManager": "pnpm@9.0.0",
+    "scripts": {
+        "build": "turbo run build",
+        "dev": "turbo run dev --parallel",
+        "lint": "turbo run lint",
+        "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+        "db:generate": "turbo run db:generate",
+        "db:push": "turbo run db:push",
+        "db:studio": "pnpm --filter @nexus-core/database studio",
+        "clean": "turbo run clean && node -e \"require('fs').rmSync('node_modules', {recursive: true, force: true})\""
+    },
+    "devDependencies": {
+        "prettier": "^3.2.5",
+        "turbo": "^1.13.0",
+        "typescript": "^5.4.0"
+    },
+    "engines": {
+        "node": ">=18.0.0",
+        "pnpm": ">=8.0.0"
+    }
+}

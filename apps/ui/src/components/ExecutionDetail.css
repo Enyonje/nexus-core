@@ -1,0 +1,10 @@
+.execution-detail {
+  transform: translateX(100%);
+  opacity: 0;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.execution-detail.active {
+  transform: translateX(0);
+  opacity: 1;
+}
