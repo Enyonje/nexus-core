@@ -92,8 +92,8 @@ const pricing = [
     },
 ];
 
-export default function LandingPage() {
-    const containerRef = useRef < HTMLDivElement > (null);
+export function CrossBorderCompliance() {
+    const containerRef = useRef(null);
     const [activePlaygroundTab, setActivePlaygroundTab] = useState(0);
 
     useEffect(() => {
@@ -103,7 +103,7 @@ export default function LandingPage() {
             easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
         });
 
-        function raf(time: number) {
+        function raf(time) {
             lenis.raf(time);
             requestAnimationFrame(raf);
         }
@@ -144,7 +144,7 @@ export default function LandingPage() {
                 </nav>
             </header>
 
-            {/* HERO SECTION - Extended top padding (pt-36 sm:pt-40 lg:pt-44) */}
+            {/* HERO SECTION */}
             <section className="relative pt-36 sm:pt-40 lg:pt-44 pb-20 px-4 flex items-center justify-center overflow-hidden border-b border-white/5">
                 <div className="absolute inset-0 pointer-events-none opacity-[0.12]">
                     <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px]" />
@@ -390,23 +390,20 @@ export default function LandingPage() {
                                 )}
 
                                 <div>
-                                    <h3 className="text-base font-black uppercase tracking-wider text-white mb-2">
-                                        {tier.name}
-                                    </h3>
-                                    <p className="text-xs text-slate-400 font-medium leading-relaxed mb-6">
-                                        {tier.description}
-                                    </p>
-
-                                    <div className="flex items-baseline gap-1 text-white mb-8 pb-6 border-b border-white/5">
-                                        <span className="text-4xl font-black font-mono tracking-tight">{tier.price}</span>
-                                        <span className="text-xs font-bold font-mono text-slate-500">{tier.period}</span>
+                                    <h3 className="text-lg font-bold text-white mb-2">{tier.name}</h3>
+                                    <p className="text-xs text-slate-400 font-medium leading-relaxed mb-6">{tier.description}</p>
+                                    <div className="flex items-baseline gap-1 mb-8">
+                                        <span className="text-4xl font-black text-white font-mono tracking-tight">{tier.price}</span>
+                                        <span className="text-xs text-slate-500 font-medium">{tier.period}</span>
                                     </div>
 
-                                    <ul className="space-y-3.5">
-                                        {tier.features.map((feature) => (
-                                            <li key={feature} className="text-xs text-slate-300 flex items-start gap-2.5 leading-tight">
-                                                <span className="text-blue-500 font-black font-mono select-none mt-0.5">✓</span>
-                                                <span className="font-medium">{feature}</span>
+                                    <ul className="space-y-3 mb-8">
+                                        {tier.features.map((feature, fIndex) => (
+                                            <li key={fIndex} className="flex items-center gap-3 text-xs text-slate-300">
+                                                <svg className="w-4 h-4 text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                                <span>{feature}</span>
                                             </li>
                                         ))}
                                     </ul>
@@ -414,9 +411,9 @@ export default function LandingPage() {
 
                                 <a
                                     href="/dashboard"
-                                    className={`w-full mt-10 py-3.5 text-center rounded-xl text-xs font-black uppercase tracking-widest transition duration-150 block ${tier.popular
-                                        ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/10'
-                                        : 'bg-slate-950 hover:bg-slate-900 border border-white/10 text-slate-300'
+                                    className={`w-full py-3.5 rounded-xl text-xs font-black uppercase tracking-widest text-center transition duration-200 block ${tier.popular
+                                        ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20'
+                                        : 'bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10'
                                         }`}
                                 >
                                     {tier.cta}
