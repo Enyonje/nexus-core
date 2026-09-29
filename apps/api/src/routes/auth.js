@@ -43,6 +43,7 @@ export function requireAuth(req, reply, done) {
       email: payload.email,
       role: payload.role,
       org_id: payload.org_id,
+      company: payload.company,
     };
 
     done();
@@ -64,6 +65,8 @@ export function requireRole(role) {
    AUDIT LOGGING
 ========================= */
 async function auditLog(userId, action, meta = {}) {
+  // AuthAudit table requires a valid user_id relation
+  if (!userId) return;
   try {
     await prisma.authAudit.create({
       data: {
@@ -86,8 +89,8 @@ export async function authRoutes(server) {
   // REGISTER
   server.post("/register", async (req, reply) => {
     try {
-      const { email, accessKey, organization } = req.body;
-      if (!email || !accessKey || !organization) {
+      const { email, accessKey, organization, company } = req.body;
+      if (!email || !accessKey) {
         return reply.code(400).send({ error: "AUTH_MISSING_FIELDS" });
       }
 
@@ -96,11 +99,15 @@ export async function authRoutes(server) {
         return reply.code(409).send({ error: "AUTH_EMAIL_EXISTS" });
       }
 
-      const org = await prisma.organization.upsert({
-        where: { name: organization },
-        update: {},
-        create: { id: uuidv4(), name: organization },
-      });
+      const orgName = organization || company || "Default Node Org";
+
+      // Upsert organization based on name search
+      let org = await prisma.organization.findFirst({ where: { name: orgName } });
+      if (!org) {
+        org = await prisma.organization.create({
+          data: { id: uuidv4(), name: orgName },
+        });
+      }
 
       const hash = await bcrypt.hash(accessKey, 12);
       const rawRefreshToken = crypto.randomBytes(64).toString("hex");
@@ -121,11 +128,20 @@ export async function authRoutes(server) {
           mfa_enabled: false,
           created_at: new Date(),
         },
-        select: { id: true, email: true, role: true, subscription: true, org_id: true, created_at: true },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          subscription: true,
+          org_id: true,
+          ai_used: true,
+          executions_count: true,
+          created_at: true,
+        },
       });
 
       const token = jwt.sign(
-        { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
+        { sub: user.id, email: user.email, role: user.role, org_id: user.org_id, company: orgName },
         JWT_SECRET,
         { expiresIn: "15m" }
       );
@@ -138,8 +154,13 @@ export async function authRoutes(server) {
         maxAge: 30 * 24 * 60 * 60,
       });
 
-      await auditLog(user.id, "register_success", {});
-      reply.send({ token, user });
+      await auditLog(user.id, "register_success", { company: orgName });
+
+      reply.send({
+        token,
+        user: { ...user, company: orgName },
+        redirectTo: "/crossborder",
+      });
     } catch (err) {
       console.error("Register error:", err);
       reply.code(500).send({ error: "AUTH_REGISTER_ERROR" });
@@ -154,9 +175,12 @@ export async function authRoutes(server) {
         return reply.code(400).send({ error: "AUTH_MISSING_FIELDS" });
       }
 
-      const user = await prisma.user.findUnique({ where: { email } });
+      const user = await prisma.user.findUnique({
+        where: { email },
+        include: { organization: true },
+      });
+
       if (!user) {
-        await auditLog(null, "login_failed", { email });
         return reply.code(401).send({ error: "AUTH_INVALID_CREDENTIALS" });
       }
 
@@ -176,7 +200,10 @@ export async function authRoutes(server) {
         return reply.code(401).send({ error: "AUTH_INVALID_CREDENTIALS" });
       }
 
-      await prisma.user.update({ where: { id: user.id }, data: { failed_attempts: 0, locked_until: null } });
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { failed_attempts: 0, locked_until: null },
+      });
 
       if (user.mfa_enabled) {
         const verified = speakeasy.totp.verify({
@@ -195,11 +222,20 @@ export async function authRoutes(server) {
 
       await prisma.user.update({
         where: { id: user.id },
-        data: { refresh_token: hashedRefreshToken, refresh_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
+        data: {
+          refresh_token: hashedRefreshToken,
+          refresh_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
       });
 
       const token = jwt.sign(
-        { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
+        {
+          sub: user.id,
+          email: user.email,
+          role: user.role,
+          org_id: user.org_id,
+          company: user.organization?.name || null,
+        },
         JWT_SECRET,
         { expiresIn: "15m" }
       );
@@ -213,6 +249,7 @@ export async function authRoutes(server) {
       });
 
       await auditLog(user.id, "login_success", {});
+
       reply.send({
         token,
         user: {
@@ -221,13 +258,46 @@ export async function authRoutes(server) {
           role: user.role,
           subscription: user.subscription,
           org_id: user.org_id,
+          company: user.organization?.name || null,
+          ai_used: user.ai_used,
+          executions_count: user.executions_count,
           created_at: user.created_at,
         },
+        redirectTo: "/crossborder",
       });
     } catch (err) {
       console.error("Login error:", err);
       reply.code(500).send({ error: "AUTH_LOGIN_ERROR" });
     }
+  });
+
+  /* =========================
+     CROSS-BORDER AUTH ALIASES
+  ========================= */
+  server.post("/crossborder/auth/register", async (req, reply) => {
+    const { email, password, company } = req.body;
+    req.body = { email, accessKey: password, company, organization: company };
+    return server
+      .inject({
+        method: "POST",
+        url: "/register",
+        payload: req.body,
+        headers: req.headers,
+      })
+      .then((res) => reply.code(res.statusCode).send(res.json()));
+  });
+
+  server.post("/crossborder/auth/login", async (req, reply) => {
+    const { email, password, mfaCode } = req.body;
+    req.body = { email, accessKey: password, mfaCode };
+    return server
+      .inject({
+        method: "POST",
+        url: "/login",
+        payload: req.body,
+        headers: req.headers,
+      })
+      .then((res) => reply.code(res.statusCode).send(res.json()));
   });
 
   // REFRESH
@@ -240,8 +310,13 @@ export async function authRoutes(server) {
 
       const hashedRefreshToken = hashToken(rawRefreshToken);
       const user = await prisma.user.findFirst({
-        where: { refresh_token: hashedRefreshToken, refresh_token_expires: { gt: new Date() } },
+        where: {
+          refresh_token: hashedRefreshToken,
+          refresh_token_expires: { gt: new Date() },
+        },
+        include: { organization: true },
       });
+
       if (!user) {
         return reply.code(401).send({ error: "AUTH_INVALID_REFRESH" });
       }
@@ -251,11 +326,20 @@ export async function authRoutes(server) {
 
       await prisma.user.update({
         where: { id: user.id },
-        data: { refresh_token: newHashedRefreshToken, refresh_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
+        data: {
+          refresh_token: newHashedRefreshToken,
+          refresh_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
       });
 
       const newAccessToken = jwt.sign(
-        { sub: user.id, email: user.email, role: user.role, org_id: user.org_id },
+        {
+          sub: user.id,
+          email: user.email,
+          role: user.role,
+          org_id: user.org_id,
+          company: user.organization?.name || null,
+        },
         JWT_SECRET,
         { expiresIn: "15m" }
       );
@@ -297,7 +381,6 @@ export async function authRoutes(server) {
         },
       });
 
-      // TODO: Send resetToken via email in production
       await auditLog(user.id, "password_reset_requested", {});
       reply.send({ success: true, message: "If account exists, reset link sent" });
     } catch (err) {
@@ -387,7 +470,7 @@ export async function authRoutes(server) {
     }
   });
 
-  // OAUTH / EXTERNAL LOGIN placeholders
+  // OAUTH / EXTERNAL LOGIN
   server.get("/oauth/:provider/callback", async (req, reply) => {
     reply.send({ success: true, provider: req.params.provider });
   });
@@ -396,6 +479,3 @@ export async function authRoutes(server) {
     reply.send({ success: true, provider: "external" });
   });
 }
-
-// Optionally, disconnect Prisma on server close
-// server.addHook('onClose', async () => { await prisma.$disconnect(); });
