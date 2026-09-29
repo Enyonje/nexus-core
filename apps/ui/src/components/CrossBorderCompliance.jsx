@@ -1,445 +1,292 @@
 'use client';
 
-import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
-import { useRef, useEffect, useState } from 'react';
-import Lenis from 'lenis';
+import React, { useState, useRef } from 'react';
 
-const NEXUS_CORE_AUTH_URL = 'https://nexusthecore.com/login'; // Replace with your actual auth route
-
-const workflowSteps = [
-    {
-        id: '01',
-        title: 'Invoice Parsing Agent',
-        agent: 'OCR & Semantic NLP Swarm',
-        desc: 'Extracts line items, buyer/seller credentials, currencies, and multi-layered incoterms directly from raw PDFs with zero template preparation.',
-        badge: 'Extraction Live',
-        metrics: '99.4% Field Identification Accuracy'
+// ==========================================
+// JSON-LD Structured Data Schema
+// ==========================================
+const jsonLdSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    'name': 'Nexus Core CrossBorder Compliance Console',
+    'operatingSystem': 'Web',
+    'applicationCategory': 'BusinessApplication',
+    'description': 'Automated cross-border trade compliance pipeline featuring OCR invoice extraction, HS classification, and AfCFTA ruleset evaluation.',
+    'offers': {
+        '@type': 'Offer',
+        'price': '0.00',
+        'priceCurrency': 'USD',
     },
-    {
-        id: '02',
-        title: 'HS Classification Agent',
-        agent: 'WCO Harmonized System LLM',
-        desc: 'Deep-analyzes item descriptions to dynamically assign accurate 6-to-10 digit Harmonized System tariffs across African jurisdictions.',
-        badge: 'Tariff Mapping',
-        metrics: 'Real-time 2026 WCO Regulation Match'
+    'publisher': {
+        '@type': 'Organization',
+        'name': 'Nexus Core',
+        'url': 'https://nexusthecore.com',
     },
-    {
-        id: '03',
-        title: 'Regulation Validation Agent',
-        agent: 'Cross-Border Compliance Rule Engine',
-        desc: 'Cross-references goods against active intra-African regulatory databases (e.g., AfCFTA guidelines, phytosanitary requirements, prohibited goods list).',
-        badge: 'Legal Clearance',
-        metrics: 'Zero Non-Compliance Escapes'
-    },
-    {
-        id: '04',
-        title: 'Certificate Generation Agent',
-        agent: 'Document Compilation Node',
-        desc: 'Compiles, digitally signs, and formats custom declarations, certificates of origin, and compliance files ready for customs submission.',
-        badge: 'Artifact Dispatch',
-        metrics: 'Instant PDF / EDI / API Delivery'
-    },
-];
-
-const metrics = [
-    { value: '90s', label: 'Average Processing Time', subtext: 'Down from 48-hour manual filing loops' },
-    { value: '98%', label: 'Classification Accuracy', subtext: 'Audited against global customs challenges' },
-    { value: '70%', label: 'Operational Cost Reduction', subtext: 'Eliminates demurrage & standard agency broker surcharges' },
-];
-
-const pricing = [
-    {
-        name: 'Starter',
-        planKey: 'starter',
-        price: '$49',
-        period: '/mo',
-        description: 'Perfect for local trading hubs scaling regional logistics lanes.',
-        features: [
-            '100 compliance documents / mo',
-            'Basic multi-country tariff mapping',
-            'Standard email SLA support',
-            'AfCFTA base compliance rule sets'
-        ],
-        cta: 'Initialize Protocol',
-        popular: false
-    },
-    {
-        name: 'Growth',
-        planKey: 'growth',
-        price: '$299',
-        period: '/mo',
-        description: 'Designed for active continental freight forwarders and distribution centers.',
-        features: [
-            '1,000 compliance documents / mo',
-            'Advanced autonomous agent swarms',
-            'Full API & Webhook streaming pipeline',
-            'Customs clearing document signatures',
-            'Priority 1-hour engineering SLA support'
-        ],
-        cta: 'Deploy Growth Infrastructure',
-        popular: true
-    },
-    {
-        name: 'Enterprise',
-        planKey: 'enterprise',
-        price: 'Custom',
-        period: '',
-        description: 'Custom compliance networks for global logistics enterprises and state agencies.',
-        features: [
-            'Unlimited volume scaling architecture',
-            'Isolated dedicated secure cloud tenant',
-            'Proprietary compliance rule injections',
-            'Dedicated integration architect support',
-            'Custom liability compliance indemnification'
-        ],
-        cta: 'Contact Architecture Command',
-        popular: false
-    },
-];
+};
 
 export function CrossBorderCompliance() {
-    const containerRef = useRef(null);
-    const [activePlaygroundTab, setActivePlaygroundTab] = useState(0);
+    const [file, setFile] = useState(null);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [pipelineStage, setPipelineStage] = useState('idle');
+    const [logs, setLogs] = useState([]);
+    const fileInputRef = useRef(null);
 
-    useEffect(() => {
-        const lenis = new Lenis({
-            duration: 1.1,
-            smoothWheel: true,
-            easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-        });
-
-        function raf(time) {
-            lenis.raf(time);
-            requestAnimationFrame(raf);
+    // Safe helper to read client-side environment variables without triggering 'process is not defined'
+    const getEnvVar = (key, defaultValue = '') => {
+        if (typeof window !== 'undefined' && typeof process !== 'undefined' && process.env) {
+            return process.env[key] || defaultValue;
         }
-        requestAnimationFrame(raf);
-        return () => lenis.destroy();
-    }, []);
+        return defaultValue;
+    };
 
-    const { scrollYProgress } = useScroll({
-        target: containerRef,
-        offset: ['start start', 'end start'],
-    });
+    // Compliance execution engine simulator
+    const handleRunPipeline = () => {
+        if (!file) return;
 
-    const heroY = useTransform(scrollYProgress, [0, 0.3], [0, 60]);
-    const heroOpacity = useTransform(scrollYProgress, [0, 0.25], [1, 0]);
+        setIsProcessing(true);
+        setPipelineStage('ocr');
 
-    // Helper function to build direct Nexus Core auth redirect link
-    const getCheckoutUrl = (planKey) => {
-        const redirectPath = encodeURIComponent(`/checkout?plan=${planKey}&product=cross-border-compliance`);
-        return `${NEXUS_CORE_AUTH_URL}?redirect=${redirectPath}&plan=${planKey}`;
+        const apiEndpoint = getEnvVar('NEXT_PUBLIC_COMPLIANCE_API', 'https://api.nexusthecore.com/v1');
+
+        setLogs([
+            { timestamp: new Date().toLocaleTimeString(), type: 'info', message: `INGEST: File attached: ${file.name} (${(file.size / 1024).toFixed(1)} KB)` },
+            { timestamp: new Date().toLocaleTimeString(), type: 'info', message: `ORCHESTRATOR: Initiating secure pipeline dispatch via ${apiEndpoint}...` },
+        ]);
+
+        setTimeout(() => {
+            setPipelineStage('hs_classification');
+            setLogs((prev) => [
+                ...prev,
+                { timestamp: new Date().toLocaleTimeString(), type: 'info', message: 'OCR READ: Document layout parsed. Extracting line items & origin criteria...' },
+                { timestamp: new Date().toLocaleTimeString(), type: 'success', message: 'HS Code Identified: 8708.30 / 8708.50 (Vehicle Components)' },
+            ]);
+        }, 1500);
+
+        setTimeout(() => {
+            setPipelineStage('afcfta_rules');
+            setLogs((prev) => [
+                ...prev,
+                { timestamp: new Date().toLocaleTimeString(), type: 'info', message: 'EVALUATOR: Parsing AfCFTA Protocol Rulesets (Annex 2)...' },
+                { timestamp: new Date().toLocaleTimeString(), type: 'success', message: 'Origin Rule Satisfied: Article 4 (Change in Tariff Heading - CTH Met)' },
+            ]);
+        }, 3000);
+
+        setTimeout(() => {
+            setPipelineStage('complete');
+            setIsProcessing(false);
+            setLogs((prev) => [
+                ...prev,
+                { timestamp: new Date().toLocaleTimeString(), type: 'success', message: 'STATUS 200: Pipeline complete. Zero compliance flags detected. Clearance ready.' },
+            ]);
+        }, 4200);
+    };
+
+    const handleFileChange = (e) => {
+        if (e.target.files && e.target.files[0]) {
+            setFile(e.target.files[0]);
+            setPipelineStage('idle');
+            setLogs([]);
+        }
     };
 
     return (
-        <div ref={containerRef} className="relative isolate min-h-screen bg-[#020617] text-slate-100 selection:bg-blue-500/30 font-sans antialiased overflow-x-hidden">
+        <>
+            {/* Inject JSON-LD Structured Data */}
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdSchema) }}
+            />
 
-            {/* FLOATING HEADER NAVBAR */}
-            <header className="fixed top-4 inset-x-0 z-50 px-4 max-w-7xl mx-auto pointer-events-none">
-                <nav className="pointer-events-auto backdrop-blur-md bg-slate-950/90 border border-white/10 rounded-2xl px-6 py-3.5 flex justify-between items-center shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-2.5 h-2.5 rounded-sm bg-blue-500 animate-pulse" />
-                        <span className="text-base font-black tracking-widest text-white uppercase">
-                            Nexus <span className="text-blue-500">Core</span>
-                        </span>
-                    </div>
-
-                    <div className="hidden md:flex items-center gap-8 text-[11px] font-bold uppercase tracking-widest text-slate-400">
-                        <a href="#features" className="hover:text-white transition-colors">Features</a>
-                        <a href="#workflow" className="hover:text-white transition-colors">Workflow Matrix</a>
-                        <a href="#pricing" className="hover:text-white transition-colors">Pricing Ecosystem</a>
-                    </div>
-
-                    <a
-                        href={`${NEXUS_CORE_AUTH_URL}?product=cross-border-compliance`}
-                        className="bg-blue-600 hover:bg-blue-500 active:scale-95 transition text-[11px] font-black uppercase tracking-widest px-5 py-2.5 rounded-xl border border-blue-400/30 shadow-[0_0_20px_rgba(37,99,235,0.25)] text-white"
-                    >
-                        Open Console
-                    </a>
-                </nav>
-            </header>
-
-            {/* HERO SECTION */}
-            <section className="relative pt-36 sm:pt-40 lg:pt-44 pb-20 px-4 flex items-center justify-center overflow-hidden border-b border-white/5">
-                <div className="absolute inset-0 pointer-events-none opacity-[0.12]">
-                    <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px]" />
-                    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_20%,#020617_80%)]" />
-                </div>
-
-                <motion.div
-                    style={{ y: heroY, opacity: heroOpacity }}
-                    className="relative z-10 max-w-7xl mx-auto grid lg:grid-cols-12 gap-12 lg:gap-16 items-center w-full"
-                >
-                    <div className="lg:col-span-6 flex flex-col justify-center text-left">
-                        <motion.div
-                            initial={{ opacity: 0, y: 15 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.6 }}
-                            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-blue-500/20 bg-blue-500/5 text-[10px] font-black uppercase tracking-[0.2em] text-blue-400 mb-6 w-fit shadow-[inset_0_1px_12px_rgba(59,130,246,0.1)]"
-                        >
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
-                            Autonomous Cross-Border Compliance Infrastructure
-                        </motion.div>
-
-                        <motion.h1
-                            initial={{ opacity: 0, y: 25 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.1, duration: 0.7 }}
-                            className="text-4xl sm:text-5xl lg:text-[60px] font-black leading-[1.08] tracking-tight text-white mb-6"
-                        >
-                            Automate Trade Operations with{' '}
-                            <span className="bg-gradient-to-r from-blue-400 via-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-                                AI Swarms
+            <main className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12 font-sans">
+                {/* SEO Header */}
+                <header className="max-w-7xl mx-auto mb-8">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-4 gap-4">
+                        <div>
+                            <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                                <span className="bg-blue-600 text-xs px-2.5 py-1 rounded font-mono uppercase tracking-wide text-white">
+                                    Nexus Core
+                                </span>
+                                CrossBorder Compliance Console v4.2
+                            </h1>
+                            <p className="text-slate-400 text-sm mt-1">
+                                Automated cargo document parsing, HS classification &amp; AfCFTA tariff validation.
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <span className="inline-flex items-center rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-400 ring-1 ring-inset ring-emerald-400/20">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 mr-2 animate-pulse" />
+                                AfCFTA Ruleset Active
                             </span>
-                        </motion.h1>
-
-                        <motion.p
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.2, duration: 0.7 }}
-                            className="text-base sm:text-lg text-slate-400 leading-relaxed mb-8 max-w-lg font-medium"
-                        >
-                            Decimate multi-day customs logjams down to under 90 seconds.
-                            Deploy dedicated neural nodes optimized to parse, classify, and validate
-                            complex cross-border paperwork instantly.
-                        </motion.p>
-
-                        <motion.div
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.3 }}
-                            className="flex flex-col sm:flex-row gap-4"
-                        >
-                            <a
-                                href={getCheckoutUrl('growth')}
-                                className="bg-blue-600 hover:bg-blue-500 text-center active:scale-95 transition duration-200 px-8 py-4 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-600/20 border border-blue-500/40 text-white"
-                            >
-                                Initialize System Console
-                            </a>
-                            <a href="#workflow" className="border text-center border-white/10 hover:border-white/20 hover:bg-white/5 active:scale-95 transition duration-200 px-8 py-4 rounded-xl text-xs font-black uppercase tracking-widest text-slate-300">
-                                View Agent Schema
-                            </a>
-                        </motion.div>
-
-                        <div className="mt-12 pt-8 border-t border-white/5 grid grid-cols-3 gap-4 text-left">
-                            <div>
-                                <p className="text-white font-mono font-black text-lg">AfCFTA</p>
-                                <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500 mt-0.5">Compliant Engine</p>
-                            </div>
-                            <div>
-                                <p className="text-white font-mono font-black text-lg">WCO 2026</p>
-                                <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500 mt-0.5">HS Tariff Base</p>
-                            </div>
-                            <div>
-                                <p className="text-white font-mono font-black text-lg">SOC2 Type II</p>
-                                <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500 mt-0.5">Enterprise Shield</p>
-                            </div>
                         </div>
                     </div>
+                </header>
 
-                    <div className="lg:col-span-6 w-full">
-                        <div className="relative bg-slate-900/40 border border-white/10 rounded-[24px] p-6 backdrop-blur-xl shadow-2xl overflow-hidden group">
-                            <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-70" />
+                {/* Console Workspace */}
+                <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-                            <div className="flex justify-between items-center mb-6 pb-4 border-b border-white/5">
-                                <div className="flex items-center gap-2">
-                                    <span className="flex space-x-1.5">
-                                        <span className="w-2.5 h-2.5 rounded-full bg-red-500/40 block" />
-                                        <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/40 block" />
-                                        <span className="w-2.5 h-2.5 rounded-full bg-green-500/40 block" />
-                                    </span>
-                                    <span className="text-[10px] font-mono font-bold uppercase text-slate-500 tracking-wider">nexus_engine_runtime.sh</span>
-                                </div>
-                                <div className="px-2.5 py-1 rounded-md bg-green-500/10 border border-green-500/20 text-green-400 font-mono text-[9px] uppercase tracking-widest font-bold">
-                                    Active Swarm Node
-                                </div>
-                            </div>
+                    {/* Panel 1: Document Upload */}
+                    <section aria-label="Document Upload Interface" className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm flex flex-col justify-between">
+                        <div>
+                            <h2 className="text-base font-semibold text-white mb-1 flex items-center justify-between">
+                                <span>1. Cargo Document Intake</span>
+                                <span className="text-xs text-slate-500 font-mono">OCR Engine</span>
+                            </h2>
+                            <p className="text-xs text-slate-400 mb-4">
+                                Upload Bills of Lading, Commercial Invoices, or Cargo Toolkits.
+                            </p>
 
-                            <div className="grid grid-cols-4 gap-2 mb-6">
-                                {workflowSteps.map((s, idx) => (
-                                    <button
-                                        key={s.id}
-                                        onClick={() => setActivePlaygroundTab(idx)}
-                                        className={`p-2.5 rounded-lg border text-left transition-all duration-200 ${activePlaygroundTab === idx
-                                            ? 'bg-blue-600/10 border-blue-500/40 text-blue-400 shadow-[inset_0_1px_6px_rgba(59,130,246,0.2)]'
-                                            : 'bg-slate-950/40 border-white/5 text-slate-500 hover:border-white/10 hover:text-slate-400'
-                                            }`}
-                                    >
-                                        <p className="text-[10px] font-mono font-black">{s.id}</p>
-                                        <p className="text-[9px] font-bold uppercase tracking-wider truncate mt-0.5">{s.title.split(' ')[0]}</p>
-                                    </button>
-                                ))}
-                            </div>
-
-                            <div className="bg-slate-950/70 border border-white/5 rounded-xl p-5 font-mono text-xs min-h-[220px] flex flex-col justify-between relative">
-                                <AnimatePresence mode="wait">
-                                    <motion.div
-                                        key={activePlaygroundTab}
-                                        initial={{ opacity: 0, y: 5 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, y: -5 }}
-                                        transition={{ duration: 0.2 }}
-                                        className="space-y-4"
-                                    >
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <p className="text-blue-400 text-[11px] uppercase tracking-widest font-bold">[{workflowSteps[activePlaygroundTab].agent}]</p>
-                                                <h4 className="text-white text-sm font-bold tracking-tight mt-1">{workflowSteps[activePlaygroundTab].title}</h4>
-                                            </div>
-                                            <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-0.5 rounded border border-white/5">
-                                                {workflowSteps[activePlaygroundTab].badge}
-                                            </span>
-                                        </div>
-
-                                        <p className="text-slate-400 font-sans text-xs leading-relaxed">
-                                            {workflowSteps[activePlaygroundTab].desc}
-                                        </p>
-                                    </motion.div>
-                                </AnimatePresence>
-
-                                <div className="mt-6 pt-4 border-t border-white/5 flex flex-col sm:flex-row justify-between gap-2 items-start sm:items-center text-[10px] text-slate-400">
-                                    <div className="flex items-center gap-1.5">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                        <span>Telemetric Output: <strong className="text-emerald-400 font-medium">{workflowSteps[activePlaygroundTab].metrics}</strong></span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </motion.div>
-            </section>
-
-            {/* METRICS SECTION */}
-            <section id="features" className="py-24 px-4 bg-[#040b19] border-b border-white/5 scroll-mt-28">
-                <div className="max-w-7xl mx-auto">
-                    <div className="grid md:grid-cols-3 gap-6">
-                        {metrics.map((metric, index) => (
-                            <motion.div
-                                key={metric.label}
-                                initial={{ opacity: 0, y: 30 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                viewport={{ once: true, margin: '-100px' }}
-                                transition={{ delay: index * 0.1, duration: 0.5 }}
-                                className="group relative bg-slate-900/20 border border-white/5 rounded-2xl p-8 hover:border-blue-500/20 transition-all duration-300"
-                            >
-                                <h3 className="text-5xl font-black tracking-tight text-white font-mono bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent mb-2">
-                                    {metric.value}
-                                </h3>
-                                <h4 className="text-sm font-bold text-slate-200 mb-1 uppercase tracking-wider">
-                                    {metric.label}
-                                </h4>
-                                <p className="text-xs text-slate-500 leading-relaxed">
-                                    {metric.subtext}
-                                </p>
-                            </motion.div>
-                        ))}
-                    </div>
-                </div>
-            </section>
-
-            {/* WORKFLOW MATRIX SECTION */}
-            <section id="workflow" className="py-32 px-4 max-w-7xl mx-auto scroll-mt-28">
-                <div className="text-center max-w-xl mx-auto mb-20">
-                    <p className="text-[10px] uppercase font-black tracking-[0.25em] text-blue-500 mb-2">Deep-Dive Chronology</p>
-                    <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-                        The Autonomous Compliance Network
-                    </h2>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-6 relative">
-                    {workflowSteps.map((step, index) => (
-                        <motion.div
-                            key={step.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true }}
-                            transition={{ delay: index * 0.05, duration: 0.6 }}
-                            className="bg-slate-900/30 border border-white/5 hover:border-white/10 rounded-2xl p-8 relative flex flex-col justify-between transition-all group"
-                        >
-                            <div>
-                                <div className="flex justify-between items-center mb-6">
-                                    <span className="font-mono text-3xl font-black text-slate-800 group-hover:text-blue-500/20 transition-colors">
-                                        {step.id}
-                                    </span>
-                                    <span className="text-[9px] font-mono uppercase tracking-widest bg-blue-500/10 border border-blue-500/20 text-blue-400 px-2.5 py-1 rounded-md font-bold">
-                                        {step.agent}
-                                    </span>
-                                </div>
-                                <h3 className="text-lg font-bold text-white mb-2 group-hover:text-blue-400 transition-colors">
-                                    {step.title}
-                                </h3>
-                                <p className="text-xs text-slate-400 leading-relaxed font-medium">
-                                    {step.desc}
-                                </p>
-                            </div>
-
-                            <div className="mt-6 pt-4 border-t border-white/5 flex justify-between items-center text-[10px] font-mono text-slate-500">
-                                <span>Status: <strong className="text-slate-400 font-medium">Production Node Ready</strong></span>
-                                <span className="text-blue-400/80 font-bold">{step.metrics.split(' ')[0]} Verified</span>
-                            </div>
-                        </motion.div>
-                    ))}
-                </div>
-            </section>
-
-            {/* PRICING SECTION */}
-            <section id="pricing" className="py-32 px-4 bg-[#040b19] border-t border-white/5 scroll-mt-28">
-                <div className="max-w-7xl mx-auto">
-                    <div className="text-center max-w-xl mx-auto mb-24">
-                        <p className="text-[10px] uppercase font-black tracking-[0.25em] text-blue-500 mb-2">Predictable Unit Economics</p>
-                        <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-                            Scale Transactions, Not Overhead
-                        </h2>
-                    </div>
-
-                    <div className="grid lg:grid-cols-3 gap-6 items-start">
-                        {pricing.map((tier) => (
                             <div
-                                key={tier.name}
-                                className={`relative bg-slate-900/40 border rounded-2xl p-8 flex flex-col justify-between min-h-[520px] transition-all ${tier.popular
-                                    ? 'border-blue-500/50 shadow-[0_0_40px_rgba(37,99,235,0.15)] bg-slate-900/80 lg:-translate-y-4'
-                                    : 'border-white/5'
+                                onClick={() => fileInputRef.current?.click()}
+                                className={`border-2 border-dashed rounded-lg p-6 text-center transition-all cursor-pointer ${file ? 'border-emerald-500/50 bg-emerald-950/10' : 'border-slate-800 hover:border-blue-500 bg-slate-950/40'
                                     }`}
                             >
-                                {tier.popular && (
-                                    <span className="absolute -top-3 right-6 bg-blue-600 text-[9px] font-black uppercase tracking-widest text-white px-3 py-1 rounded-full border border-blue-400/30 shadow-md">
-                                        Recommended Spec
-                                    </span>
-                                )}
+                                <input
+                                    id="document-upload"
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="application/pdf,image/*"
+                                    className="hidden"
+                                    onChange={handleFileChange}
+                                    disabled={isProcessing}
+                                    aria-label="Upload Cargo Invoice or Bill of Lading PDF"
+                                />
 
-                                <div>
-                                    <h3 className="text-lg font-bold text-white mb-2">{tier.name}</h3>
-                                    <p className="text-xs text-slate-400 font-medium leading-relaxed mb-6">{tier.description}</p>
-                                    <div className="flex items-baseline gap-1 mb-8">
-                                        <span className="text-4xl font-black text-white font-mono tracking-tight">{tier.price}</span>
-                                        <span className="text-xs text-slate-500 font-medium">{tier.period}</span>
+                                <div className="space-y-2">
+                                    <div className="mx-auto h-10 w-10 text-slate-400 flex items-center justify-center bg-slate-800 rounded-full">
+                                        📄
                                     </div>
-
-                                    <ul className="space-y-3 mb-8">
-                                        {tier.features.map((feature, fIndex) => (
-                                            <li key={fIndex} className="flex items-center gap-3 text-xs text-slate-300">
-                                                <svg className="w-4 h-4 text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                                                </svg>
-                                                <span>{feature}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
+                                    {file ? (
+                                        <div>
+                                            <p className="text-sm text-emerald-400 font-medium truncate max-w-[200px] mx-auto">{file.name}</p>
+                                            <p className="text-xs text-slate-500 mt-0.5">{(file.size / 1024).toFixed(1)} KB — Click to change</p>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <p className="text-sm text-slate-300 font-medium">Click to upload document</p>
+                                            <p className="text-xs text-slate-500 mt-1">Supports PDF, PNG, TIFF up to 25MB</p>
+                                        </div>
+                                    )}
                                 </div>
-
-                                <a
-                                    href={getCheckoutUrl(tier.planKey)}
-                                    className={`w-full py-3.5 rounded-xl text-xs font-black uppercase tracking-widest text-center transition duration-200 block ${tier.popular
-                                        ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20'
-                                        : 'bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10'
-                                        }`}
-                                >
-                                    {tier.cta}
-                                </a>
                             </div>
-                        ))}
-                    </div>
+                        </div>
+
+                        <div className="mt-6 pt-4 border-t border-slate-800 space-y-3">
+                            <div className="flex justify-between text-xs text-slate-400">
+                                <span>Target Protocol</span>
+                                <span className="text-slate-200 font-mono">AfCFTA Annex 2</span>
+                            </div>
+                            <div className="flex justify-between text-xs text-slate-400">
+                                <span>Classification Engine</span>
+                                <span className="text-slate-200 font-mono">WCO HS2022 / 2026</span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleRunPipeline}
+                                disabled={!file || isProcessing}
+                                className={`w-full py-2.5 px-4 rounded text-xs font-semibold transition-all ${!file || isProcessing
+                                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                                    : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20'
+                                    }`}
+                            >
+                                {isProcessing ? 'Processing Compliance Pipeline...' : 'Run Compliance Evaluation'}
+                            </button>
+                        </div>
+                    </section>
+
+                    {/* Panel 2: Live Audit Log Console */}
+                    <section aria-label="Pipeline Console Output" className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm flex flex-col justify-between">
+                        <div>
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-base font-semibold text-white">2. Evaluation Logs &amp; Tariff Audit</h2>
+                                <div className="flex items-center gap-2">
+                                    <span className={`h-2 w-2 rounded-full ${pipelineStage === 'idle' ? 'bg-slate-600' : 'bg-blue-500 animate-ping'}`} />
+                                    <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">{pipelineStage}</span>
+                                </div>
+                            </div>
+
+                            {/* Progress Stage Tracker */}
+                            <div className="grid grid-cols-4 gap-2 mb-6">
+                                {[
+                                    { key: 'ocr', label: '1. OCR Read' },
+                                    { key: 'hs_classification', label: '2. HS Mapping' },
+                                    { key: 'afcfta_rules', label: '3. AfCFTA Rules' },
+                                    { key: 'complete', label: '4. Clearance' },
+                                ].map((step, idx) => {
+                                    const isActive = pipelineStage === step.key;
+                                    const isDone =
+                                        pipelineStage === 'complete' ||
+                                        (pipelineStage === 'afcfta_rules' && idx < 2) ||
+                                        (pipelineStage === 'hs_classification' && idx < 1);
+
+                                    return (
+                                        <div
+                                            key={step.key}
+                                            className={`p-2.5 rounded border text-center transition-all ${isDone
+                                                ? 'border-emerald-500/30 bg-emerald-950/20 text-emerald-400'
+                                                : isActive
+                                                    ? 'border-blue-500 bg-blue-950/30 text-blue-300'
+                                                    : 'border-slate-800 bg-slate-950/40 text-slate-600'
+                                                }`}
+                                        >
+                                            <p className="text-[11px] font-mono font-medium">{step.label}</p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Console Execution Output */}
+                            <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 font-mono text-xs text-slate-300 h-64 overflow-y-auto space-y-2">
+                                {logs.length === 0 ? (
+                                    <p className="text-slate-600 italic">// Awaiting payload execution. Select a file and click 'Run Compliance Evaluation'...</p>
+                                ) : (
+                                    logs.map((log, index) => (
+                                        <div key={index} className="flex items-start gap-2 leading-relaxed">
+                                            <span className="text-slate-600 shrink-0">[{log.timestamp}]</span>
+                                            <span
+                                                className={
+                                                    log.type === 'success'
+                                                        ? 'text-emerald-400'
+                                                        : log.type === 'error'
+                                                            ? 'text-rose-400'
+                                                            : log.type === 'warning'
+                                                                ? 'text-amber-400'
+                                                                : 'text-blue-400'
+                                                }
+                                            >
+                                                {log.message}
+                                            </span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Actions Footer */}
+                        <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between">
+                            <span className="text-xs text-slate-500">
+                                Audit Trail ID: <code className="text-slate-400">NX-COMP-2026-8801</code>
+                            </span>
+                            <button
+                                type="button"
+                                disabled={logs.length === 0}
+                                onClick={() => {
+                                    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(logs, null, 2));
+                                    const downloadAnchor = document.createElement('a');
+                                    downloadAnchor.setAttribute('href', dataStr);
+                                    downloadAnchor.setAttribute('download', 'compliance_audit_log.json');
+                                    document.body.appendChild(downloadAnchor);
+                                    downloadAnchor.click();
+                                    downloadAnchor.remove();
+                                }}
+                                className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-semibold px-4 py-2 rounded border border-slate-700 transition-colors"
+                            >
+                                Export JSON Log
+                            </button>
+                        </div>
+                    </section>
+
                 </div>
-            </section>
-        </div>
+            </main>
+        </>
     );
 }

@@ -1,366 +1,112 @@
-import jwt from "jsonwebtoken";
+import { requireAuth } from "../security/authMiddleware.js";
+import { prisma } from "../config/prisma.js";
+import { auditLog } from "../security/auditLog.js";
+import { hashToken } from "../lib/crypto.js";
 import bcrypt from "bcryptjs";
-import Stripe from "stripe";
-import { v4 as uuidv4 } from "uuid";
-import crypto from "crypto";
-import { PrismaClient } from "@prisma/client";
-import speakeasy from "speakeasy";
+import {
+  registerUser,
+  loginUser,
+  refreshTokens,
+  createStripeCheckoutSession,
+} from "../services/authService.js";
 
-const prisma = new PrismaClient();
-
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
-  throw new Error("JWT_SECRET must be set and at least 32 chars long");
-}
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY must be set");
-}
-const JWT_SECRET = process.env.JWT_SECRET;
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2022-11-15" });
-
-function hashToken(token) {
-  return crypto.createHash("sha256").update(token).digest("hex");
+function setRefreshCookie(reply, token) {
+  reply.setCookie("refreshToken", token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "strict",
+    path: "/",
+    maxAge: 30 * 24 * 60 * 60,
+  });
 }
 
-/* =========================
-   AUTH MIDDLEWARE
-========================= */
-export function requireAuth(req, reply, done) {
-  try {
-    let token = req.headers.authorization?.startsWith("Bearer ")
-      ? req.headers.authorization.split(" ")[1]
-      : req.cookies?.authToken || req.query?.token;
-
-    if (!token) {
-      return reply.code(401).send({ error: "AUTH_MISSING_TOKEN" });
-    }
-
-    const payload = jwt.verify(token, JWT_SECRET);
-
-    req.identity = payload;
-    req.user = {
-      id: payload.sub,
-      email: payload.email,
-      role: payload.role,
-      org_id: payload.org_id,
-      company: payload.company,
-    };
-
-    done();
-  } catch (err) {
-    return reply.code(401).send({ error: "AUTH_INVALID_TOKEN" });
-  }
-}
-
-export function requireRole(role) {
-  return (req, reply, done) => {
-    if (!req.identity || req.identity.role !== role) {
-      return reply.code(403).send({ error: "AUTH_FORBIDDEN_ROLE" });
-    }
-    done();
-  };
-}
-
-/* =========================
-   AUDIT LOGGING
-========================= */
-async function auditLog(userId, action, meta = {}) {
-  // AuthAudit table requires a valid user_id relation
-  if (!userId) return;
-  try {
-    await prisma.authAudit.create({
-      data: {
-        id: uuidv4(),
-        user_id: userId,
-        action,
-        details: meta,
-        created_at: new Date(),
-      },
-    });
-  } catch (err) {
-    console.error("Audit log failed to write:", err);
-  }
-}
-
-/* =========================
-   ROUTES
-========================= */
 export async function authRoutes(server) {
   // REGISTER
   server.post("/register", async (req, reply) => {
     try {
-      const { email, accessKey, organization, company } = req.body;
-      if (!email || !accessKey) {
-        return reply.code(400).send({ error: "AUTH_MISSING_FIELDS" });
-      }
-
-      const exists = await prisma.user.findUnique({ where: { email } });
-      if (exists) {
-        return reply.code(409).send({ error: "AUTH_EMAIL_EXISTS" });
-      }
-
-      const orgName = organization || company || "Default Node Org";
-
-      // Upsert organization based on name search
-      let org = await prisma.organization.findFirst({ where: { name: orgName } });
-      if (!org) {
-        org = await prisma.organization.create({
-          data: { id: uuidv4(), name: orgName },
-        });
-      }
-
-      const hash = await bcrypt.hash(accessKey, 12);
-      const rawRefreshToken = crypto.randomBytes(64).toString("hex");
-      const hashedRefreshToken = hashToken(rawRefreshToken);
-
-      const user = await prisma.user.create({
-        data: {
-          id: uuidv4(),
-          email,
-          password_hash: hash,
-          role: "user",
-          subscription: "free",
-          org_id: org.id,
-          refresh_token: hashedRefreshToken,
-          refresh_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          failed_attempts: 0,
-          locked_until: null,
-          mfa_enabled: false,
-          created_at: new Date(),
-        },
-        select: {
-          id: true,
-          email: true,
-          role: true,
-          subscription: true,
-          org_id: true,
-          ai_used: true,
-          executions_count: true,
-          created_at: true,
-        },
-      });
-
-      const token = jwt.sign(
-        { sub: user.id, email: user.email, role: user.role, org_id: user.org_id, company: orgName },
-        JWT_SECRET,
-        { expiresIn: "15m" }
-      );
-
-      reply.setCookie("refreshToken", rawRefreshToken, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "strict",
-        path: "/",
-        maxAge: 30 * 24 * 60 * 60,
-      });
-
-      await auditLog(user.id, "register_success", { company: orgName });
-
-      reply.send({
-        token,
-        user: { ...user, company: orgName },
-        redirectTo: "/crossborder",
+      const result = await registerUser(req.body);
+      setRefreshCookie(reply, result.rawRefreshToken);
+      return reply.send({
+        token: result.token,
+        user: result.user,
+        redirectTo: result.redirectTo,
       });
     } catch (err) {
+      if (err.code) return reply.code(err.status || 400).send({ error: err.code });
       console.error("Register error:", err);
-      reply.code(500).send({ error: "AUTH_REGISTER_ERROR" });
+      return reply.code(500).send({ error: "AUTH_REGISTER_ERROR" });
     }
   });
 
   // LOGIN
   server.post("/login", async (req, reply) => {
     try {
-      const { email, accessKey, mfaCode } = req.body;
-      if (!email || !accessKey) {
-        return reply.code(400).send({ error: "AUTH_MISSING_FIELDS" });
-      }
-
-      const user = await prisma.user.findUnique({
-        where: { email },
-        include: { organization: true },
-      });
-
-      if (!user) {
-        return reply.code(401).send({ error: "AUTH_INVALID_CREDENTIALS" });
-      }
-
-      if (user.locked_until && user.locked_until > new Date()) {
-        return reply.code(403).send({ error: "AUTH_ACCOUNT_LOCKED" });
-      }
-
-      const valid = await bcrypt.compare(accessKey, user.password_hash);
-      if (!valid) {
-        const attempts = user.failed_attempts + 1;
-        let updateData = { failed_attempts: attempts };
-        if (attempts >= 5) {
-          updateData.locked_until = new Date(Date.now() + 15 * 60 * 1000);
-        }
-        await prisma.user.update({ where: { id: user.id }, data: updateData });
-        await auditLog(user.id, "login_failed", { reason: "wrong_password" });
-        return reply.code(401).send({ error: "AUTH_INVALID_CREDENTIALS" });
-      }
-
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { failed_attempts: 0, locked_until: null },
-      });
-
-      if (user.mfa_enabled) {
-        const verified = speakeasy.totp.verify({
-          secret: user.mfa_secret,
-          encoding: "base32",
-          token: mfaCode,
-        });
-        if (!verified) {
-          await auditLog(user.id, "login_failed", { reason: "mfa_failed" });
-          return reply.code(401).send({ error: "AUTH_INVALID_CREDENTIALS" });
-        }
-      }
-
-      const rawRefreshToken = crypto.randomBytes(64).toString("hex");
-      const hashedRefreshToken = hashToken(rawRefreshToken);
-
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          refresh_token: hashedRefreshToken,
-          refresh_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        },
-      });
-
-      const token = jwt.sign(
-        {
-          sub: user.id,
-          email: user.email,
-          role: user.role,
-          org_id: user.org_id,
-          company: user.organization?.name || null,
-        },
-        JWT_SECRET,
-        { expiresIn: "15m" }
-      );
-
-      reply.setCookie("refreshToken", rawRefreshToken, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "strict",
-        path: "/",
-        maxAge: 30 * 24 * 60 * 60,
-      });
-
-      await auditLog(user.id, "login_success", {});
-
-      reply.send({
-        token,
-        user: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          subscription: user.subscription,
-          org_id: user.org_id,
-          company: user.organization?.name || null,
-          ai_used: user.ai_used,
-          executions_count: user.executions_count,
-          created_at: user.created_at,
-        },
-        redirectTo: "/crossborder",
+      const result = await loginUser(req.body);
+      setRefreshCookie(reply, result.rawRefreshToken);
+      return reply.send({
+        token: result.token,
+        user: result.user,
+        redirectTo: result.redirectTo,
       });
     } catch (err) {
+      if (err.code) return reply.code(err.status || 400).send({ error: err.code });
       console.error("Login error:", err);
-      reply.code(500).send({ error: "AUTH_LOGIN_ERROR" });
+      return reply.code(500).send({ error: "AUTH_LOGIN_ERROR" });
     }
   });
 
-  /* =========================
-     CROSS-BORDER AUTH ALIASES
-  ========================= */
+  // CROSSBORDER ALIASES (Direct function execution instead of server.inject overhead)
   server.post("/crossborder/auth/register", async (req, reply) => {
     const { email, password, company } = req.body;
     req.body = { email, accessKey: password, company, organization: company };
-    return server
-      .inject({
-        method: "POST",
-        url: "/register",
-        payload: req.body,
-        headers: req.headers,
-      })
-      .then((res) => reply.code(res.statusCode).send(res.json()));
+
+    try {
+      const result = await registerUser(req.body);
+      setRefreshCookie(reply, result.rawRefreshToken);
+      return reply.send({
+        token: result.token,
+        user: result.user,
+        redirectTo: result.redirectTo,
+      });
+    } catch (err) {
+      if (err.code) return reply.code(err.status || 400).send({ error: err.code });
+      return reply.code(500).send({ error: "AUTH_REGISTER_ERROR" });
+    }
   });
 
   server.post("/crossborder/auth/login", async (req, reply) => {
     const { email, password, mfaCode } = req.body;
     req.body = { email, accessKey: password, mfaCode };
-    return server
-      .inject({
-        method: "POST",
-        url: "/login",
-        payload: req.body,
-        headers: req.headers,
-      })
-      .then((res) => reply.code(res.statusCode).send(res.json()));
-  });
 
-  // REFRESH
-  server.post("/refresh", async (req, reply) => {
     try {
-      const rawRefreshToken = req.cookies?.refreshToken;
-      if (!rawRefreshToken) {
-        return reply.code(401).send({ error: "AUTH_MISSING_REFRESH" });
-      }
-
-      const hashedRefreshToken = hashToken(rawRefreshToken);
-      const user = await prisma.user.findFirst({
-        where: {
-          refresh_token: hashedRefreshToken,
-          refresh_token_expires: { gt: new Date() },
-        },
-        include: { organization: true },
+      const result = await loginUser(req.body);
+      setRefreshCookie(reply, result.rawRefreshToken);
+      return reply.send({
+        token: result.token,
+        user: result.user,
+        redirectTo: result.redirectTo,
       });
-
-      if (!user) {
-        return reply.code(401).send({ error: "AUTH_INVALID_REFRESH" });
-      }
-
-      const newRawRefreshToken = crypto.randomBytes(64).toString("hex");
-      const newHashedRefreshToken = hashToken(newRawRefreshToken);
-
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          refresh_token: newHashedRefreshToken,
-          refresh_token_expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        },
-      });
-
-      const newAccessToken = jwt.sign(
-        {
-          sub: user.id,
-          email: user.email,
-          role: user.role,
-          org_id: user.org_id,
-          company: user.organization?.name || null,
-        },
-        JWT_SECRET,
-        { expiresIn: "15m" }
-      );
-
-      reply.setCookie("refreshToken", newRawRefreshToken, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "strict",
-        path: "/",
-        maxAge: 30 * 24 * 60 * 60,
-      });
-
-      await auditLog(user.id, "refresh_success", {});
-      reply.send({ token: newAccessToken });
     } catch (err) {
-      console.error("Refresh error:", err);
-      reply.code(500).send({ error: "AUTH_REFRESH_ERROR" });
+      if (err.code) return reply.code(err.status || 400).send({ error: err.code });
+      return reply.code(500).send({ error: "AUTH_LOGIN_ERROR" });
     }
   });
 
-  // PASSWORD RESET
+  // REFRESH TOKEN
+  server.post("/refresh", async (req, reply) => {
+    try {
+      const rawRefreshToken = req.cookies?.refreshToken;
+      const result = await refreshTokens(rawRefreshToken);
+      setRefreshCookie(reply, result.rawRefreshToken);
+      return reply.send({ token: result.token });
+    } catch (err) {
+      if (err.code) return reply.code(err.status || 400).send({ error: err.code });
+      console.error("Refresh error:", err);
+      return reply.code(500).send({ error: "AUTH_REFRESH_ERROR" });
+    }
+  });
+
+  // FORGOT PASSWORD
   server.post("/forgot-password", async (req, reply) => {
     try {
       const { email } = req.body;
@@ -370,7 +116,7 @@ export async function authRoutes(server) {
         return reply.send({ success: true, message: "If account exists, reset link sent" });
       }
 
-      const resetToken = crypto.randomBytes(32).toString("hex");
+      const resetToken = generateRandomToken(32);
       const hashedResetToken = hashToken(resetToken);
 
       await prisma.user.update({
@@ -382,13 +128,14 @@ export async function authRoutes(server) {
       });
 
       await auditLog(user.id, "password_reset_requested", {});
-      reply.send({ success: true, message: "If account exists, reset link sent" });
+      return reply.send({ success: true, message: "If account exists, reset link sent" });
     } catch (err) {
       console.error("Forgot password error:", err);
-      reply.code(500).send({ error: "AUTH_FORGOT_PASSWORD_ERROR" });
+      return reply.code(500).send({ error: "AUTH_FORGOT_PASSWORD_ERROR" });
     }
   });
 
+  // RESET PASSWORD
   server.post("/reset-password", async (req, reply) => {
     try {
       const { token, newPassword } = req.body;
@@ -406,10 +153,10 @@ export async function authRoutes(server) {
       });
 
       await auditLog(user.id, "password_reset_success", {});
-      reply.send({ success: true });
+      return reply.send({ success: true });
     } catch (err) {
       console.error("Reset password error:", err);
-      reply.code(500).send({ error: "AUTH_RESET_PASSWORD_ERROR" });
+      return reply.code(500).send({ error: "AUTH_RESET_PASSWORD_ERROR" });
     }
   });
 
@@ -425,7 +172,7 @@ export async function authRoutes(server) {
       });
       if (!user) return reply.code(404).send({ error: "AUTH_USER_NOT_FOUND" });
 
-      reply.send({
+      return reply.send({
         tier: user.subscription,
         active: user.subscription !== "free",
         role: user.role,
@@ -433,49 +180,32 @@ export async function authRoutes(server) {
       });
     } catch (err) {
       console.error("Subscription error:", err);
-      reply.code(500).send({ error: "AUTH_SUBSCRIPTION_ERROR" });
+      return reply.code(500).send({ error: "AUTH_SUBSCRIPTION_ERROR" });
     }
   });
 
   // STRIPE CHECKOUT
   server.post("/stripe/checkout", { preHandler: requireAuth }, async (req, reply) => {
     try {
-      const { tier } = req.body;
-      if (!["pro", "enterprise"].includes(tier)) {
-        return reply.code(400).send({ error: "AUTH_INVALID_TIER" });
-      }
-
-      const priceId =
-        tier === "pro" ? process.env.STRIPE_PRO_PRICE_ID : process.env.STRIPE_ENTERPRISE_PRICE_ID;
-
-      if (!priceId) {
-        return reply.code(400).send({ error: "AUTH_INVALID_TIER_CONFIG" });
-      }
-
-      const session = await stripe.checkout.sessions.create({
-        mode: "subscription",
-        payment_method_types: ["card"],
-        line_items: [{ price: priceId, quantity: 1 }],
-        customer_email: req.user.email,
-        success_url: `${FRONTEND_URL}/subscription?success=1`,
-        cancel_url: `${FRONTEND_URL}/subscription`,
-        metadata: { tier },
-      });
-
-      await auditLog(req.user.id, "stripe_checkout", { tier });
-      reply.send({ sessionId: session.id });
+      const sessionId = await createStripeCheckoutSession(
+        req.user.id,
+        req.user.email,
+        req.body?.tier
+      );
+      return reply.send({ sessionId });
     } catch (err) {
+      if (err.code) return reply.code(err.status || 400).send({ error: err.code });
       console.error("Stripe checkout error:", err);
-      reply.code(500).send({ error: "AUTH_STRIPE_ERROR" });
+      return reply.code(500).send({ error: "AUTH_STRIPE_ERROR" });
     }
   });
 
-  // OAUTH / EXTERNAL LOGIN
+  // OAUTH CALLBACKS
   server.get("/oauth/:provider/callback", async (req, reply) => {
-    reply.send({ success: true, provider: req.params.provider });
+    return reply.send({ success: true, provider: req.params.provider });
   });
 
   server.post("/external-login", async (req, reply) => {
-    reply.send({ success: true, provider: "external" });
+    return reply.send({ success: true, provider: "external" });
   });
 }

@@ -18,6 +18,7 @@ import Dashboard from "./components/Dashboard.jsx";
 import ExecutionList from "./components/ExecutionList.jsx";
 import ExecutionDetail from "./components/ExecutionDetail.jsx";
 import Subscription from "./components/Subscription.jsx";
+import { PricingGrid } from "./components/PricingGrid.jsx";
 import Goals from "./components/Goals.jsx";
 import Streams from "./components/Streams.jsx";
 import Login from "./components/Login.jsx";
@@ -32,7 +33,6 @@ import AgentsDirectory from "./components/AgentsDirectory.jsx";
 // Agent Components
 import { CrossBorderCompliance } from "./components/CrossBorderCompliance";
 import { SupportOps } from "./components/Support0ps.jsx";
-
 
 // Logic & Providers
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
@@ -76,7 +76,6 @@ export default function App() {
             }}
           />
 
-          {/* AnimatePresence for single-child route transitions */}
           <AnimatePresence mode="sync">
             <motion.div
               key={location.pathname}
@@ -94,13 +93,16 @@ export default function App() {
                 <Route path="/contact" element={<ContactPage />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/pricing" element={<PricingGrid />} />
                 <Route path="/subscription" element={<Subscription />} />
                 <Route path="/tools" element={<ToolsIndex />} />
                 <Route path="/agents" element={<AgentsDirectory />} />
 
-                {/* SPECIALISED AGENTS ROUTES */}
+                {/* DIRECT COMPLIANCE DASHBOARD ACCESS (NO LOGIN REQUIRED) */}
                 <Route path="/compliance" element={<CrossBorderCompliance />} />
                 <Route path="/agents/cross-border-compliance" element={<CrossBorderCompliance />} />
+
+                {/* OTHER SPECIALISED AGENTS */}
                 <Route path="/support-ops-ai" element={<SupportOps />} />
                 <Route path="/agents/support-ops" element={<SupportOps />} />
 
@@ -176,7 +178,6 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
 
-          {/* Separate AnimatePresence for modals */}
           <AnimatePresence>
             {selectedExecutionId && (
               <ExecutionLogsStreamModal

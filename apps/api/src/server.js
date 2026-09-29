@@ -4,6 +4,10 @@ import websocket from "@fastify/websocket";
 import fastifyPostgres from "@fastify/postgres";
 import fastifyJwt from "@fastify/jwt";
 import cookie from "@fastify/cookie";
+
+// Import validated env first
+import { env } from "./config/env.js";
+
 import { webhooksRoutes } from "./routes/webhooks.js";
 import { authRoutes } from "./routes/auth.js";
 import { goalsRoutes } from "./routes/goals.js";
@@ -11,20 +15,19 @@ import { adminRoutes } from "./routes/admin.js";
 import { executionsRoutes } from "./routes/executions.js";
 import { auditRoutes } from "./routes/audit.js";
 import { billingRoutes } from "./routes/billing.js";
-import { paymentsRoutes } from "./routes/payments.js";   // ✅ make sure filename matches
+import { paymentsRoutes } from "./routes/payments.js";
 import { streamRoutes } from "./routes/stream.js";
 import { stripeRoutes } from "./routes/stripe.js";
 
 const app = Fastify({
   logger: true,
-  bodyLimit: 1048576, // 1MB
+  bodyLimit: 1048576,
 });
 
 /* =========================
    PLUGINS
 ========================= */
 
-// ✅ Register CORS FIRST
 await app.register(cors, {
   origin: [
     "https://nexusthecore.com",
@@ -38,29 +41,29 @@ await app.register(cors, {
 });
 
 await app.register(cookie, {
-  secret: process.env.COOKIE_SECRET || "cookie_secret",
+  secret: env.COOKIE_SECRET,
   parseOptions: {},
 });
 
 await app.register(websocket);
 
 await app.register(fastifyPostgres, {
-  connectionString: process.env.DATABASE_URL,
+  connectionString: env.DATABASE_URL,
   ssl:
-    process.env.NODE_ENV === "production"
+    env.NODE_ENV === "production"
       ? {
-          ca: process.env.PG_CA_CERT,
-          rejectUnauthorized: false,
-        }
+        ca: env.PG_CA_CERT,
+        rejectUnauthorized: false,
+      }
       : false,
 });
 
 await app.register(fastifyJwt, {
-  secret: process.env.JWT_SECRET || "super-secret-key",
+  secret: env.JWT_SECRET,
 });
 
 /* =========================
-   ROUTES
+   ROUTES & CRON PING
 ========================= */
 app.register(authRoutes, { prefix: "/api/auth" });
 app.register(goalsRoutes, { prefix: "/api/goals" });
@@ -68,20 +71,44 @@ app.register(adminRoutes, { prefix: "/api/admin" });
 app.register(executionsRoutes, { prefix: "/api/executions" });
 app.register(auditRoutes, { prefix: "/api/audit" });
 app.register(billingRoutes, { prefix: "/api/billing" });
-app.register(paymentsRoutes, { prefix: "/api/payments" }); // ✅ ensures /api/payments/create-checkout-session works
+app.register(paymentsRoutes, { prefix: "/api/payments" });
 app.register(streamRoutes, { prefix: "/api/stream" });
 app.register(stripeRoutes, { prefix: "/api/stripe" });
 app.register(webhooksRoutes);
 
 app.get("/api/health", async () => {
   const client = await app.pg.connect();
-  const result = await client.query("SELECT 1");
-  client.release();
-  return { status: "ok", db: result.rowCount === 1 };
+  try {
+    const result = await client.query("SELECT 1");
+    return { status: "ok", db: result.rowCount === 1 };
+  } finally {
+    client.release();
+  }
+});
+
+// ✅ Cron Keep-Alive Route using validated PING_SECRET_KEY
+app.get("/api/cron/keep-alive", async (request, reply) => {
+  const secret = request.headers["x-cron-secret"] || request.query.secret;
+
+  if (secret !== env.PING_SECRET_KEY) {
+    return reply.code(401).send({ error: "UNAUTHORIZED_CRON_REQUEST" });
+  }
+
+  try {
+    const client = await app.pg.connect();
+    await client.query("SELECT 1");
+    client.release();
+
+    app.log.info(" Cron ping executed successfully");
+    return reply.send({ status: "success", timestamp: new Date().toISOString() });
+  } catch (err) {
+    app.log.error({ err }, "Cron ping failed");
+    return reply.code(500).send({ error: "DATABASE_PING_FAILED" });
+  }
 });
 
 /* =========================
-   ERROR HANDLER
+   ERROR HANDLER & LISTEN
 ========================= */
 app.setErrorHandler((error, request, reply) => {
   request.log.error(error);
@@ -90,11 +117,6 @@ app.setErrorHandler((error, request, reply) => {
   });
 });
 
-app.ready().then(() => {
-  console.log(app.printRoutes());
-});
-
-const PORT = process.env.PORT || 3001;
-app.listen({ port: PORT, host: "0.0.0.0" }).then(() => {
-  console.log(`🚀 API running on port ${PORT}`);
+app.listen({ port: env.PORT, host: "0.0.0.0" }).then(() => {
+  console.log(`🚀 API running on port ${env.PORT} in ${env.NODE_ENV} mode`);
 });
