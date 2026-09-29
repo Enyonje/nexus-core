@@ -4,6 +4,8 @@ import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import { useRef, useEffect, useState } from 'react';
 import Lenis from 'lenis';
 
+const NEXUS_CORE_AUTH_URL = 'https://nexusthecore.com/login'; // Replace with your actual auth route
+
 const workflowSteps = [
     {
         id: '01',
@@ -48,6 +50,7 @@ const metrics = [
 const pricing = [
     {
         name: 'Starter',
+        planKey: 'starter',
         price: '$49',
         period: '/mo',
         description: 'Perfect for local trading hubs scaling regional logistics lanes.',
@@ -62,6 +65,7 @@ const pricing = [
     },
     {
         name: 'Growth',
+        planKey: 'growth',
         price: '$299',
         period: '/mo',
         description: 'Designed for active continental freight forwarders and distribution centers.',
@@ -77,6 +81,7 @@ const pricing = [
     },
     {
         name: 'Enterprise',
+        planKey: 'enterprise',
         price: 'Custom',
         period: '',
         description: 'Custom compliance networks for global logistics enterprises and state agencies.',
@@ -119,10 +124,16 @@ export function CrossBorderCompliance() {
     const heroY = useTransform(scrollYProgress, [0, 0.3], [0, 60]);
     const heroOpacity = useTransform(scrollYProgress, [0, 0.25], [1, 0]);
 
+    // Helper function to build direct Nexus Core auth redirect link
+    const getCheckoutUrl = (planKey) => {
+        const redirectPath = encodeURIComponent(`/checkout?plan=${planKey}&product=cross-border-compliance`);
+        return `${NEXUS_CORE_AUTH_URL}?redirect=${redirectPath}&plan=${planKey}`;
+    };
+
     return (
         <div ref={containerRef} className="relative isolate min-h-screen bg-[#020617] text-slate-100 selection:bg-blue-500/30 font-sans antialiased overflow-x-hidden">
 
-            {/* FLOATING HEADER NAVBAR WITH ISOLATED STACKING */}
+            {/* FLOATING HEADER NAVBAR */}
             <header className="fixed top-4 inset-x-0 z-50 px-4 max-w-7xl mx-auto pointer-events-none">
                 <nav className="pointer-events-auto backdrop-blur-md bg-slate-950/90 border border-white/10 rounded-2xl px-6 py-3.5 flex justify-between items-center shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
                     <div className="flex items-center gap-2.5">
@@ -138,7 +149,10 @@ export function CrossBorderCompliance() {
                         <a href="#pricing" className="hover:text-white transition-colors">Pricing Ecosystem</a>
                     </div>
 
-                    <a href="/dashboard" className="bg-blue-600 hover:bg-blue-500 active:scale-95 transition text-[11px] font-black uppercase tracking-widest px-5 py-2.5 rounded-xl border border-blue-400/30 shadow-[0_0_20px_rgba(37,99,235,0.25)] text-white">
+                    <a
+                        href={`${NEXUS_CORE_AUTH_URL}?product=cross-border-compliance`}
+                        className="bg-blue-600 hover:bg-blue-500 active:scale-95 transition text-[11px] font-black uppercase tracking-widest px-5 py-2.5 rounded-xl border border-blue-400/30 shadow-[0_0_20px_rgba(37,99,235,0.25)] text-white"
+                    >
                         Open Console
                     </a>
                 </nav>
@@ -195,7 +209,10 @@ export function CrossBorderCompliance() {
                             transition={{ delay: 0.3 }}
                             className="flex flex-col sm:flex-row gap-4"
                         >
-                            <a href="/dashboard" className="bg-blue-600 hover:bg-blue-500 text-center active:scale-95 transition duration-200 px-8 py-4 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-600/20 border border-blue-500/40 text-white">
+                            <a
+                                href={getCheckoutUrl('growth')}
+                                className="bg-blue-600 hover:bg-blue-500 text-center active:scale-95 transition duration-200 px-8 py-4 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-600/20 border border-blue-500/40 text-white"
+                            >
                                 Initialize System Console
                             </a>
                             <a href="#workflow" className="border text-center border-white/10 hover:border-white/20 hover:bg-white/5 active:scale-95 transition duration-200 px-8 py-4 rounded-xl text-xs font-black uppercase tracking-widest text-slate-300">
@@ -291,7 +308,7 @@ export function CrossBorderCompliance() {
                 </motion.div>
             </section>
 
-            {/* METRICS */}
+            {/* METRICS SECTION */}
             <section id="features" className="py-24 px-4 bg-[#040b19] border-b border-white/5 scroll-mt-28">
                 <div className="max-w-7xl mx-auto">
                     <div className="grid md:grid-cols-3 gap-6">
@@ -319,7 +336,7 @@ export function CrossBorderCompliance() {
                 </div>
             </section>
 
-            {/* WORKFLOW MATRIX */}
+            {/* WORKFLOW MATRIX SECTION */}
             <section id="workflow" className="py-32 px-4 max-w-7xl mx-auto scroll-mt-28">
                 <div className="text-center max-w-xl mx-auto mb-20">
                     <p className="text-[10px] uppercase font-black tracking-[0.25em] text-blue-500 mb-2">Deep-Dive Chronology</p>
@@ -364,7 +381,7 @@ export function CrossBorderCompliance() {
                 </div>
             </section>
 
-            {/* PRICING */}
+            {/* PRICING SECTION */}
             <section id="pricing" className="py-32 px-4 bg-[#040b19] border-t border-white/5 scroll-mt-28">
                 <div className="max-w-7xl mx-auto">
                     <div className="text-center max-w-xl mx-auto mb-24">
@@ -410,7 +427,7 @@ export function CrossBorderCompliance() {
                                 </div>
 
                                 <a
-                                    href="/dashboard"
+                                    href={getCheckoutUrl(tier.planKey)}
                                     className={`w-full py-3.5 rounded-xl text-xs font-black uppercase tracking-widest text-center transition duration-200 block ${tier.popular
                                         ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20'
                                         : 'bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10'
