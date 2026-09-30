@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 const AuthContext = createContext(null);
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
-export function AuthProvider({ children }) {
+export default function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [subscription, setSubscription] = useState("free");
   const [role, setRole] = useState("user");
@@ -145,6 +145,6 @@ export function AuthProvider({ children }) {
   );
 }
 
-export function useAuth() {
+export function AuthProvider() {
   return useContext(AuthContext);
 }

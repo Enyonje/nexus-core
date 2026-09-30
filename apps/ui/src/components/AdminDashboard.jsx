@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
-import { useAuth } from "../context/AuthProvider";
+import AuthProvider from "../context/AuthProvider";
 import { formatDate } from "../lib/utils";
 
 export default function AdminDashboard() {
-  const { role, initializing } = useAuth();
+  const { role, initializing } = AuthProvider();
   const [usage, setUsage] = useState(null);
   const [executions, setExecutions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -40,7 +40,7 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-12">
-        
+
         {/* Header */}
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-white/5 pb-10">
           <div>
@@ -68,7 +68,7 @@ export default function AdminDashboard() {
                 {usage.users.length} Total Intelligence Units
               </span>
             </div>
-            
+
             <div className="bg-slate-900/40 border border-white/5 rounded-3xl overflow-hidden backdrop-blur-md">
               <table className="w-full text-left border-collapse">
                 <thead className="bg-white/[0.02] border-b border-white/5">
@@ -129,7 +129,7 @@ export default function AdminDashboard() {
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-6 mt-4 md:mt-0 w-full md:w-auto">
                     <StatusBadge status={e.status} />
                     <Link

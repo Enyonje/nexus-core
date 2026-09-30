@@ -1,5 +1,5 @@
 // routes/stream.js
-import { requireAuth } from "./auth.js";
+import { requireAuth } from "../security/authMiddleware.js";
 import { db } from "../db/db.js"; // your Postgres pool/connection
 
 // Local map of executionId -> Set of SSE reply objects

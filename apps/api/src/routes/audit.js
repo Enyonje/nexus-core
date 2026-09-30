@@ -1,4 +1,4 @@
-import { requireAuth } from "./auth.js";
+import { requireAuth } from "../security/authMiddleware.js";
 
 /**
  * Audit Routes

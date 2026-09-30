@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
-import { useAuth } from "../context/AuthProvider";
+import AuthProvider from "../context/AuthProvider";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -11,7 +11,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   const { addToast } = useToast();
-  const { login } = useAuth();
+  const { login } = AuthProvider();
 
   async function handleLogin(e) {
     e.preventDefault();

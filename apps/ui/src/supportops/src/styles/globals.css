@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body, #root { height: 100%; }
+body { @apply bg-ink text-white antialiased; }
+.card { @apply bg-panel border border-border rounded-xl shadow-soft; }
+.section-title { @apply text-xl font-semibold tracking-tight; }
+.subtle { @apply text-sm text-gray-400; }

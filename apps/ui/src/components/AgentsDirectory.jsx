@@ -55,7 +55,7 @@ export default function AgentsDirectory() {
             accentGlow: "from-blue-500/20 via-indigo-500/10 to-transparent",
             badgeColor: "from-blue-400 to-indigo-500",
             icon: Bot,
-            path: "/agents/support-ops-ai",
+            path: "/agents/support-ops",
             isLive: true,
             desc: "Autonomous triage, self-healing integration setups, and SLA escalation tracking powered by internal engineering context.",
             metrics: { latency: "42ms", throughput: "3.1k/s", accuracy: "98.5%" },

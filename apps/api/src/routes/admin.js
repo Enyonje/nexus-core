@@ -2,7 +2,7 @@
 import { db } from "../db/db.js";
 import { runExecution } from "../execution/runner.js";
 import rateLimit from "@fastify/rate-limit";
-import { requireAuth } from "./auth.js";
+import { requireAuth } from "../security/authMiddleware.js";
 import { v4 as uuidv4 } from "uuid";
 
 /**

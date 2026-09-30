@@ -1,7 +1,7 @@
 // src/routes/executions.js
 import { v4 as uuidv4 } from "uuid";
 import { runExecution } from "../execution/runner.js";
-import { requireAuth } from "./auth.js";
+import { requireAuth } from "../security/authMiddleware.js";
 
 /* ===============================
     EVENT BUS (SSE PUB/SUB)

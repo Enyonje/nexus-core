@@ -216,3 +216,93 @@ model AdminAudit {
 
   admin User @relation(fields: [admin_id], references: [id], onDelete: Cascade)
 }
+
+model CargoDeclaration {
+  id              String         @id @default(uuid())
+  importerName    String
+  importerTaxId   String         // e.g. KRA PIN "KE-0519283741"
+  exporterName    String
+  originCountry   String         @default("UG")
+  portOfDischarge String         @default("Nairobi ICD")
+  incoterm        String         @default("CIF")
+  grossWeightKg   Float
+  totalUnits      Int
+  cifValueUsd     Float
+  exchangeRateKe  Float          @default(130.0)
+  
+  pipelineStage   PipelineStage  @default(IDLE)
+  
+  // Relations
+  items           CargoItem[]
+  auditFlags      AuditFlag[]
+  assessment      DutyAssessment?
+  payment         MpesaTransaction?
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+model CargoItem {
+  id                 String           @id @default(uuid())
+  cargoDeclarationId String
+  cargoDeclaration   CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
+  
+  description        String
+  hsCode             String
+  totalPriceUsd      Float
+  cetRate            Float            // Tariff rate (e.g. 0.25 for 25%)
+
+  createdAt          DateTime         @default(now())
+}
+
+model AuditFlag {
+  id                 String              @id @default(uuid())
+  cargoDeclarationId String
+  cargoDeclaration   CargoDeclaration    @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
+  
+  severity           DiscrepancySeverity @default(WARNING)
+  field              String              // e.g. "grossWeightKg"
+  message            String
+
+  createdAt          DateTime            @default(now())
+}
+
+model DutyAssessment {
+  id                 String           @id @default(uuid())
+  cargoDeclarationId String           @unique
+  cargoDeclaration   CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
+  
+  cifValueUsd        Float
+  cifValueKes        Float
+  importDutyKes      Float
+  idfKes             Float
+  rdlKes             Float
+  vatKes             Float
+  totalCustomsTaxKes Float
+
+  // Generated iCMS IM4 Declaration payload string
+  generatedXml       String?          @db.Text
+
+  createdAt          DateTime         @default(now())
+}
+
+model MpesaTransaction {
+  id                 String           @id @default(uuid())
+  cargoDeclarationId String           @unique
+  cargoDeclaration   CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
+
+  phoneNumber        String           // Format: 2547XXXXXXXX
+  amount             Float
+  accountReference   String           @default("KRA-DUTY-DECL")
+  
+  // Daraja STK Push Tracker Keys
+  checkoutRequestId  String?          @unique
+  merchantRequestId  String?
+  mpesaReceiptNumber String?          @unique
+  
+  status             PaymentStatus    @default(PENDING)
+  resultDesc         String?
+
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+}

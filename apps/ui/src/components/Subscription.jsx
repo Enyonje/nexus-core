@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { apiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useAuth } from "../context/AuthProvider.jsx"; // optional, if you want to sync context
+import AuthProvider from "../context/AuthProvider.jsx"; // optional, if you want to sync context
 
 export default function Subscription() {
   const [tier, setTier] = useState("free");
@@ -13,7 +13,7 @@ export default function Subscription() {
   const { addToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
-  const auth = useAuth?.(); // optional: useAuth should provide a way to refresh subscription
+  const auth = AuthProvider(); // optional: useAuth should provide a way to refresh subscription
 
   const loadSubscription = useCallback(async () => {
     setLoading(true);

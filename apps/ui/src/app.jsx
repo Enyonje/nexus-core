@@ -31,13 +31,13 @@ import AuditLogAnalyzer from "./components/AuditLogAnalyzer";
 import AgentsDirectory from "./components/AgentsDirectory.jsx";
 
 // Agent Components
-import { CrossBorderCompliance } from "./components/CrossBorderCompliance";
-import { SupportOps } from "./components/Support0ps.jsx";
+import CrossBorderCompliance from "./components/CrossBorderCompliance.jsx";
+import SupportOps from "./components/Support0ps.jsx";
 
 // Logic & Providers
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { lightTheme, darkTheme } from "./theme";
-import { AuthProvider } from "./context/AuthProvider.jsx";
+import AuthProvider from "./context/AuthProvider.jsx";   // ✅ default export, not destructured
 import { ToastProvider } from "./components/ToastContext.jsx";
 
 export default function App() {
@@ -76,7 +76,8 @@ export default function App() {
             }}
           />
 
-          <AnimatePresence mode="sync">
+          {/* AnimatePresence for route transitions */}
+          <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
               initial={{ opacity: 0, y: 4 }}
@@ -98,7 +99,7 @@ export default function App() {
                 <Route path="/tools" element={<ToolsIndex />} />
                 <Route path="/agents" element={<AgentsDirectory />} />
 
-                {/* DIRECT COMPLIANCE DASHBOARD ACCESS (NO LOGIN REQUIRED) */}
+                {/* DIRECT COMPLIANCE DASHBOARD ACCESS */}
                 <Route path="/compliance" element={<CrossBorderCompliance />} />
                 <Route path="/agents/cross-border-compliance" element={<CrossBorderCompliance />} />
 
@@ -178,6 +179,7 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
 
+          {/* AnimatePresence for overlays/modals */}
           <AnimatePresence>
             {selectedExecutionId && (
               <ExecutionLogsStreamModal

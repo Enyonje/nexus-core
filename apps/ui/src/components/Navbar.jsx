@@ -1,8 +1,9 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { useAuth } from "../context/AuthProvider";
+import useAuth from "../hooks/useAuth"; // ✅ import the hook
 
 export default function Navbar({ onToggleTheme, isDark, theme }) {
+  // ✅ use the hook to access auth state
   const { user, subscription, logout } = useAuth();
 
   const styles = {
@@ -43,18 +44,14 @@ export default function Navbar({ onToggleTheme, isDark, theme }) {
       <div style={styles.actions}>
         {user ? (
           <>
-            {/* Always available when logged in */}
             <Link to="/dashboard" style={styles.button}>Dashboard</Link>
 
-            {/* Pro tier */}
             {subscription === "pro" && (
               <Link to="/executions" style={styles.button}>Executions</Link>
             )}
 
-            {/* Enterprise tier */}
             {subscription === "enterprise" && (
               <>
-                {/* These should point to executions list, not bare /streams or /audit */}
                 <Link to="/executions" style={styles.button}>Streams</Link>
                 <Link to="/executions" style={styles.button}>Audit</Link>
               </>

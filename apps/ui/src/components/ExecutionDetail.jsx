@@ -4,14 +4,14 @@ import { useParams, useNavigate } from "react-router-dom";
 import { apiFetch, safeApiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
 import LoadingSpinner from "./LoadingSpinner.jsx";
-import { useAuth } from "../context/AuthProvider.jsx";
+import AuthProvider from "../context/AuthProvider.jsx";
 import SubscriptionGuard from "./SubscriptionGuard";
 
 function ExecutionDetailContent() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { addToast } = useToast();
-  const { initializing } = useAuth();
+  const { initializing } = AuthProvider();
 
   const [execution, setExecution] = useState(null);
   const [steps, setSteps] = useState([]);

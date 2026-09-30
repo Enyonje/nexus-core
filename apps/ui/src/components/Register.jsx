@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
-import { useAuth } from "../context/AuthProvider";
+import AuthProvider from "../context/AuthProvider";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -12,44 +12,44 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
 
   const { addToast } = useToast();
-  const { login } = useAuth();
+  const { login } = AuthProvider();
   const navigate = useNavigate();
 
   async function handleRegister(e) {
-  e.preventDefault();
-  setLoading(true);
+    e.preventDefault();
+    setLoading(true);
 
-  try {
-    const res = await apiFetch("/auth/register", {
-      method: "POST",
-      body: JSON.stringify({ email, accessKey: password, organization }), // <-- FIXED
-    });
+    try {
+      const res = await apiFetch("/auth/register", {
+        method: "POST",
+        body: JSON.stringify({ email, accessKey: password, organization }), // <-- FIXED
+      });
 
-    if (!res?.token || !res?.user) {
-      throw new Error("Invalid register response");
+      if (!res?.token || !res?.user) {
+        throw new Error("Invalid register response");
+      }
+
+      localStorage.setItem("authToken", res.token);
+      localStorage.setItem("user", JSON.stringify(res.user));
+
+      login({
+        user: res.user,
+        token: res.token,
+      });
+
+      addToast("Welcome to the Swarm! 🎉", "success");
+      navigate("/");
+    } catch (err) {
+      console.error("Register error:", err);
+      addToast(err.message || "Registration failed", "error");
+    } finally {
+      setLoading(false);
     }
-
-    localStorage.setItem("authToken", res.token);
-    localStorage.setItem("user", JSON.stringify(res.user));
-
-    login({
-      user: res.user,
-      token: res.token,
-    });
-
-    addToast("Welcome to the Swarm! 🎉", "success");
-    navigate("/");
-  } catch (err) {
-    console.error("Register error:", err);
-    addToast(err.message || "Registration failed", "error");
-  } finally {
-    setLoading(false);
   }
-}
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#020617] relative overflow-hidden px-4">
-      
+
       {/* Dynamic Background Glows for "Borderless" look */}
       <div className="absolute top-1/4 -left-10 w-72 h-72 bg-blue-600/20 blur-[100px] rounded-full" />
       <div className="absolute bottom-1/4 -right-10 w-72 h-72 bg-purple-600/20 blur-[100px] rounded-full" />
@@ -126,13 +126,13 @@ export default function Register() {
                 >
                   {showPassword ? (
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                     </svg>
                   ) : (
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-5.523 0-10-4.477-10-10 0-1.05.162-2.06.462-3.002m3.05-3.05A9.956 9.956 0 0112 3c5.523 0 10 4.477 10 10 0 1.05-.162 2.06-.462 3.002m-3.05 3.05A9.956 9.956 0 0112 21c-5.523 0-10-4.477-10-10" />
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-5.523 0-10-4.477-10-10 0-1.05.162-2.06.462-3.002m3.05-3.05A9.956 9.956 0 0112 3c5.523 0 10 4.477 10 10 0 1.05-.162 2.06-.462 3.002m-3.05 3.05A9.956 9.956 0 0112 21c-5.523 0-10-4.477-10-10" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
                     </svg>
                   )}
                 </button>

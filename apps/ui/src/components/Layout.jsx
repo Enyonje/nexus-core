@@ -1,10 +1,10 @@
 import React from "react";
 import { NavLink, useLocation, Outlet } from "react-router-dom";
-import { useAuth } from "../context/AuthProvider";
+import AuthProvider from "../context/AuthProvider";
 
 export default function Layout({ theme }) {
   const location = useLocation();
-  const { subscription, loading } = useAuth();
+  const { subscription, loading } = AuthProvider();
 
   if (loading) {
     return (
@@ -40,10 +40,9 @@ export default function Layout({ theme }) {
             key={to}
             to={to}
             className={({ isActive }) =>
-              `block px-3 py-2 rounded text-sm font-medium ${
-                isActive
-                  ? "bg-blue-600 text-white"
-                  : "hover:bg-gray-200 dark:hover:bg-gray-700"
+              `block px-3 py-2 rounded text-sm font-medium ${isActive
+                ? "bg-blue-600 text-white"
+                : "hover:bg-gray-200 dark:hover:bg-gray-700"
               }`
             }
             aria-current={location.pathname.startsWith(to) ? "page" : undefined}
