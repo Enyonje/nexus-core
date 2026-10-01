@@ -17,6 +17,7 @@
     "@stripe/react-stripe-js": "^5.6.0",
     "@stripe/stripe-js": "^8.7.0",
     "@tailwindcss/vite": "^4.2.0",
+    "canvas-confetti": "^1.9.4",
     "fastify": "^5.0.0",
     "framer-motion": "^12.34.1",
     "jspdf": "^4.2.1",

@@ -7,7 +7,7 @@ const SuccessPage = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Trigger celebration confetti
+    // Fire confetti burst on mount
     confetti({
       particleCount: 150,
       spread: 70,
