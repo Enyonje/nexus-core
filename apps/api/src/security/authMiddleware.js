@@ -8,7 +8,7 @@ if (!JWT_SECRET || JWT_SECRET.length < 32) {
   throw new Error("JWT_SECRET must be set and at least 32 characters long");
 }
 
-export async function requireAuth(req, reply, done) {
+export async function requireAuth(req, reply) {
   try {
     // Extract token from Authorization header, cookie, or query
     const token = req.headers.authorization?.startsWith("Bearer ")
@@ -44,8 +44,6 @@ export async function requireAuth(req, reply, done) {
         req.user.role = dbUser.role;
       }
     }
-
-    done();
   } catch (err) {
     req.log?.error("Auth verification failed:", err);
     return reply.code(401).send({ error: "AUTH_INVALID_TOKEN" });
@@ -53,10 +51,9 @@ export async function requireAuth(req, reply, done) {
 }
 
 export function requireRole(role) {
-  return (req, reply, done) => {
+  return async (req, reply) => {
     if (!req.user || req.user.role !== role) {
       return reply.code(403).send({ error: "AUTH_FORBIDDEN_ROLE" });
     }
-    done();
   };
 }
