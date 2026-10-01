@@ -1,10 +1,12 @@
-import { createContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 export const AuthContext = createContext(null);
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
-function AuthProvider({ children }) {
+// Normalize API URL to strip any trailing slash
+const BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:3001").replace(/\/$/, "");
+
+export function AuthProvider({ children = null } = {}) {
   const [user, setUser] = useState(null);
   const [subscription, setSubscription] = useState("free");
   const [role, setRole] = useState("user");
@@ -12,8 +14,12 @@ function AuthProvider({ children }) {
   const [initializing, setInitializing] = useState(true);
   const navigate = useNavigate();
 
+  /* =========================
+      INIT SESSION & HEALTH PING
+  ========================= */
   useEffect(() => {
-    fetch(`${API_URL}/health`).catch(() => console.log("Backend waking up..."));
+    // Fixed: hit /api/health to match backend route
+    fetch(`${BASE_URL}/api/health`).catch(() => console.log("Backend waking up..."));
 
     const token = localStorage.getItem("authToken");
     if (token) {
@@ -24,11 +30,16 @@ function AuthProvider({ children }) {
     }
   }, []);
 
+  /* =========================
+      REFRESH SESSION
+  ========================= */
   async function refreshSession(token) {
     try {
-      const res = await fetch(`${API_URL}/auth/subscription`, {
+      // Fixed: hit /api/auth/subscription to match backend route
+      const res = await fetch(`${BASE_URL}/api/auth/subscription`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
       if (!res.ok) throw new Error("Invalid session");
 
       const data = await res.json();
@@ -40,20 +51,45 @@ function AuthProvider({ children }) {
       });
       setSubscription(data.tier || "free");
       setRole(data.role || "user");
+
+      return { tier: data.tier || "free", role: data.role || "user" };
     } catch (err) {
       console.warn("Session refresh failed:", err.message);
       logout(false);
+      return { tier: "free", role: "user" };
     } finally {
       setLoading(false);
       setInitializing(false);
     }
   }
 
+  /* =========================
+      LOGIN
+  ========================= */
   async function login({ token }) {
     localStorage.setItem("authToken", token);
-    await refreshSession(token);
+    const { tier, role } = await refreshSession(token);
+    redirectByTier(tier, role);
   }
 
+  /* =========================
+      REDIRECT BY TIER / ROLE
+  ========================= */
+  function redirectByTier(tier, role) {
+    if (role === "admin") {
+      navigate("/admin", { replace: true });
+    } else if (tier === "enterprise") {
+      navigate("/streams", { replace: true });
+    } else if (tier === "pro") {
+      navigate("/executions", { replace: true });
+    } else {
+      navigate("/dashboard", { replace: true });
+    }
+  }
+
+  /* =========================
+      LOGOUT
+  ========================= */
   function logout(redirect = true) {
     localStorage.removeItem("authToken");
     setUser(null);
@@ -61,9 +97,13 @@ function AuthProvider({ children }) {
     setRole("user");
     setLoading(false);
     setInitializing(false);
+
     if (redirect) navigate("/", { replace: true });
   }
 
+  /* =========================
+      AUTHENTICATED FETCH HELPER
+  ========================= */
   async function authFetch(endpoint, options = {}) {
     const token = user?.token || localStorage.getItem("authToken");
     const headers = {
@@ -71,11 +111,22 @@ function AuthProvider({ children }) {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
-    const res = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
+
+    // Auto-prefix /api if component didn't provide it
+    const formattedEndpoint = endpoint.startsWith("/api")
+      ? endpoint
+      : `/api${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+
+    const res = await fetch(`${BASE_URL}${formattedEndpoint}`, {
+      ...options,
+      headers
+    });
+
     if (res.status === 401) {
       logout();
       throw new Error("Unauthorized");
     }
+
     return res;
   }
 
@@ -96,6 +147,17 @@ function AuthProvider({ children }) {
       {children}
     </AuthContext.Provider>
   );
+}
+
+/* =========================
+    EXPORTS & CUSTOM HOOK
+========================= */
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
 }
 
 export default AuthProvider;
