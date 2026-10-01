@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
 import { useAuth } from "../hooks/useAuth";
+
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -11,6 +12,11 @@ export default function Login() {
 
   const { addToast } = useToast();
   const { login } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Retrieve origin route or fallback to main application root
+  const from = location.state?.from || "/";
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -36,6 +42,9 @@ export default function Login() {
       });
 
       addToast("Welcome back to the Core 👋", "success");
+
+      // Redirect back to original target page
+      navigate(from, { replace: true });
     } catch (err) {
       console.error("Login error:", err);
       addToast(err.message || "Login failed", "error");
@@ -95,6 +104,7 @@ export default function Login() {
                 </label>
                 <Link
                   to="/forgot-password"
+                  state={{ from }}
                   className="text-[10px] font-bold text-blue-500 hover:text-blue-400 uppercase tracking-tighter transition-colors"
                 >
                   Reset Key?
@@ -156,6 +166,7 @@ export default function Login() {
           <div className="pt-2 text-center">
             <Link
               to="/register"
+              state={{ from }}
               className="text-xs font-semibold text-slate-500 hover:text-blue-400 transition-colors uppercase tracking-[0.15em]"
             >
               New to Nexus? <span className="text-blue-500 underline underline-offset-4 decoration-blue-500/30">Request Access</span>

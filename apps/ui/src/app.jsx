@@ -114,7 +114,7 @@ export default function App() {
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
 
-                {/* PROTECTED SECTOR */}
+                {/* PROTECTED SECTOR - Single Protected Wrapper */}
                 <Route
                   element={
                     <ProtectedRoute allowed={["free", "pro", "enterprise", "admin"]}>
@@ -124,46 +124,15 @@ export default function App() {
                 >
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/goals" element={<Goals />} />
-
-                  {/* EXECUTIONS */}
                   <Route
                     path="/executions"
-                    element={
-                      <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
-                        <ExecutionList setSelectedExecutionId={setSelectedExecutionId} />
-                      </ProtectedRoute>
-                    }
+                    element={<ExecutionList setSelectedExecutionId={setSelectedExecutionId} />}
                   />
-                  <Route
-                    path="/executions/:id"
-                    element={
-                      <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
-                        <ExecutionDetail />
-                      </ProtectedRoute>
-                    }
-                  />
+                  <Route path="/executions/:id" element={<ExecutionDetail />} />
+                  <Route path="/executions/:executionId/stream" element={<Streams />} />
+                  <Route path="/executions/:executionId/audit" element={<Audit />} />
 
-                  {/* STREAMS */}
-                  <Route
-                    path="/executions/:executionId/stream"
-                    element={
-                      <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
-                        <Streams />
-                      </ProtectedRoute>
-                    }
-                  />
-
-                  {/* AUDIT */}
-                  <Route
-                    path="/executions/:executionId/audit"
-                    element={
-                      <ProtectedRoute allowed={["pro", "enterprise", "admin"]}>
-                        <Audit />
-                      </ProtectedRoute>
-                    }
-                  />
-
-                  {/* ADMIN */}
+                  {/* ADMIN ONLY ROUTE */}
                   <Route
                     path="/admin"
                     element={

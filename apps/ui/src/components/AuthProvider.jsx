@@ -1,9 +1,8 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
 export const AuthContext = createContext(null);
 
-// Normalize API URL to strip any trailing slash
 const BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:3001").replace(/\/$/, "");
 
 export function AuthProvider({ children = null } = {}) {
@@ -14,11 +13,63 @@ export function AuthProvider({ children = null } = {}) {
   const [initializing, setInitializing] = useState(true);
   const navigate = useNavigate();
 
-  /* =========================
-      INIT SESSION & HEALTH PING
-  ========================= */
+  const logout = useCallback(
+    (redirect = true) => {
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("user");
+      setUser(null);
+      setSubscription("free");
+      setRole("user");
+      setLoading(false);
+      setInitializing(false);
+
+      if (redirect) {
+        navigate("/login", { replace: true });
+      }
+    },
+    [navigate]
+  );
+
+  const refreshSession = useCallback(
+    async (token) => {
+      try {
+        const storedUser = localStorage.getItem("user");
+        let parsedUser = storedUser ? JSON.parse(storedUser) : null;
+
+        if (!parsedUser) {
+          parsedUser = {
+            id: "beta-user",
+            email: "beta@nexus.com",
+            organization: "Nexus Core",
+          };
+        }
+
+        const activeUser = {
+          ...parsedUser,
+          token,
+        };
+
+        const activeTier = parsedUser?.subscription || "free";
+        const activeRole = parsedUser?.role || "user";
+
+        setUser(activeUser);
+        setSubscription(activeTier);
+        setRole(activeRole);
+
+        return { tier: activeTier, role: activeRole };
+      } catch (err) {
+        console.warn("Session refresh failed:", err.message);
+        logout(false);
+        return { tier: "free", role: "user" };
+      } finally {
+        setLoading(false);
+        setInitializing(false);
+      }
+    },
+    [logout]
+  );
+
   useEffect(() => {
-    // Fixed: hit /api/health to match backend route
     fetch(`${BASE_URL}/api/health`).catch(() => console.log("Backend waking up..."));
 
     const token = localStorage.getItem("authToken");
@@ -28,49 +79,14 @@ export function AuthProvider({ children = null } = {}) {
       setLoading(false);
       setInitializing(false);
     }
-  }, []);
+  }, [refreshSession]);
 
-  /* =========================
-     REFRESH SESSION (Beta mode: always free)
- ========================= */
-  async function refreshSession(token) {
-    try {
-      // In beta, skip hitting /api/auth/subscription
-      // Just treat every user as free tier
-      setUser({
-        token,
-        email: "beta@nexus.com",   // placeholder email
-        id: "beta-user",           // placeholder ID
-        createdAt: null,
-      });
-      setSubscription("free");
-      setRole("user");
-
-      return { tier: "free", role: "user" };
-    } catch (err) {
-      console.warn("Session refresh failed:", err.message);
-      logout(false);
-      return { tier: "free", role: "user" };
-    } finally {
-      setLoading(false);
-      setInitializing(false);
+  function redirectByTier(tier, role, targetLocation = null) {
+    if (targetLocation && targetLocation !== "/login" && targetLocation !== "/register") {
+      navigate(targetLocation, { replace: true });
+      return;
     }
-  }
 
-
-  /* =========================
-      LOGIN
-  ========================= */
-  async function login({ token }) {
-    localStorage.setItem("authToken", token);
-    const { tier, role } = await refreshSession(token);
-    redirectByTier(tier, role);
-  }
-
-  /* =========================
-      REDIRECT BY TIER / ROLE
-  ========================= */
-  function redirectByTier(tier, role) {
     if (role === "admin") {
       navigate("/admin", { replace: true });
     } else if (tier === "enterprise") {
@@ -82,23 +98,18 @@ export function AuthProvider({ children = null } = {}) {
     }
   }
 
-  /* =========================
-      LOGOUT
-  ========================= */
-  function logout(redirect = true) {
-    localStorage.removeItem("authToken");
-    setUser(null);
-    setSubscription("free");
-    setRole("user");
-    setLoading(false);
-    setInitializing(false);
+  async function login({ user: userData, token, targetLocation }) {
+    if (token) {
+      localStorage.setItem("authToken", token);
+    }
+    if (userData) {
+      localStorage.setItem("user", JSON.stringify(userData));
+    }
 
-    if (redirect) navigate("/", { replace: true });
+    const { tier, role: userRole } = await refreshSession(token || localStorage.getItem("authToken"));
+    redirectByTier(tier, userRole, targetLocation);
   }
 
-  /* =========================
-      AUTHENTICATED FETCH HELPER
-  ========================= */
   async function authFetch(endpoint, options = {}) {
     const token = user?.token || localStorage.getItem("authToken");
     const headers = {
@@ -107,14 +118,13 @@ export function AuthProvider({ children = null } = {}) {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
-    // Auto-prefix /api if component didn't provide it
     const formattedEndpoint = endpoint.startsWith("/api")
       ? endpoint
       : `/api${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
 
     const res = await fetch(`${BASE_URL}${formattedEndpoint}`, {
       ...options,
-      headers
+      headers,
     });
 
     if (res.status === 401) {
@@ -137,22 +147,12 @@ export function AuthProvider({ children = null } = {}) {
         login,
         logout,
         authFetch,
+        refreshSession,
       }}
     >
       {children}
     </AuthContext.Provider>
   );
-}
-
-/* =========================
-    EXPORTS & CUSTOM HOOK
-========================= */
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
 }
 
 export default AuthProvider;

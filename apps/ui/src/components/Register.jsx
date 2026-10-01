@@ -1,19 +1,23 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
 import { useAuth } from "../hooks/useAuth";
 
 export default function Register() {
   const [email, setEmail] = useState("");
-  const [organization, setOrganization] = useState(""); // New Field
+  const [organization, setOrganization] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const { addToast } = useToast();
   const { login } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
+
+  // Retrieve origin route or fallback to main application root
+  const from = location.state?.from || "/";
 
   async function handleRegister(e) {
     e.preventDefault();
@@ -22,7 +26,7 @@ export default function Register() {
     try {
       const res = await apiFetch("/auth/register", {
         method: "POST",
-        body: JSON.stringify({ email, accessKey: password, organization }), // <-- FIXED
+        body: JSON.stringify({ email, accessKey: password, organization }),
       });
 
       if (!res?.token || !res?.user) {
@@ -38,7 +42,7 @@ export default function Register() {
       });
 
       addToast("Welcome to the Swarm! 🎉", "success");
-      navigate("/");
+      navigate(from, { replace: true });
     } catch (err) {
       console.error("Register error:", err);
       addToast(err.message || "Registration failed", "error");
@@ -49,10 +53,9 @@ export default function Register() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#020617] relative overflow-hidden px-4">
-
       {/* Dynamic Background Glows for "Borderless" look */}
-      <div className="absolute top-1/4 -left-10 w-72 h-72 bg-blue-600/20 blur-[100px] rounded-full" />
-      <div className="absolute bottom-1/4 -right-10 w-72 h-72 bg-purple-600/20 blur-[100px] rounded-full" />
+      <div className="absolute top-1/4 -left-10 w-72 h-72 bg-blue-600/20 blur-[100px] rounded-full pointer-events-none" />
+      <div className="absolute bottom-1/4 -right-10 w-72 h-72 bg-purple-600/20 blur-[100px] rounded-full pointer-events-none" />
 
       <div className="relative z-10 w-full max-w-md animate-in fade-in zoom-in duration-500">
         {/* Branding */}
@@ -122,7 +125,8 @@ export default function Register() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-blue-500 hover:text-blue-300 transition-colors"
+                  aria-label={showPassword ? "Hide master password" : "Show master password"}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-blue-500 hover:text-blue-300 transition-colors z-20"
                 >
                   {showPassword ? (
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -154,13 +158,16 @@ export default function Register() {
                   </svg>
                   Initializing...
                 </>
-              ) : "Create Nexus Account"}
+              ) : (
+                "Create Nexus Account"
+              )}
             </span>
           </button>
 
           <div className="text-center">
             <Link
               to="/login"
+              state={{ from }}
               className="text-xs font-semibold text-slate-500 hover:text-blue-400 transition-colors uppercase tracking-widest"
             >
               Already Registered? <span className="text-blue-500">Sign In</span>

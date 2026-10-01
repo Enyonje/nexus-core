@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     ShieldCheck,
@@ -15,19 +15,20 @@ import {
     Layers,
     Lock,
     Workflow,
-    ExternalLink
+    ExternalLink,
 } from "lucide-react";
 
 export default function AgentsDirectory() {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState("all");
+    const location = useLocation();
 
     const categories = [
         { id: "all", label: "All Operatives" },
         { id: "security", label: "Security & Legal" },
         { id: "support", label: "DevOps & Support" },
         { id: "finance", label: "FinTech & Payments" },
-        { id: "analytics", label: "Data Intelligence" }
+        { id: "analytics", label: "Data Intelligence" },
     ];
 
     const agents = [
@@ -44,7 +45,11 @@ export default function AgentsDirectory() {
             isLive: true,
             desc: "Real-time international statutory screening, localized regulatory risk mitigation, and automated cross-border legal checks.",
             metrics: { latency: "14ms", throughput: "12.4k/s", accuracy: "99.9%" },
-            capabilities: ["Statutory Screening", "GDPR/HIPAA Auditing", "Auto-Remediation"]
+            capabilities: [
+                "Statutory Screening",
+                "GDPR/HIPAA Auditing",
+                "Auto-Remediation",
+            ],
         },
         {
             id: "support",
@@ -55,11 +60,15 @@ export default function AgentsDirectory() {
             accentGlow: "from-blue-500/20 via-indigo-500/10 to-transparent",
             badgeColor: "from-blue-400 to-indigo-500",
             icon: Bot,
-            path: "/agents/support-ops",
+            path: "/support-ops-ai",
             isLive: true,
             desc: "Autonomous triage, self-healing integration setups, and SLA escalation tracking powered by internal engineering context.",
             metrics: { latency: "42ms", throughput: "3.1k/s", accuracy: "98.5%" },
-            capabilities: ["Autonomous Triage", "Contextual Escalation", "API Health Sync"]
+            capabilities: [
+                "Autonomous Triage",
+                "Contextual Escalation",
+                "API Health Sync",
+            ],
         },
         {
             id: "sentra-cyber",
@@ -74,7 +83,11 @@ export default function AgentsDirectory() {
             isLive: false,
             desc: "Graph-based cyber threat vector modeling using Neo4j to simulate zero-day attack paths before breach deployment.",
             metrics: { latency: "< 50ms", throughput: "Planned", accuracy: "Target 99.5%" },
-            capabilities: ["Graph Attack Vectors", "Zero-Day Emulation", "SIEM Live Feeds"]
+            capabilities: [
+                "Graph Attack Vectors",
+                "Zero-Day Emulation",
+                "SIEM Live Feeds",
+            ],
         },
         {
             id: "settle-flow",
@@ -89,7 +102,11 @@ export default function AgentsDirectory() {
             isLive: false,
             desc: "High-throughput payment orchestration agent automating multi-currency clearing and webhook reconciliation.",
             metrics: { latency: "< 30ms", throughput: "Planned", accuracy: "Target 100%" },
-            capabilities: ["Ledger Reconciliation", "Fallback Retry Swarm", "Fraud Shield"]
+            capabilities: [
+                "Ledger Reconciliation",
+                "Fallback Retry Swarm",
+                "Fraud Shield",
+            ],
         },
         {
             id: "data-mesh",
@@ -104,8 +121,12 @@ export default function AgentsDirectory() {
             isLive: false,
             desc: "Autonomous ETL pipeline optimizer that continuously cleans incoming unstructured data streams and corrects schema drifts.",
             metrics: { latency: "TBD", throughput: "TBD", accuracy: "Target 99.9%" },
-            capabilities: ["Schema Drift Fix", "Anomaly Detection", "Automated Lineage"]
-        }
+            capabilities: [
+                "Schema Drift Fix",
+                "Anomaly Detection",
+                "Automated Lineage",
+            ],
+        },
     ];
 
     const filteredAgents = agents.filter((agent) => {
@@ -254,6 +275,7 @@ export default function AgentsDirectory() {
                                         {agent.isLive ? (
                                             <Link
                                                 to={agent.path}
+                                                state={{ from: location.pathname }}
                                                 className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 group-hover:shadow-blue-500/40"
                                             >
                                                 Launch Operative <ArrowRight className="w-3.5 h-3.5" />
@@ -287,6 +309,7 @@ export default function AgentsDirectory() {
                         </p>
                         <Link
                             to="/contact"
+                            state={{ from: location.pathname }}
                             className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-white text-slate-950 text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-all shadow-xl"
                         >
                             Request Custom Swarm <ExternalLink className="w-4 h-4" />

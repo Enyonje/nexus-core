@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ShieldCheck,
@@ -17,6 +17,7 @@ import {
 
 export default function LandingPage() {
   const [activeTab, setActiveTab] = useState("compliance");
+  const location = useLocation();
 
   const fadeInUp = {
     initial: { opacity: 0, y: 20 },
@@ -78,7 +79,11 @@ export default function LandingPage() {
           <Link to="/architecture" className="hover:text-blue-400 transition-colors">Architecture</Link>
         </div>
 
-        <Link to="/login" className="px-6 py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all text-[11px] font-black uppercase tracking-widest backdrop-blur-md shadow-sm">
+        <Link
+          to="/login"
+          state={{ from: location.pathname }}
+          className="px-6 py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all text-[11px] font-black uppercase tracking-widest backdrop-blur-md shadow-sm"
+        >
           Client Login
         </Link>
       </nav>
@@ -106,10 +111,18 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
-            <Link to="/agents" className="w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black uppercase tracking-widest shadow-[0_0_35px_rgba(37,99,235,0.35)] transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">
+            <Link
+              to="/agents"
+              state={{ from: location.pathname }}
+              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black uppercase tracking-widest shadow-[0_0_35px_rgba(37,99,235,0.35)] transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
+            >
               Explore Agents <ArrowRight className="w-4 h-4" />
             </Link>
-            <Link to="/register" className="w-full sm:w-auto px-8 py-4 rounded-xl bg-slate-900/80 border border-white/10 hover:border-blue-500/50 text-white text-xs font-black uppercase tracking-widest transition-all backdrop-blur-md">
+            <Link
+              to="/register"
+              state={{ from: location.pathname }}
+              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-slate-900/80 border border-white/10 hover:border-blue-500/50 text-white text-xs font-black uppercase tracking-widest transition-all backdrop-blur-md"
+            >
               Launch Generic Swarm
             </Link>
           </div>
@@ -204,7 +217,11 @@ export default function LandingPage() {
                 Purpose-built digital operatives designed to handle specialized multi-step execution workflows out-of-the-box.
               </p>
             </div>
-            <Link to="/agents" className="text-xs font-black uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-2 border-b border-blue-400/20 pb-1 w-fit">
+            <Link
+              to="/agents"
+              state={{ from: location.pathname }}
+              className="text-xs font-black uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-2 border-b border-blue-400/20 pb-1 w-fit"
+            >
               View Agent Directory <span>→</span>
             </Link>
           </div>
@@ -263,6 +280,7 @@ export default function LandingPage() {
                       </span>
                       <Link
                         to={agent.path}
+                        state={{ from: location.pathname }}
                         className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white border border-white/10 text-white hover:text-slate-950 text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2"
                       >
                         Access System <ArrowRight className="w-3.5 h-3.5" />
@@ -287,7 +305,11 @@ export default function LandingPage() {
             <p className="text-slate-400 text-sm max-w-xl mx-auto mb-8 font-medium">
               Join enterprise teams orchestrating AI agent swarms on Nexus Core.
             </p>
-            <Link to="/register" className="inline-flex items-center gap-2 px-10 py-4 rounded-xl bg-white text-slate-950 text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-all shadow-xl">
+            <Link
+              to="/register"
+              state={{ from: location.pathname }}
+              className="inline-flex items-center gap-2 px-10 py-4 rounded-xl bg-white text-slate-950 text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-all shadow-xl"
+            >
               Initiate Free Trial <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
