@@ -32,35 +32,60 @@ enum GoalStatus {
   completed
 }
 
+enum PipelineStage {
+  IDLE
+  PARSING
+  AUDITING
+  CALCULATING
+  READY_FOR_PAYMENT
+  COMPLETED
+  FAILED
+}
+
+enum DiscrepancySeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
 // MODELS
 model User {
-  id                  String          @id @default(uuid())
-  email               String          @unique
-  password_hash       String
-  created_at          DateTime        @default(now())
-  org_id              String?
-  role                UserRole        @default(user)
-  subscription        SubscriptionType @default(free)
-  name                String?
-  refresh_token       String?
-  failed_attempts     Int             @default(0)
-  locked_until        DateTime?       @db.Timestamptz(6)
-  mfa_enabled         Boolean         @default(false)
-  mfa_secret          String?
-  reset_token         String?
-  reset_token_expires DateTime?       @db.Timestamptz(6)
-  refresh_token_expires DateTime? @db.Timestamptz(6)
-  deleted_at          DateTime?
-  ai_used             Int             @default(0)
-  executions_count      Int             @default(0)
+  id                    String           @id @default(uuid())
+  email                 String           @unique
+  password_hash         String
+  created_at            DateTime         @default(now())
+  org_id                String?
+  role                  UserRole         @default(user)
+  subscription          SubscriptionType @default(free)
+  name                  String?
+  refresh_token         String?
+  failed_attempts       Int              @default(0)
+  locked_until          DateTime?        @db.Timestamptz(6)
+  mfa_enabled           Boolean          @default(false)
+  mfa_secret            String?
+  reset_token           String?
+  reset_token_expires   DateTime?        @db.Timestamptz(6)
+  refresh_token_expires DateTime?        @db.Timestamptz(6)
+  deleted_at            DateTime?
+  ai_used               Int              @default(0)
+  executions_count      Int              @default(0)
 
   // Relations
-  authAudits          AuthAudit[]
-  executionSteps      ExecutionStep[]
-  executions          Execution[]
-  goals               Goal[]
-  adminAudits         AdminAudit[]
-  organization        Organization?   @relation(fields: [org_id], references: [id])
+  authAudits      AuthAudit[]
+  executionSteps  ExecutionStep[]
+  executions      Execution[]
+  goals           Goal[]
+  adminAudits     AdminAudit[]
+  organization    Organization?   @relation(fields: [org_id], references: [id])
 
   @@map("users")
   @@index([org_id])
@@ -68,9 +93,9 @@ model User {
 }
 
 model Organization {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   name       String
-  created_at DateTime @default(now())
+  created_at DateTime  @default(now())
   users      User[]
   deleted_at DateTime?
 
@@ -116,33 +141,33 @@ model Objective {
 }
 
 model Execution {
-  id              String          @id @default(uuid())
-  user_id         String
-  goal_id         String
-  objective_id    String?
-  action          String?
-  details         Json?
-  created_at      DateTime        @default(now())
-  started_at      DateTime?
-  goal_type       String?
-  org_id          String?
-  version         Int?
-  status          ExecutionStatus @default(pending)
-  schedule        Json?
-  recurring       Boolean?        @default(false)
-  duration_ms     Int?
-  finished_at     DateTime?
-  goal_payload    Json            @default("{}")
-  result          Json?
-  error           String?
-  deleted_at      DateTime?
+  id           String          @id @default(uuid())
+  user_id      String
+  goal_id      String
+  objective_id String?
+  action       String?
+  details      Json?
+  created_at   DateTime        @default(now())
+  started_at   DateTime?
+  goal_type    String?
+  org_id       String?
+  version      Int?
+  status       ExecutionStatus @default(pending)
+  schedule     Json?
+  recurring    Boolean?        @default(false)
+  duration_ms  Int?
+  finished_at  DateTime?
+  goal_payload Json            @default("{}")
+  result       Json?
+  error        String?
+  deleted_at   DateTime?
 
   // Relations
   executionAudits ExecutionAudit[]
   executionSteps  ExecutionStep[]
-  user            User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  goal            Goal       @relation(fields: [goal_id], references: [id])
-  objective       Objective? @relation(fields: [objective_id], references: [id], onDelete: Restrict)
+  user            User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  goal            Goal             @relation(fields: [goal_id], references: [id])
+  objective       Objective?       @relation(fields: [objective_id], references: [id], onDelete: Restrict)
 
   @@map("executions")
   @@index([user_id])
@@ -152,7 +177,6 @@ model Execution {
   @@index([status])
   @@unique([goal_id, user_id, created_at])
 }
-
 
 model AuthAudit {
   id         String   @id @default(uuid())
@@ -197,8 +221,8 @@ model ExecutionStep {
   error        String?
   deleted_at   DateTime?
 
-  execution    Execution @relation(fields: [execution_id], references: [id], onDelete: Cascade)
-  user         User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  execution Execution @relation(fields: [execution_id], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@map("execution_steps")
   @@index([execution_id])
@@ -218,60 +242,60 @@ model AdminAudit {
 }
 
 model CargoDeclaration {
-  id              String         @id @default(uuid())
+  id              String            @id @default(uuid())
   importerName    String
-  importerTaxId   String         // e.g. KRA PIN "KE-0519283741"
+  importerTaxId   String // e.g. KRA PIN "KE-0519283741"
   exporterName    String
-  originCountry   String         @default("UG")
-  portOfDischarge String         @default("Nairobi ICD")
-  incoterm        String         @default("CIF")
+  originCountry   String            @default("UG")
+  portOfDischarge String            @default("Nairobi ICD")
+  incoterm        String            @default("CIF")
   grossWeightKg   Float
   totalUnits      Int
   cifValueUsd     Float
-  exchangeRateKe  Float          @default(130.0)
-  
-  pipelineStage   PipelineStage  @default(IDLE)
-  
-  // Relations
-  items           CargoItem[]
-  auditFlags      AuditFlag[]
-  assessment      DutyAssessment?
-  payment         MpesaTransaction?
+  exchangeRateKe  Float             @default(130.0)
 
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  pipelineStage PipelineStage @default(IDLE)
+
+  // Relations
+  items      CargoItem[]
+  auditFlags AuditFlag[]
+  assessment DutyAssessment?
+  payment    MpesaTransaction?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model CargoItem {
   id                 String           @id @default(uuid())
   cargoDeclarationId String
   cargoDeclaration   CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
-  
-  description        String
-  hsCode             String
-  totalPriceUsd      Float
-  cetRate            Float            // Tariff rate (e.g. 0.25 for 25%)
 
-  createdAt          DateTime         @default(now())
+  description   String
+  hsCode        String
+  totalPriceUsd Float
+  cetRate       Float // Tariff rate (e.g. 0.25 for 25%)
+
+  createdAt DateTime @default(now())
 }
 
 model AuditFlag {
   id                 String              @id @default(uuid())
   cargoDeclarationId String
   cargoDeclaration   CargoDeclaration    @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
-  
-  severity           DiscrepancySeverity @default(WARNING)
-  field              String              // e.g. "grossWeightKg"
-  message            String
 
-  createdAt          DateTime            @default(now())
+  severity DiscrepancySeverity @default(WARNING)
+  field    String              // e.g. "grossWeightKg"
+  message  String
+
+  createdAt DateTime @default(now())
 }
 
 model DutyAssessment {
   id                 String           @id @default(uuid())
   cargoDeclarationId String           @unique
   cargoDeclaration   CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
-  
+
   cifValueUsd        Float
   cifValueKes        Float
   importDutyKes      Float
@@ -281,9 +305,9 @@ model DutyAssessment {
   totalCustomsTaxKes Float
 
   // Generated iCMS IM4 Declaration payload string
-  generatedXml       String?          @db.Text
+  generatedXml String? @db.Text
 
-  createdAt          DateTime         @default(now())
+  createdAt DateTime @default(now())
 }
 
 model MpesaTransaction {
@@ -291,18 +315,18 @@ model MpesaTransaction {
   cargoDeclarationId String           @unique
   cargoDeclaration   CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
 
-  phoneNumber        String           // Format: 2547XXXXXXXX
-  amount             Float
-  accountReference   String           @default("KRA-DUTY-DECL")
-  
-  // Daraja STK Push Tracker Keys
-  checkoutRequestId  String?          @unique
-  merchantRequestId  String?
-  mpesaReceiptNumber String?          @unique
-  
-  status             PaymentStatus    @default(PENDING)
-  resultDesc         String?
+  phoneNumber      String // Format: 2547XXXXXXXX
+  amount           Float
+  accountReference String @default("KRA-DUTY-DECL")
 
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  // Daraja STK Push Tracker Keys
+  checkoutRequestId  String? @unique
+  merchantRequestId  String?
+  mpesaReceiptNumber String? @unique
+
+  status     PaymentStatus @default(PENDING)
+  resultDesc String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
