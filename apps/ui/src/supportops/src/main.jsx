@@ -2,15 +2,15 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
-import Dashboard from "./pages/Dashboard";
 import "./index.css";
+import { AuthProvider } from "./context/AuthProvider";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
-      <Dashboard>
+      <AuthProvider>
         <App />
-      </Dashboard>
+      </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

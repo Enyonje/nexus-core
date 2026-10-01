@@ -3,6 +3,8 @@ import { useState } from "react";
 import { Toaster } from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
 
+import SupportOpsRoutes from "./supportops/src/routes/SupportOpsRoutes";
+
 // Components
 import Navbar from "./components/Navbar.jsx";
 import CareersPage from "./components/CareersPage.jsx";
@@ -105,7 +107,7 @@ export default function App() {
 
                 {/* OTHER SPECIALISED AGENTS */}
                 <Route path="/support-ops-ai" element={<SupportOps />} />
-                <Route path="/agents/support-ops" element={<SupportOps />} />
+                <Route path="/agents/support-ops" element={<SupportOpsRoutes />} />
 
                 {/* TOOLS ROUTING */}
                 <Route path="/tools/webhook-validator" element={<WebhookValidator />} />

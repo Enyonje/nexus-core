@@ -8,6 +8,7 @@ import cookie from "@fastify/cookie";
 // Import validated env first
 import { env } from "./config/env.js";
 
+// Core Routes
 import { webhooksRoutes } from "./routes/webhooks.js";
 import { authRoutes } from "./routes/auth.js";
 import { goalsRoutes } from "./routes/goals.js";
@@ -19,14 +20,14 @@ import { paymentsRoutes } from "./routes/payments.js";
 import { streamRoutes } from "./routes/stream.js";
 import { stripeRoutes } from "./routes/stripe.js";
 
-// Import SupportOps JS Route Plugins
-import { aiRoutes } from "../supportops/routes/aiRoutes.js";
-import { aiReviewRoutes } from "../supportops/routes/aiReviewRoutes.js";
-import { incidentsRoutes } from "../supportops/routes/incidents.js";
-import { orgAnalyticsRoutes } from "../supportops/routes/orgAnalyticsRoutes.js";
-import { stripeWebhookRoutes } from "../supportops/routes/stripeWebhook.js";
-import { ticketsRoutes } from "../supportops/routes/tickets.js";
-import { usersRoutes } from "../supportops/routes/users.js";
+// SupportOps Route Plugins (Ensured default or named exports)
+import aiRoutes from "../supportops/routes/aiRoutes.js";
+import aiReviewRoutes from "../supportops/routes/aiReviewRoutes.js";
+import incidentsRoutes from "../supportops/routes/incidents.js";
+import orgAnalyticsRoutes from "../supportops/routes/orgAnalyticsRoutes.js";
+import stripeWebhookRoutes from "../supportops/routes/stripeWebhook.js";
+import ticketsRoutes from "../supportops/routes/tickets.js";
+import usersRoutes from "../supportops/routes/users.js";
 
 const app = Fastify({
   logger: true,
@@ -74,27 +75,27 @@ await app.register(fastifyJwt, {
 /* =========================
    CORE ROUTES
 ========================= */
-app.register(authRoutes, { prefix: "/api/auth" });
-app.register(goalsRoutes, { prefix: "/api/goals" });
-app.register(adminRoutes, { prefix: "/api/admin" });
-app.register(executionsRoutes, { prefix: "/api/executions" });
-app.register(auditRoutes, { prefix: "/api/audit" });
-app.register(billingRoutes, { prefix: "/api/billing" });
-app.register(paymentsRoutes, { prefix: "/api/payments" });
-app.register(streamRoutes, { prefix: "/api/stream" });
-app.register(stripeRoutes, { prefix: "/api/stripe" });
-app.register(webhooksRoutes);
+await app.register(authRoutes, { prefix: "/api/auth" });
+await app.register(goalsRoutes, { prefix: "/api/goals" });
+await app.register(adminRoutes, { prefix: "/api/admin" });
+await app.register(executionsRoutes, { prefix: "/api/executions" });
+await app.register(auditRoutes, { prefix: "/api/audit" });
+await app.register(billingRoutes, { prefix: "/api/billing" });
+await app.register(paymentsRoutes, { prefix: "/api/payments" });
+await app.register(streamRoutes, { prefix: "/api/stream" });
+await app.register(stripeRoutes, { prefix: "/api/stripe" });
+await app.register(webhooksRoutes);
 
 /* =========================
    SUPPORTOPS ROUTE REGISTRATION
 ========================= */
-app.register(aiRoutes, { prefix: "/api/v1/supportops/ai" });
-app.register(aiReviewRoutes, { prefix: "/api/v1/supportops/ai-review" });
-app.register(incidentsRoutes, { prefix: "/api/v1/supportops/incidents" });
-app.register(orgAnalyticsRoutes, { prefix: "/api/v1/supportops/analytics" });
-app.register(ticketsRoutes, { prefix: "/api/v1/supportops/tickets" });
-app.register(stripeWebhookRoutes, { prefix: "/api/v1/supportops/webhooks/stripe" });
-app.register(usersRoutes, { prefix: "/api/v1/supportops/users" });
+await app.register(aiRoutes, { prefix: "/api/v1/supportops/ai" });
+await app.register(aiReviewRoutes, { prefix: "/api/v1/supportops/ai-review" });
+await app.register(incidentsRoutes, { prefix: "/api/v1/supportops/incidents" });
+await app.register(orgAnalyticsRoutes, { prefix: "/api/v1/supportops/analytics" });
+await app.register(ticketsRoutes, { prefix: "/api/v1/supportops/tickets" });
+await app.register(stripeWebhookRoutes, { prefix: "/api/v1/supportops/webhooks/stripe" });
+await app.register(usersRoutes, { prefix: "/api/v1/supportops/users" });
 
 /* =========================
    SYSTEM HEALTH & DASHBOARD ROUTES
@@ -111,7 +112,7 @@ app.get("/api/health", async () => {
   }
 });
 
-// ✅ v1 System Health Route (Fixes 404)
+// v1 System Health Route
 app.get("/api/v1/system/health", async () => {
   const client = await app.pg.connect();
   try {
@@ -129,7 +130,7 @@ app.get("/api/v1/system/health", async () => {
   }
 });
 
-// ✅ v1 Dashboard Metrics Route (Fixes 404)
+// v1 Dashboard Metrics Route
 app.get("/api/v1/dashboard/metrics", async (request, reply) => {
   const { timeframe = "30d" } = request.query;
 
@@ -162,7 +163,7 @@ app.get("/api/v1/dashboard/metrics", async (request, reply) => {
   }
 });
 
-// ✅ Cron Keep-Alive Route using validated PING_SECRET_KEY
+// Cron Keep-Alive Route using validated PING_SECRET_KEY
 app.get("/api/cron/keep-alive", async (request, reply) => {
   const secret = request.headers["x-cron-secret"] || request.query.secret;
 

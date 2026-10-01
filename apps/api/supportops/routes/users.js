@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 
-export async function usersRoutes(fastify, options) {
+export default function usersRoutes(fastify, options) {
     // Admin Authorization Guard
     fastify.addHook("onRequest", async (request, reply) => {
         try {

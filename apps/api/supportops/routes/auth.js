@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 
-export async function authRoutes(fastify, options) {
+export default function authRoutes(fastify, options) {
   /* =========================================================
      AUTH HELPERS / GUARDS
   ========================================================= */
