@@ -31,28 +31,22 @@ export function AuthProvider({ children = null } = {}) {
   }, []);
 
   /* =========================
-      REFRESH SESSION
-  ========================= */
+     REFRESH SESSION (Beta mode: always free)
+ ========================= */
   async function refreshSession(token) {
     try {
-      // Fixed: hit /api/auth/subscription to match backend route
-      const res = await fetch(`${BASE_URL}/api/auth/subscription`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) throw new Error("Invalid session");
-
-      const data = await res.json();
+      // In beta, skip hitting /api/auth/subscription
+      // Just treat every user as free tier
       setUser({
         token,
-        email: data.email,
-        id: data.id,
-        createdAt: data.created_at || null,
+        email: "beta@nexus.com",   // placeholder email
+        id: "beta-user",           // placeholder ID
+        createdAt: null,
       });
-      setSubscription(data.tier || "free");
-      setRole(data.role || "user");
+      setSubscription("free");
+      setRole("user");
 
-      return { tier: data.tier || "free", role: data.role || "user" };
+      return { tier: "free", role: "user" };
     } catch (err) {
       console.warn("Session refresh failed:", err.message);
       logout(false);
@@ -62,6 +56,7 @@ export function AuthProvider({ children = null } = {}) {
       setInitializing(false);
     }
   }
+
 
   /* =========================
       LOGIN
