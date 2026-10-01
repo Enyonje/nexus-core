@@ -164,25 +164,43 @@ export async function authRoutes(server) {
   server.get("/subscription", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.user?.id;
-      if (!userId) return reply.code(401).send({ error: "AUTH_INVALID_SESSION" });
+      if (!userId) {
+        return reply.code(401).send({ error: "AUTH_INVALID_SESSION" });
+      }
 
+      // Query Prisma for subscription info
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { subscription: true, role: true, created_at: true },
+        select: {
+          id: true,
+          email: true,
+          subscription: true,
+          role: true,
+          created_at: true,
+        },
       });
-      if (!user) return reply.code(404).send({ error: "AUTH_USER_NOT_FOUND" });
+
+      if (!user) {
+        return reply.code(404).send({ error: "AUTH_USER_NOT_FOUND" });
+      }
+
+      // Optional: audit log for subscription check
+      await auditLog(user.id, "subscription_checked", {});
 
       return reply.send({
-        tier: user.subscription,
+        id: user.id,
+        email: user.email,
+        tier: user.subscription || "free",
         active: user.subscription !== "free",
-        role: user.role,
+        role: user.role || "user",
         created_at: user.created_at,
       });
     } catch (err) {
-      console.error("Subscription error:", err);
+      req.log.error("Subscription error:", err);
       return reply.code(500).send({ error: "AUTH_SUBSCRIPTION_ERROR" });
     }
   });
+
 
   // STRIPE CHECKOUT
   server.post("/stripe/checkout", { preHandler: requireAuth }, async (req, reply) => {
