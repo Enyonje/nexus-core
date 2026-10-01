@@ -1,4 +1,4 @@
-import AIActionProposal from "../models/AIActionProposal.js";
+import { AIActionProposal } from "../models/AIActionProposal.js";
 
 export async function listPending(req, res) {
   const proposals = await AIActionProposal.find({

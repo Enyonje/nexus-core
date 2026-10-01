@@ -1,60 +1,25 @@
 import Fastify from "fastify";
-import cors from "@fastify/cors";
-import websocket from "@fastify/websocket";
 
-import { db } from "./db/db.js";
-import { publishEvent } from "./events/publish.js";
-import { executionsRoutes } from "./routes/executions.js";
-import { auditRoutes } from "./routes/audit.js";
-import { streamRoutes } from "./routes/stream.js";
-import { authRoutes } from "./routes/auth.js";
-import { goalsRoutes } from "./routes/goals.js";
-
-const SYSTEM_IDENTITY = {
-  sub: "nexus-core",
-  role: "service",
-};
+// Import SupportOps JS Route Plugins
+import { aiRoutes } from "./supportops/routes/aiRoutes.js";
+import { aiReviewRoutes } from "./supportops/routes/aiReviewRoutes.js";
+import { incidentsRoutes } from "./supportops/routes/incidents.js";
+import { orgAnalyticsRoutes } from "./supportops/routes/orgAnalyticsRoutes.js";
+import { stripeWebhookRoutes } from "./supportops/routes/stripeWebhook.js";
+import { ticketsRoutes } from "./supportops/routes/tickets.js";
 
 const app = Fastify({ logger: true });
 
-// Register CORS
-await app.register(cors, {
-  origin: "*",
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-});
+/* =========================
+   SUPPORTOPS ROUTE REGISTRATION
+========================= */
 
-// Register WebSocket
-await app.register(websocket);
+// SupportOps Endpoints
+app.register(aiRoutes, { prefix: "/api/v1/supportops/ai" });
+app.register(aiReviewRoutes, { prefix: "/api/v1/supportops/ai-review" });
+app.register(incidentsRoutes, { prefix: "/api/v1/supportops/incidents" });
+app.register(orgAnalyticsRoutes, { prefix: "/api/v1/supportops/analytics" });
+app.register(ticketsRoutes, { prefix: "/api/v1/supportops/tickets" });
+app.register(stripeWebhookRoutes, { prefix: "/api/v1/supportops/webhooks/stripe" });
 
-// Health check
-app.get("/health", async () => {
-  const result = await db.query("SELECT 1");
-  return { status: "ok", db: result.rowCount === 1 };
-});
-
-// Inline goal creation (optional, can remove if duplicating with goalsRoutes)
-app.post("/goals", async (req: any) => {
-  const { org_id, user_id, goal_type, goal_payload } = req.body;
-
-  const result = await db.query(
-    `INSERT INTO goals (org_id, submitted_by, goal_type, goal_payload)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id`,
-    [org_id, user_id, goal_type, goal_payload]
-  );
-
-  const goalId = result.rows[0].id;
-  await publishEvent(db, SYSTEM_IDENTITY, "GOAL_SUBMITTED", { goalId });
-
-  return { goalId };
-});
-
-// ✅ Register all routes with proper prefixes
-app.register(executionsRoutes, { prefix: "/executions" });
-app.register(auditRoutes);
-app.register(streamRoutes);
-await app.register(authRoutes, { prefix: "/auth" }); // important for /auth/subscription
-await app.register(goalsRoutes);
-
-const PORT = process.env.PORT || 3001;
-app.listen({ port: PORT, host: "0.0.0.0" });
+app.listen({ port: 3000, host: "0.0.0.0" });

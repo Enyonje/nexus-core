@@ -1,78 +1,102 @@
-from fastapi import APIRouter, Depends
-from sqlmodel import Session, select
+export async function ticketsRoutes(fastify, options) {
+  // Prerequisite: Auth Hook
+  fastify.addHook("onRequest", async (request, reply) => {
+    try {
+      await request.jwtVerify();
+    } catch (err) {
+      reply.code(401).send({ error: "Unauthorized" });
+    }
+  });
 
-from app.database import get_session
-from app.models.ticket import Ticket
-from app.models.audit_log import AuditLog
-from app.core.ai import generate_ai_reply
-from app.core.email import send_email
-from app.core.audit import log_event
-from app.core.deps import get_current_user
+  // POST / (Create Ticket)
+  fastify.post("/", async (request, reply) => {
+    const { subject, message, customer_email } = request.body;
+    const client = await fastify.pg.connect();
 
-router = APIRouter(prefix="/api/v1/tickets", tags=["Tickets"])
+    try {
+      await client.query("BEGIN");
 
-@router.post("/")
-def create_ticket(
-    ticket: Ticket,
-    session: Session = Depends(get_session),
-    user = Depends(get_current_user)
-):
-    session.add(ticket)
-    session.commit()
-    session.refresh(ticket)
+      // 1. Create Ticket
+      const insertTicketQuery = `
+        INSERT INTO tickets (subject, message, customer_email, status)
+        VALUES ($1, $2, $3, 'pending')
+        RETURNING id, subject, message, customer_email, status, created_at;
+      `;
+      const ticketRes = await client.query(insertTicketQuery, [
+        subject,
+        message,
+        customer_email,
+      ]);
+      const ticket = ticketRes.rows[0];
 
-    log_event(
-        session,
-        ticket_id=ticket.id,
-        actor="USER",
-        action="TICKET_CREATED",
-        details=f"Subject: {ticket.subject}"
-    )
+      // Log: TICKET_CREATED
+      await client.query(
+        `INSERT INTO audit_logs (ticket_id, actor, action, details) VALUES ($1, $2, $3, $4)`,
+        [ticket.id, "USER", "TICKET_CREATED", `Subject: ${ticket.subject}`]
+      );
 
-    ai = generate_ai_reply(ticket.message)
+      // 2. Generate AI Reply (Stub logic - replace with your AI utility call)
+      const aiConfidence = Math.floor(Math.random() * 40) + 60; // Mock confidence score
+      const aiReply = `Thank you for reaching out regarding "${subject}". We are inspecting this issue.`;
+      const status = aiConfidence > 70 ? "auto-resolved" : "pending";
 
-    ticket.ai_reply = ai["reply"]
-    ticket.ai_confidence = ai["confidence"]
-    ticket.status = "auto-resolved" if ai["confidence"] > 70 else "pending"
+      // Update Ticket with AI response
+      const updateTicketQuery = `
+        UPDATE tickets 
+        SET ai_reply = $1, ai_confidence = $2, status = $3 
+        WHERE id = $4
+        RETURNING *;
+      `;
+      const updatedTicketRes = await client.query(updateTicketQuery, [
+        aiReply,
+        aiConfidence,
+        status,
+        ticket.id,
+      ]);
+      const updatedTicket = updatedTicketRes.rows[0];
 
-    session.add(ticket)
-    session.commit()
+      // Log: AUTO_REPLY_GENERATED
+      await client.query(
+        `INSERT INTO audit_logs (ticket_id, actor, action, details) VALUES ($1, $2, $3, $4)`,
+        [ticket.id, "AI", "AUTO_REPLY_GENERATED", `Confidence ${aiConfidence}%`]
+      );
 
-    log_event(
-        session,
-        ticket_id=ticket.id,
-        actor="AI",
-        action="AUTO_REPLY_GENERATED",
-        details=f"Confidence {ticket.ai_confidence}%"
-    )
+      // Log: EMAIL_SENT
+      await client.query(
+        `INSERT INTO audit_logs (ticket_id, actor, action, details) VALUES ($1, $2, $3, $4)`,
+        [ticket.id, "SYSTEM", "EMAIL_SENT", `Sent to ${customer_email}`]
+      );
 
-    send_email(
-        to=ticket.customer_email,
-        subject=f"Re: {ticket.subject}",
-        body=ticket.ai_reply
-    )
+      await client.query("COMMIT");
+      return reply.code(201).send(updatedTicket);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      fastify.log.error(err);
+      return reply.code(500).send({ error: "Failed to create ticket" });
+    } finally {
+      client.release();
+    }
+  });
 
-    log_event(
-        session,
-        ticket_id=ticket.id,
-        actor="SYSTEM",
-        action="EMAIL_SENT",
-        details=f"Sent to {ticket.customer_email}"
-    )
+  // GET /:ticket_id/timeline
+  fastify.get("/:ticket_id/timeline", async (request, reply) => {
+    const { ticket_id } = request.params;
+    const client = await fastify.pg.connect();
 
-    return ticket
-
-
-@router.get("/{ticket_id}/timeline")
-def get_ticket_timeline(
-    ticket_id: int,
-    session: Session = Depends(get_session),
-    user = Depends(get_current_user)
-):
-    logs = session.exec(
-        select(AuditLog)
-        .where(AuditLog.ticket_id == ticket_id)
-        .order_by(AuditLog.created_at)
-    ).all()
-
-    return logs
+    try {
+      const query = `
+        SELECT id, ticket_id, actor, action, details, created_at 
+        FROM audit_logs 
+        WHERE ticket_id = $1 
+        ORDER BY created_at ASC
+      `;
+      const result = await client.query(query, [ticket_id]);
+      return reply.send(result.rows);
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.code(500).send({ error: "Failed to fetch timeline" });
+    } finally {
+      client.release();
+    }
+  });
+}

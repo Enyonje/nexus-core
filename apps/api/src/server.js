@@ -19,6 +19,15 @@ import { paymentsRoutes } from "./routes/payments.js";
 import { streamRoutes } from "./routes/stream.js";
 import { stripeRoutes } from "./routes/stripe.js";
 
+// Import SupportOps JS Route Plugins
+import { aiRoutes } from "../supportops/routes/aiRoutes.js";
+import { aiReviewRoutes } from "../supportops/routes/aiReviewRoutes.js";
+import { incidentsRoutes } from "../supportops/routes/incidents.js";
+import { orgAnalyticsRoutes } from "../supportops/routes/orgAnalyticsRoutes.js";
+import { stripeWebhookRoutes } from "../supportops/routes/stripeWebhook.js";
+import { ticketsRoutes } from "../supportops/routes/tickets.js";;
+import { usersRoutes } from "../supportops/routes/users.js";
+
 const app = Fastify({
   logger: true,
   bodyLimit: 1048576,
@@ -75,6 +84,19 @@ app.register(paymentsRoutes, { prefix: "/api/payments" });
 app.register(streamRoutes, { prefix: "/api/stream" });
 app.register(stripeRoutes, { prefix: "/api/stripe" });
 app.register(webhooksRoutes);
+
+/* =========================
+   SUPPORTOPS ROUTE REGISTRATION
+========================= */
+
+// SupportOps Endpoints
+app.register(aiRoutes, { prefix: "/api/v1/supportops/ai" });
+app.register(aiReviewRoutes, { prefix: "/api/v1/supportops/ai-review" });
+app.register(incidentsRoutes, { prefix: "/api/v1/supportops/incidents" });
+app.register(orgAnalyticsRoutes, { prefix: "/api/v1/supportops/analytics" });
+app.register(ticketsRoutes, { prefix: "/api/v1/supportops/tickets" });
+app.register(stripeWebhookRoutes, { prefix: "/api/v1/supportops/webhooks/stripe" });
+app.register(usersRoutes, { prefix: "/api/v1/supportops/users" });
 
 app.get("/api/health", async () => {
   const client = await app.pg.connect();

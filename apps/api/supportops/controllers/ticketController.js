@@ -1,5 +1,5 @@
-import Ticket from "../models/Ticket.js";
-import SLAEvent from "../models/SLAEvent.js";
+import { Ticket } from "../models/Ticket.js";
+import { SLAEvent } from "../models/SLAEvent.js";
 import { predictSLARisk } from "../services/slaPredictor.js";
 
 export async function getTickets(req, res) {

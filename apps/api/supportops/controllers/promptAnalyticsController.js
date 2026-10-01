@@ -1,4 +1,4 @@
-import AIPromptMetric from "../models/AIPromptMetric.js";
+import { AIPromptMetric } from "../models/AIPromptMetric.js";
 
 export async function promptPerformance(req, res) {
   const stats = await AIPromptMetric.aggregate([

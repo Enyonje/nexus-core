@@ -1,3 +1,8 @@
+/**
+ * Stripe Webhook Routes
+ * Path: supportops/routes/stripeWebhookRoutes.js
+ */
+
 import express from "express";
 import stripe from "../lib/stripe.js";
 
@@ -32,4 +37,11 @@ router.post(
   }
 );
 
+// Named exports to satisfy named imports like:
+// import { stripeWebhookRoutes } from "..."
+// import { webhookRoutes } from "..."
+export const stripeWebhookRoutes = router;
+export const webhookRoutes = router;
+
+// Default export to satisfy default imports
 export default router;

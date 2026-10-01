@@ -1,4 +1,4 @@
-import Incident from "../models/Incident.js";
+import { Incident } from "../models/Incident.js";
 import { broadcast } from "../realtime/socket.js";
 
 export async function createIncident(req, res) {
