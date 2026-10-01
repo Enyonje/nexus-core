@@ -1,4 +1,4 @@
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 export async function usersRoutes(fastify, options) {
     // Admin Authorization Guard
