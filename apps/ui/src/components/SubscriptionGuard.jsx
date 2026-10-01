@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import AuthProvider from "../context/AuthProvider.jsx"; // ✅ Correct import path
+import { useAuth } from "../hooks/useAuth"; // ✅ Correct import path
 
 /**
  * SubscriptionGuard
@@ -19,7 +19,7 @@ export default function SubscriptionGuard({
   redirectTo = "/subscription",
   graceDays = 0,
 }) {
-  const { subscription, loading, user, requiresSubscription } = AuthProvider();
+  const { subscription, loading, user, requiresSubscription } = useAuth();
   const navigate = useNavigate();
 
   // Calculate account age in days

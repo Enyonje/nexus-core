@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
-import AuthProvider from "../context/AuthProvider";
+import { useAuth } from "../hooks/useAuth";
 import SubscriptionGuard from "./SubscriptionGuard";
 
 // Restricted wrapper component
@@ -10,7 +10,7 @@ function RestrictedPage({ children }) {
 
 function Streams() {
   const { executionId } = useParams();
-  const { token } = AuthProvider();
+  const { token } = useAuth();
   const [events, setEvents] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [status, setStatus] = useState("connecting");

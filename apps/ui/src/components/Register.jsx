@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
-import AuthProvider from "../context/AuthProvider";
+import { useAuth } from "../hooks/useAuth";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -12,7 +12,7 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
 
   const { addToast } = useToast();
-  const { login } = AuthProvider();
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   async function handleRegister(e) {

@@ -37,7 +37,7 @@ import SupportOps from "./components/Support0ps.jsx";
 // Logic & Providers
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { lightTheme, darkTheme } from "./theme";
-import AuthProvider from "./context/AuthProvider.jsx";   // ✅ default export, not destructured
+import AuthProvider from "./context/AuthProvider.jsx";
 import { ToastProvider } from "./components/ToastContext.jsx";
 
 export default function App() {
@@ -77,7 +77,7 @@ export default function App() {
           />
 
           {/* AnimatePresence for route transitions */}
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={location.pathname}
               initial={{ opacity: 0, y: 4 }}
@@ -181,12 +181,13 @@ export default function App() {
 
           {/* AnimatePresence for overlays/modals */}
           <AnimatePresence>
-            {selectedExecutionId && (
+            {selectedExecutionId ? (
               <ExecutionLogsStreamModal
+                key={selectedExecutionId}
                 executionId={selectedExecutionId}
                 onClose={() => setSelectedExecutionId(null)}
               />
-            )}
+            ) : null}
           </AnimatePresence>
         </div>
       </ToastProvider>

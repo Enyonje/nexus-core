@@ -2,8 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
-import AuthProvider from "../context/AuthProvider";
-
+import { useAuth } from "../hooks/useAuth";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -11,7 +10,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   const { addToast } = useToast();
-  const { login } = AuthProvider();
+  const { login } = useAuth();
 
   async function handleLogin(e) {
     e.preventDefault();

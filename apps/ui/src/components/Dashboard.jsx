@@ -2,10 +2,10 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { formatDate } from "../lib/utils";
-import AuthProvider from "../context/AuthProvider";
+import { useAuth } from "../hooks/useAuth";
 
 export default function Dashboard() {
-  const { subscription, user } = AuthProvider();
+  const { subscription, user } = useAuth();
   const [executions, setExecutions] = useState([]);
   const [goals, setGoals] = useState([]);
   const [health, setHealth] = useState(null);

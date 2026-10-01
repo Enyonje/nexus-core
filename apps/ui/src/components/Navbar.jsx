@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import useAuth from "../hooks/useAuth"; // ✅ import the hook
+import { useAuth } from "../hooks/useAuth"; // ✅ import the hook
 
 export default function Navbar({ onToggleTheme, isDark, theme }) {
   // ✅ use the hook to access auth state

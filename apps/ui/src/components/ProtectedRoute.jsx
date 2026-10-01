@@ -1,9 +1,9 @@
 import { Navigate } from "react-router-dom";
-import AuthProvider from "../context/AuthProvider";
+import { useAuth } from "../hooks/useAuth";
 import LoadingSpinner from "./LoadingSpinner";
 
 export default function ProtectedRoute({ children, requiredTier }) {
-  const { user, subscription, loading } = AuthProvider();
+  const { user, subscription, loading } = useAuth();
 
   if (loading) {
     return <LoadingSpinner />;

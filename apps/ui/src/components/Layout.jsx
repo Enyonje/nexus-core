@@ -1,61 +1,156 @@
-import React from "react";
-import { NavLink, useLocation, Outlet } from "react-router-dom";
-import AuthProvider from "../context/AuthProvider";
+// src/context/AuthProvider.jsx
+import { createContext, useContext, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-export default function Layout({ theme }) {
-  const location = useLocation();
-  const { subscription, loading } = AuthProvider();
+const AuthContext = createContext(null);
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
-        <span className="text-gray-500 dark:text-gray-300">Loading...</span>
-      </div>
-    );
+function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [subscription, setSubscription] = useState("free");
+  const [role, setRole] = useState("user");
+  const [loading, setLoading] = useState(true);
+  const [initializing, setInitializing] = useState(true);
+  const navigate = useNavigate();
+
+  /* =========================
+      INIT SESSION & PING
+  ========================= */
+  useEffect(() => {
+    fetch(`${API_URL}/health`).catch(() => console.log("Backend waking up..."));
+
+    const token = localStorage.getItem("authToken");
+    if (token) {
+      refreshSession(token);
+    } else {
+      setLoading(false);
+      setInitializing(false);
+    }
+  }, []);
+
+  /* =========================
+      REFRESH SESSION
+  ========================= */
+  async function refreshSession(token) {
+    try {
+      const res = await fetch(`${API_URL}/auth/subscription`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) throw new Error("Invalid session");
+
+      const data = await res.json();
+
+      setUser({
+        token,
+        email: data.email,
+        id: data.id,
+        createdAt: data.created_at || null,
+      });
+
+      setSubscription(data.tier || "free");
+      setRole(data.role || "user");
+
+      return { tier: data.tier || "free", role: data.role || "user" };
+    } catch (err) {
+      console.warn("Session refresh failed:", err.message);
+      logout(false);
+      return { tier: "free", role: "user" };
+    } finally {
+      setLoading(false);
+      setInitializing(false);
+    }
   }
 
-  const navLinks = [
-    { to: "/dashboard", label: "Dashboard" },
-    { to: "/goals", label: "Goals" },
-    { to: "/executions", label: "Executions" },
-    ...(subscription !== "free"
-      ? [{ to: "/streams", label: "Streams" }]
-      : []),
-    ...(subscription === "enterprise"
-      ? [{ to: "/audit", label: "Audit Logs" }]
-      : []),
-    ...(subscription === "admin"
-      ? [{ to: "/admin", label: "Admin" }]
-      : []),
-    { to: "/subscription", label: "Subscription" },
-  ];
+  /* =========================
+      LOGIN
+  ========================= */
+  async function login({ token }) {
+    localStorage.setItem("authToken", token);
+    const { tier, role } = await refreshSession(token);
+    redirectByTier(tier, role);
+  }
+
+  /* =========================
+      REDIRECT
+  ========================= */
+  function redirectByTier(tier, role) {
+    if (role === "admin") {
+      navigate("/admin", { replace: true });
+    } else if (tier === "enterprise") {
+      navigate("/streams", { replace: true });
+    } else if (tier === "pro") {
+      navigate("/executions", { replace: true });
+    } else {
+      navigate("/dashboard", { replace: true });
+    }
+  }
+
+  /* =========================
+      LOGOUT
+  ========================= */
+  function logout(redirect = true) {
+    localStorage.removeItem("authToken");
+    setUser(null);
+    setSubscription("free");
+    setRole("user");
+    setLoading(false);
+    setInitializing(false);
+
+    if (redirect) navigate("/", { replace: true });
+  }
+
+  /* =========================
+      AUTH FETCH HELPER
+  ========================= */
+  async function authFetch(endpoint, options = {}) {
+    const token = user?.token || localStorage.getItem("authToken");
+    const headers = {
+      ...(options.headers || {}),
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    const res = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
+
+    if (res.status === 401) {
+      logout();
+      throw new Error("Unauthorized");
+    }
+
+    return res;
+  }
 
   return (
-    <div className="min-h-screen flex bg-gray-50 dark:bg-gray-900">
-      {/* SIDEBAR */}
-      <aside className="w-56 bg-white dark:bg-gray-800 p-4 space-y-2 border-r">
-        <h2 className="font-bold mb-4">Nexus Core</h2>
-        {navLinks.map(({ to, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              `block px-3 py-2 rounded text-sm font-medium ${isActive
-                ? "bg-blue-600 text-white"
-                : "hover:bg-gray-200 dark:hover:bg-gray-700"
-              }`
-            }
-            aria-current={location.pathname.startsWith(to) ? "page" : undefined}
-          >
-            {label}
-          </NavLink>
-        ))}
-      </aside>
-
-      {/* CONTENT */}
-      <main className="flex-1 p-6 overflow-y-auto">
-        <Outlet />
-      </main>
-    </div>
+    <AuthContext.Provider
+      value={{
+        user,
+        subscription,
+        role,
+        setSubscription,
+        loading,
+        initializing,
+        login,
+        logout,
+        authFetch,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
   );
 }
+
+// ✅ Named hook export
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+}
+
+// ✅ Default export for provider
+export default AuthProvider;

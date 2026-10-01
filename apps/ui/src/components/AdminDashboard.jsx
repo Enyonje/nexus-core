@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
-import AuthProvider from "../context/AuthProvider";
+import { useAuth } from "../hooks/useAuth";
 import { formatDate } from "../lib/utils";
 
 export default function AdminDashboard() {
-  const { role, initializing } = AuthProvider();
+  const { role, initializing } = useAuth();
   const [usage, setUsage] = useState(null);
   const [executions, setExecutions] = useState([]);
   const [loading, setLoading] = useState(true);
