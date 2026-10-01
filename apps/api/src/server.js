@@ -85,11 +85,12 @@ app.register(streamRoutes, { prefix: "/api/stream" });
 app.register(stripeRoutes, { prefix: "/api/stripe" });
 app.register(webhooksRoutes);
 
+
+
 /* =========================
    SUPPORTOPS ROUTE REGISTRATION
 ========================= */
 
-// SupportOps Endpoints
 app.register(aiRoutes, { prefix: "/api/v1/supportops/ai" });
 app.register(aiReviewRoutes, { prefix: "/api/v1/supportops/ai-review" });
 app.register(incidentsRoutes, { prefix: "/api/v1/supportops/incidents" });
@@ -97,6 +98,7 @@ app.register(orgAnalyticsRoutes, { prefix: "/api/v1/supportops/analytics" });
 app.register(ticketsRoutes, { prefix: "/api/v1/supportops/tickets" });
 app.register(stripeWebhookRoutes, { prefix: "/api/v1/supportops/webhooks/stripe" });
 app.register(usersRoutes, { prefix: "/api/v1/supportops/users" });
+
 
 app.get("/api/health", async () => {
   const client = await app.pg.connect();
