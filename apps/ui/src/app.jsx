@@ -105,8 +105,8 @@ export default function App() {
                 <Route path="/agents/cross-border-compliance" element={<CrossBorderCompliance />} />
 
                 {/* OTHER SPECIALISED AGENTS */}
-                <Route path="/support-ops-ai" element={<SupportOpsRoutes />} />
-                <Route path="/agents/support-ops" element={<SupportOpsRoutes />} />
+                <Route path="/support-ops-ai/*" element={<SupportOpsRoutes />} />
+                <Route path="/agents/support-ops-ai/*" element={<SupportOpsRoutes />} />
 
                 {/* TOOLS ROUTING */}
                 <Route path="/tools/webhook-validator" element={<WebhookValidator />} />
