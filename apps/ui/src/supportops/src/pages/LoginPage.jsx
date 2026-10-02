@@ -19,24 +19,17 @@ export default function LoginPage() {
     try {
       const user = await login({ email, password });
 
-      const role = user?.role || "agent";
-      switch (role) {
-        case "agent":
-          navigate("/agent/dashboard");
-          break;
-        case "admin":
-        case "management":
-          navigate("/admin/executive");
-          break;
-        case "investor":
-          navigate("/investor");
-          break;
-        default:
-          navigate("/agent/dashboard");
+      if (user) {
+        // ✅ Always redirect to SuccessPage first
+        navigate("/success");
       }
     } catch (err) {
       console.error("Login error:", err);
-      setError(err?.response?.data?.detail || err.message || "Login failed. Please try again.");
+      setError(
+        err?.response?.data?.detail ||
+        err.message ||
+        "Login failed. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -82,7 +75,10 @@ export default function LoginPage() {
         {/* ✅ Signup link */}
         <p className="text-center text-sm text-white/70">
           Don’t have an account?{" "}
-          <Link to="/signup" className="text-blue-400 hover:underline font-medium">
+          <Link
+            to="/signup"
+            className="text-blue-400 hover:underline font-medium"
+          >
             Sign up
           </Link>
         </p>

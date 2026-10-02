@@ -34,7 +34,6 @@ import AgentsDirectory from "./components/AgentsDirectory.jsx";
 
 // Agent Components
 import CrossBorderCompliance from "./components/CrossBorderCompliance.jsx";
-import SupportOps from "./components/Support0ps.jsx";
 
 // Logic & Providers
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
@@ -106,7 +105,7 @@ export default function App() {
                 <Route path="/agents/cross-border-compliance" element={<CrossBorderCompliance />} />
 
                 {/* OTHER SPECIALISED AGENTS */}
-                <Route path="/support-ops-ai" element={<SupportOps />} />
+                <Route path="/support-ops-ai" element={<SupportOpsRoutes />} />
                 <Route path="/agents/support-ops" element={<SupportOpsRoutes />} />
 
                 {/* TOOLS ROUTING */}

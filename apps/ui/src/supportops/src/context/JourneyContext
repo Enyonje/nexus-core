@@ -1,0 +1,17 @@
+import { createContext, useContext, useState } from "react";
+
+const JourneyContext = createContext();
+
+export const JourneyProvider = ({ children }) => {
+    const [step, setStep] = useState("landing"); // landing → signup → success → dashboard → analytics → review
+
+    const advanceStep = (next) => setStep(next);
+
+    return (
+        <JourneyContext.Provider value={{ step, advanceStep }}>
+            {children}
+        </JourneyContext.Provider>
+    );
+};
+
+export const useJourney = () => useContext(JourneyContext);

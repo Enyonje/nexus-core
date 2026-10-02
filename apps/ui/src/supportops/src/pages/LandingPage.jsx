@@ -49,18 +49,22 @@ export default function LandingPage() {
 
         {/* Hero CTA Actions */}
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 w-full sm:w-auto">
-          <NavLink to="/signup" className="w-full sm:w-auto">
-            <CTAButton className="w-full sm:w-auto px-8 py-3.5 text-base font-semibold shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all flex items-center justify-center gap-2">
-              Start Free Trial <ArrowRight className="w-4 h-4" />
-            </CTAButton>
-          </NavLink>
-          <NavLink
+          {/* ✅ CTAButton now handles routing directly */}
+          <CTAButton
+            to="/signup"
+            className="w-full sm:w-auto px-8 py-3.5 text-base font-semibold shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all flex items-center justify-center gap-2"
+          >
+            Start Free Trial <ArrowRight className="w-4 h-4" />
+          </CTAButton>
+
+          <CTAButton
             to="/features"
             className="w-full sm:w-auto px-8 py-3.5 rounded-xl border border-slate-700 bg-slate-900/60 text-slate-200 hover:bg-slate-800 hover:border-slate-600 transition-all backdrop-blur-md text-center font-medium"
           >
             Explore Features
-          </NavLink>
+          </CTAButton>
         </div>
+
 
         {/* Trust Chips below CTA */}
         <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400">
@@ -291,11 +295,13 @@ export default function LandingPage() {
             Join forward-thinking teams using SupportOps Pro. Deploy in minutes, automate routine inquiries, and deliver world-class customer service.
           </p>
           <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <NavLink to="/signup" className="w-full sm:w-auto">
-              <CTAButton className="w-full sm:w-auto px-8 py-4 text-lg font-bold shadow-xl shadow-blue-600/30 hover:scale-105 transition-all">
-                Start Free Trial Now
-              </CTAButton>
-            </NavLink>
+            <CTAButton
+              to="/signup"
+              className="w-full sm:w-auto px-8 py-4 text-lg font-bold shadow-xl shadow-blue-600/30 hover:scale-105 transition-all"
+            >
+              Start Free Trial Now
+            </CTAButton>
+
           </div>
         </div>
       </section>

@@ -1,24 +1,23 @@
-import { Navigate, Outlet } from "react-router-dom";
+import React from "react";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
 
-export default function ProtectedRoute({ allowRoles }) {
-  const { user, loading } = useAuth();
+const ProtectedRoute = ({ allowRoles }) => {
+  const { user } = useAuth();
+  const location = useLocation();
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-white">
-        Loading...
-      </div>
-    );
-  }
-
+  // If no user, redirect to login
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // If user exists but role not allowed, send them back to landing
   if (allowRoles && !allowRoles.includes(user.role)) {
     return <Navigate to="/" replace />;
   }
 
+  // Otherwise, render the nested routes
   return <Outlet />;
-}
+};
+
+export default ProtectedRoute;
