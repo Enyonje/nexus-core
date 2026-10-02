@@ -8,6 +8,7 @@ import React, {
 } from "react";
 
 const STORAGE_KEY = "supportops_user";
+const STAFF_ACCESS_CODE = "SUPPORTOPS-STAFF-2026"; // ✅ secure code for admin/management
 
 export const AuthContext = createContext(null);
 
@@ -21,9 +22,8 @@ export function useAuth() {
 
 // Never persist passwords in localStorage
 function sanitize(userData = {}) {
-  // eslint-disable-next-line no-unused-vars
   const { password, ...safe } = userData;
-  return { role: "agent", ...safe };
+  return safe;
 }
 
 export function AuthProvider({ children }) {
@@ -53,21 +53,28 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (userData) => persist(userData), [persist]);
 
   /**
-   * register({ name, email, password }) -> user
-   * Currently local-only. To use a real backend, replace the body with:
-   *   const res = await api.post("/auth/register", data);
-   *   return persist(res.data.user);
+   * register({ name, email, password, role, accessCode }) -> user
    */
   const register = useCallback(
     async (data) => {
       if (!data?.email || !data?.password) {
         throw new Error("Email and password are required");
       }
+
+      // ✅ enforce role restrictions
+      let role = data.role || "agent";
+
+      if (role === "admin" || role === "management") {
+        if (data.accessCode !== STAFF_ACCESS_CODE) {
+          throw new Error("Valid staff access code required for Admin/Management signup");
+        }
+      }
+
       return persist({
         id: crypto.randomUUID?.() ?? String(Date.now()),
         name: data.name,
         email: data.email,
-        role: "agent",
+        role,
       });
     },
     [persist]
@@ -85,7 +92,7 @@ export function AuthProvider({ children }) {
       isAuth: !!user,
       login,
       register,
-      signup: register, // alias so older code calling signup() keeps working
+      signup: register, // alias for older code
       logout,
       setUser,
     }),

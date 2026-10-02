@@ -27,7 +27,8 @@ export default function SignupPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("agent"); // ✅ default role
+  const [role, setRole] = useState("agent");
+  const [accessCode, setAccessCode] = useState(""); // ✅ for admin/management
   const [loading, setLoading] = useState(false);
 
   async function handleSignup(e) {
@@ -35,6 +36,13 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
+      // ✅ enforce access code for admin/management
+      if ((role === "admin" || role === "management") && accessCode !== "SUPPORTOPS-STAFF-2026") {
+        toast.error("Access code required for Admin/Management signup.");
+        setLoading(false);
+        return;
+      }
+
       const user = await signup({ email, password, name, role });
       if (user) {
         toast.success("Signup successful! Redirecting...");
@@ -56,14 +64,12 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#020617] px-6 relative">
-      {/* 🔄 Loading Overlay */}
       {loading && (
         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
         </div>
       )}
 
-      {/* Toast container */}
       <Toaster position="top-center" reverseOrder={false} />
 
       <form
@@ -109,7 +115,20 @@ export default function SignupPage() {
           >
             <option value="agent">Register as Agent</option>
             <option value="investor">Register as Investor</option>
+            <option value="admin">Register as Admin (requires code)</option>
+            <option value="management">Register as Management (requires code)</option>
           </select>
+
+          {/* ✅ Access code field only shows for admin/management */}
+          {(role === "admin" || role === "management") && (
+            <input
+              type="text"
+              value={accessCode}
+              onChange={(e) => setAccessCode(e.target.value)}
+              placeholder="Staff Access Code"
+              className={inputClass}
+            />
+          )}
         </div>
 
         <button

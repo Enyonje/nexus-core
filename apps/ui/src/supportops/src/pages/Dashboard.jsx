@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import RevenueChart from "../components/RevenueChart";
 import AIImpact from "../components/AIImpact";
 import { useAgentStream } from "../hooks/useAgentStream";
+import { p } from "../config/paths";
 
 import {
   Sparkles,
@@ -32,7 +33,7 @@ export default function SupportOpsDashboard() {
 
   // Real-time activity stream via SSE
   const { events: liveEvents, isConnected: isStreamConnected } = useAgentStream(
-    `${API_BASE_URL}/api/v1/agents/activity/stream`
+    p(`${API_BASE_URL}/api/v1/agents/activity/stream`)
   );
 
   // Fetch production metrics & system operational health
@@ -40,8 +41,8 @@ export default function SupportOpsDashboard() {
     try {
       setError(null);
       const [metricsRes, healthRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/v1/dashboard/metrics?timeframe=${timeframe}`),
-        fetch(`${API_BASE_URL}/api/v1/system/health`),
+        fetch(p(`${API_BASE_URL}/api/v1/dashboard/metrics?timeframe=${timeframe}`)),
+        fetch(p(`${API_BASE_URL}/api/v1/system/health`)),
       ]);
 
       if (!metricsRes.ok || !healthRes.ok) {
