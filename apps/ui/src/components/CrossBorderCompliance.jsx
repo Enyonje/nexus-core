@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import jsPDF from "jspdf";
-import "jspdf-autotable"; // this attaches autoTable to jsPDF
+import autoTable from "jspdf-autotable"; // this attaches autoTable to jsPDF
 import {
     validateCargoDiscrepancies,
     calculateCustomsAssessment,
