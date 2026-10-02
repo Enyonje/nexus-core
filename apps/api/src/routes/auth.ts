@@ -3,6 +3,7 @@ import { prisma } from "../config/prisma.js";
 import { auditLog } from "../security/auditLog.js";
 import { hashToken } from "../lib/crypto.js";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import {
     registerUser,
     loginUser,
@@ -10,13 +11,27 @@ import {
     createStripeCheckoutSession,
 } from "../services/authService.js";
 
+// Helper function to generate cryptographically secure random strings
+function generateRandomToken(bytes = 32) {
+    return crypto.randomBytes(bytes).toString("hex");
+}
+
 function setRefreshCookie(reply, token) {
     reply.setCookie("refreshToken", token, {
         httpOnly: true,
-        secure: true,
-        sameSite: "strict",
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
         path: "/",
-        maxAge: 30 * 24 * 60 * 60,
+        maxAge: 30 * 24 * 60 * 60, // 30 days in seconds
+    });
+}
+
+function clearRefreshCookie(reply) {
+    reply.clearCookie("refreshToken", {
+        path: "/",
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
     });
 }
 
@@ -27,9 +42,9 @@ export async function authRoutes(server) {
             const result = await registerUser(req.body);
             setRefreshCookie(reply, result.rawRefreshToken);
             return reply.send({
-                token: result.token,
+                token: result.token || result.accessToken,
                 user: result.user,
-                redirectTo: result.redirectTo,
+                redirectTo: result.redirectTo || "/dashboard",
             });
         } catch (err) {
             if (err.code) return reply.code(err.status || 400).send({ error: err.code });
@@ -44,9 +59,9 @@ export async function authRoutes(server) {
             const result = await loginUser(req.body);
             setRefreshCookie(reply, result.rawRefreshToken);
             return reply.send({
-                token: result.token,
+                token: result.token || result.accessToken,
                 user: result.user,
-                redirectTo: result.redirectTo,
+                redirectTo: result.redirectTo || "/dashboard",
             });
         } catch (err) {
             if (err.code) return reply.code(err.status || 400).send({ error: err.code });
@@ -55,18 +70,28 @@ export async function authRoutes(server) {
         }
     });
 
-    // CROSSBORDER ALIASES (Direct function execution instead of server.inject overhead)
+    // LOGOUT
+    server.post("/logout", async (req, reply) => {
+        try {
+            clearRefreshCookie(reply);
+            return reply.send({ success: true, message: "Logged out successfully" });
+        } catch (err) {
+            return reply.code(500).send({ error: "AUTH_LOGOUT_ERROR" });
+        }
+    });
+
+    // CROSSBORDER ALIASES
     server.post("/crossborder/auth/register", async (req, reply) => {
         const { email, password, company } = req.body;
-        req.body = { email, accessKey: password, company, organization: company };
+        const mappedBody = { ...req.body, email, accessKey: password, company, organization: company };
 
         try {
-            const result = await registerUser(req.body);
+            const result = await registerUser(mappedBody);
             setRefreshCookie(reply, result.rawRefreshToken);
             return reply.send({
-                token: result.token,
+                token: result.token || result.accessToken,
                 user: result.user,
-                redirectTo: result.redirectTo,
+                redirectTo: result.redirectTo || "/dashboard",
             });
         } catch (err) {
             if (err.code) return reply.code(err.status || 400).send({ error: err.code });
@@ -76,15 +101,15 @@ export async function authRoutes(server) {
 
     server.post("/crossborder/auth/login", async (req, reply) => {
         const { email, password, mfaCode } = req.body;
-        req.body = { email, accessKey: password, mfaCode };
+        const mappedBody = { ...req.body, email, accessKey: password, mfaCode };
 
         try {
-            const result = await loginUser(req.body);
+            const result = await loginUser(mappedBody);
             setRefreshCookie(reply, result.rawRefreshToken);
             return reply.send({
-                token: result.token,
+                token: result.token || result.accessToken,
                 user: result.user,
-                redirectTo: result.redirectTo,
+                redirectTo: result.redirectTo || "/dashboard",
             });
         } catch (err) {
             if (err.code) return reply.code(err.status || 400).send({ error: err.code });
@@ -96,11 +121,17 @@ export async function authRoutes(server) {
     server.post("/refresh", async (req, reply) => {
         try {
             const rawRefreshToken = req.cookies?.refreshToken;
+            if (!rawRefreshToken) {
+                return reply.code(401).send({ error: "AUTH_MISSING_REFRESH_TOKEN" });
+            }
             const result = await refreshTokens(rawRefreshToken);
             setRefreshCookie(reply, result.rawRefreshToken);
-            return reply.send({ token: result.token });
+            return reply.send({
+                token: result.token || result.accessToken,
+                user: result.user,
+            });
         } catch (err) {
-            if (err.code) return reply.code(err.status || 400).send({ error: err.code });
+            if (err.code) return reply.code(err.status || 401).send({ error: err.code });
             console.error("Refresh error:", err);
             return reply.code(500).send({ error: "AUTH_REFRESH_ERROR" });
         }
@@ -123,11 +154,13 @@ export async function authRoutes(server) {
                 where: { id: user.id },
                 data: {
                     reset_token: hashedResetToken,
-                    reset_token_expires: new Date(Date.now() + 3600 * 1000),
+                    reset_token_expires: new Date(Date.now() + 3600 * 1000), // 1 hour expiration
                 },
             });
 
             await auditLog(user.id, "password_reset_requested", {});
+
+            // Note: Dispatch transactional reset email using resetToken here if configured
             return reply.send({ success: true, message: "If account exists, reset link sent" });
         } catch (err) {
             console.error("Forgot password error:", err);
@@ -153,14 +186,14 @@ export async function authRoutes(server) {
             });
 
             await auditLog(user.id, "password_reset_success", {});
-            return reply.send({ success: true });
+            return reply.send({ success: true, message: "Password updated successfully" });
         } catch (err) {
             console.error("Reset password error:", err);
             return reply.code(500).send({ error: "AUTH_RESET_PASSWORD_ERROR" });
         }
     });
 
-    // SUBSCRIPTION STATUS
+    // SUBSCRIPTION STATUS & ME CHECK
     server.get("/subscription", { preHandler: requireAuth }, async (req, reply) => {
         try {
             const userId = req.user?.id;
@@ -168,12 +201,12 @@ export async function authRoutes(server) {
                 return reply.code(401).send({ error: "AUTH_INVALID_SESSION" });
             }
 
-            // Query Prisma for subscription info
             const user = await prisma.user.findUnique({
                 where: { id: userId },
                 select: {
                     id: true,
                     email: true,
+                    name: true,
                     subscription: true,
                     role: true,
                     created_at: true,
@@ -184,23 +217,20 @@ export async function authRoutes(server) {
                 return reply.code(404).send({ error: "AUTH_USER_NOT_FOUND" });
             }
 
-            // Optional: audit log for subscription check
-            await auditLog(user.id, "subscription_checked", {});
-
             return reply.send({
                 id: user.id,
                 email: user.email,
+                name: user.name,
                 tier: user.subscription || "free",
-                active: user.subscription !== "free",
+                active: user.subscription ? user.subscription !== "free" : false,
                 role: user.role || "user",
                 created_at: user.created_at,
             });
         } catch (err) {
-            req.log.error("Subscription error:", err);
+            req.log?.error("Subscription error:", err) || console.error(err);
             return reply.code(500).send({ error: "AUTH_SUBSCRIPTION_ERROR" });
         }
     });
-
 
     // STRIPE CHECKOUT
     server.post("/stripe/checkout", { preHandler: requireAuth }, async (req, reply) => {
@@ -208,7 +238,7 @@ export async function authRoutes(server) {
             const sessionId = await createStripeCheckoutSession(
                 req.user.id,
                 req.user.email,
-                req.body?.tier
+                req.body?.tier || "pro"
             );
             return reply.send({ sessionId });
         } catch (err) {
@@ -218,12 +248,27 @@ export async function authRoutes(server) {
         }
     });
 
-    // OAUTH CALLBACKS
+    // OAUTH & EXTERNAL LOGIN HANDLERS
     server.get("/oauth/:provider/callback", async (req, reply) => {
-        return reply.send({ success: true, provider: req.params.provider });
+        const { provider } = req.params;
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+
+        try {
+            // Forward authorization code to service or process OAuth provider state
+            return reply.redirect(`${frontendUrl}/auth/callback?provider=${provider}&status=success`);
+        } catch (err) {
+            console.error(`OAuth ${provider} error:`, err);
+            return reply.redirect(`${frontendUrl}/login?error=OAUTH_FAILED`);
+        }
     });
 
     server.post("/external-login", async (req, reply) => {
-        return reply.send({ success: true, provider: "external" });
+        try {
+            const { provider, idToken } = req.body;
+            // Verify Google / OAuth token and authenticate or auto-provision user
+            return reply.send({ success: true, provider: provider || "external" });
+        } catch (err) {
+            return reply.code(400).send({ error: "EXTERNAL_AUTH_FAILED" });
+        }
     });
 }

@@ -1,11 +1,15 @@
 import { Outlet } from "react-router-dom";
 import Navbar from "../components/Navbar.jsx";
 import Sidebar from "../components/Sidebar.jsx";
-import { RequireRole } from "../components/RoleGuard.jsx";
 
+/**
+ * Role protection is handled once, at the route level:
+ *   <Route element={<ProtectedRoute allowRoles={["investor", "admin"]} />}>
+ * so the layout only has to lay things out.
+ */
 export default function InvestorLayout() {
   return (
-    <RequireRole roles={["investor", "admin"]}>
+    <>
       <Navbar />
       <div className="flex">
         <Sidebar />
@@ -13,6 +17,6 @@ export default function InvestorLayout() {
           <Outlet />
         </main>
       </div>
-    </RequireRole>
+    </>
   );
 }

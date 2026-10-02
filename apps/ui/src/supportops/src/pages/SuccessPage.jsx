@@ -1,25 +1,13 @@
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { homeForRole } from "../config/paths";
 
 export default function SuccessPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
   const handleContinue = () => {
-    switch (user?.role) {
-      case "agent":
-        navigate("/agent/dashboard");
-        break;
-      case "admin":
-      case "management":
-        navigate("/admin/executive");
-        break;
-      case "investor":
-        navigate("/investor");
-        break;
-      default:
-        navigate("/agent/dashboard"); // fallback
-    }
+    navigate(homeForRole(user?.role));
   };
 
   return (

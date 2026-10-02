@@ -1,47 +1,53 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { p } from "../config/paths";
+import toast, { Toaster } from "react-hot-toast";
+
+const inputClass =
+  "w-full px-3 py-2 rounded-lg border border-white/10 bg-[#0B1220] text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600";
+
+function homeForRole(role) {
+  switch (role) {
+    case "admin":
+    case "management":
+      return p("/admin/executive");
+    case "investor":
+      return p("/investor");
+    case "agent":
+    default:
+      return p("/agent/dashboard");
+  }
+}
 
 export default function SignupPage() {
-  const { register } = useAuth(); // ✅ now provided by context
+  const { signup } = useAuth();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState("agent"); // ✅ default role
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
 
   async function handleSignup(e) {
     e.preventDefault();
     setLoading(true);
-    setError(null);
 
     try {
-      const user = await register({ email, password, name });
-
-      // Route user by role
-      const role = user?.role || "agent";
-      switch (role) {
-        case "agent":
-          navigate("/agent/dashboard");
-          break;
-        case "admin":
-        case "management":
-          navigate("/admin/executive");
-          break;
-        case "investor":
-          navigate("/investor");
-          break;
-        default:
-          navigate("/agent/dashboard");
+      const user = await signup({ email, password, name, role });
+      if (user) {
+        toast.success("Signup successful! Redirecting...");
+        setTimeout(() => {
+          navigate(homeForRole(user?.role), { replace: true });
+        }, 1200);
       }
     } catch (err) {
       console.error("Signup error:", err);
-      setError(
+      toast.error(
         err?.response?.data?.detail ||
-          err.message ||
-          "Signup failed. Please try again."
+        err.message ||
+        "Signup failed. Please try again."
       );
     } finally {
       setLoading(false);
@@ -49,10 +55,20 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#020617] px-6">
+    <div className="min-h-screen flex items-center justify-center bg-[#020617] px-6 relative">
+      {/* 🔄 Loading Overlay */}
+      {loading && (
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      )}
+
+      {/* Toast container */}
+      <Toaster position="top-center" reverseOrder={false} />
+
       <form
         onSubmit={handleSignup}
-        className="w-full max-w-sm space-y-6 bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl"
+        className="w-full max-w-sm space-y-6 bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl relative z-10"
       >
         <h1 className="text-2xl font-bold text-white text-center">Create Account</h1>
 
@@ -63,7 +79,8 @@ export default function SignupPage() {
             onChange={(e) => setName(e.target.value)}
             placeholder="Full Name"
             required
-            className="w-full px-3 py-2 rounded-lg border border-white/10 bg-[#0B1220] text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            autoComplete="name"
+            className={inputClass}
           />
           <input
             type="email"
@@ -71,7 +88,8 @@ export default function SignupPage() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Email"
             required
-            className="w-full px-3 py-2 rounded-lg border border-white/10 bg-[#0B1220] text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            autoComplete="email"
+            className={inputClass}
           />
           <input
             type="password"
@@ -79,11 +97,20 @@ export default function SignupPage() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
             required
-            className="w-full px-3 py-2 rounded-lg border border-white/10 bg-[#0B1220] text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            autoComplete="new-password"
+            className={inputClass}
           />
-        </div>
 
-        {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+          {/* ✅ Role selector */}
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            className={inputClass}
+          >
+            <option value="agent">Register as Agent</option>
+            <option value="investor">Register as Investor</option>
+          </select>
+        </div>
 
         <button
           type="submit"
@@ -93,10 +120,9 @@ export default function SignupPage() {
           {loading ? "Signing up..." : "Sign Up"}
         </button>
 
-        {/* ✅ Login link for existing users */}
         <p className="text-center text-sm text-white/70">
           Already have an account?{" "}
-          <Link to="/login" className="text-blue-400 hover:underline font-medium">
+          <Link to={p("/login")} className="text-blue-400 hover:underline font-medium">
             Login
           </Link>
         </p>

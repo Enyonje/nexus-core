@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
-import { useAuth } from "../context/AuthProvider.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
 
 export function RequireAuth({ children }) {
   const { isAuth } = useAuth();

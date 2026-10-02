@@ -1,12 +1,11 @@
-// src/layouts/AgentLayout.jsx
 import { Outlet } from "react-router-dom";
 import Navbar from "../components/Navbar.jsx";
 import Sidebar from "../components/Sidebar.jsx";
-import { RequireRole } from "../components/RoleGuard.jsx";
 
+// Role protection lives in SupportOpsRoutes (<ProtectedRoute allowRoles={[...]} />)
 export default function AgentLayout() {
   return (
-    <RequireRole roles={["agent"]}>
+    <>
       <Navbar />
       <div className="flex">
         <Sidebar />
@@ -14,6 +13,6 @@ export default function AgentLayout() {
           <Outlet />
         </main>
       </div>
-    </RequireRole>
+    </>
   );
 }

@@ -3,7 +3,9 @@ import { useState } from "react";
 import { Toaster } from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
 
+// SupportOps (separate project embedded in this app, with its own auth context)
 import SupportOpsRoutes from "./supportops/src/routes/SupportOpsRoutes";
+import { AuthProvider as SupportOpsAuthProvider } from "./supportops/src/context/AuthContext";
 
 // Components
 import Navbar from "./components/Navbar.jsx";
@@ -31,16 +33,15 @@ import LandingPage from "./components/LandingPage.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
 import AuditLogAnalyzer from "./components/AuditLogAnalyzer";
 import AgentsDirectory from "./components/AgentsDirectory.jsx";
-
-// Agent Components
 import CrossBorderCompliance from "./components/CrossBorderCompliance.jsx";
-
-// Logic & Providers
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
-import { lightTheme, darkTheme } from "./theme";
-import AuthProvider from "./context/AuthProvider.jsx";
-import { ToastProvider } from "./components/ToastContext.jsx";
 
+import { lightTheme, darkTheme } from "./theme";
+
+/**
+ * NOTE: BrowserRouter, AuthProvider and ToastProvider are already supplied by
+ * main.jsx. Do NOT wrap them again here, or you get duplicate auth state.
+ */
 export default function App() {
   const [isDark, setIsDark] = useState(true);
   const theme = isDark ? darkTheme : lightTheme;
@@ -48,119 +49,129 @@ export default function App() {
   const [selectedExecutionId, setSelectedExecutionId] = useState(null);
   const location = useLocation();
 
+  // Keep one stable key for everything under /supportops so internal navigation
+  // doesn't remount the SupportOps provider (which would reset its state).
+  const animationKey = location.pathname.startsWith("/supportops")
+    ? "supportops"
+    : location.pathname;
+
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <div
-          className="transition-colors duration-300"
-          style={{
-            minHeight: "100vh",
-            fontFamily: theme.typography.fontFamily,
-            backgroundColor: theme.colors.background,
-            color: theme.colors.text.primary,
-          }}
+    <div
+      className="transition-colors duration-300"
+      style={{
+        minHeight: "100vh",
+        fontFamily: theme.typography.fontFamily,
+        backgroundColor: theme.colors.background,
+        color: theme.colors.text.primary,
+      }}
+    >
+      <Navbar
+        onToggleTheme={() => setIsDark((prev) => !prev)}
+        isDark={isDark}
+        theme={theme}
+      />
+
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: "#0f172a",
+            color: "#fff",
+            border: "1px solid rgba(255,255,255,0.1)",
+          },
+        }}
+      />
+
+      {/* Route transitions */}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={animationKey}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.15 }}
         >
-          <Navbar
-            onToggleTheme={() => setIsDark(!isDark)}
-            isDark={isDark}
-            theme={theme}
-          />
+          <Routes location={location}>
+            {/* PUBLIC */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/docs" element={<SEOPillarPage />} />
+            <Route path="/architecture" element={<ArchitecturePage />} />
+            <Route path="/careers" element={<CareersPage />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/pricing" element={<PricingGrid />} />
+            <Route path="/subscription" element={<Subscription />} />
+            <Route path="/agents" element={<AgentsDirectory />} />
 
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              style: {
-                background: "#0f172a",
-                color: "#fff",
-                border: "1px solid rgba(255,255,255,0.1)",
-              },
-            }}
-          />
+            {/* COMPLIANCE */}
+            <Route path="/compliance" element={<CrossBorderCompliance />} />
+            <Route
+              path="/agents/cross-border-compliance"
+              element={<CrossBorderCompliance />}
+            />
 
-          {/* AnimatePresence for route transitions */}
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.15 }}
+            {/* TOOLS */}
+            <Route path="/tools" element={<ToolsIndex />} />
+            <Route path="/tools/webhook-validator" element={<WebhookValidator />} />
+            <Route path="/tools/auditloganalyzer" element={<AuditLogAnalyzer />} />
+
+            {/* SUPPORTOPS: provider goes INSIDE the element prop, never around <Route> */}
+            <Route
+              path="/supportops/*"
+              element={
+                <SupportOpsAuthProvider>
+                  <SupportOpsRoutes />
+                </SupportOpsAuthProvider>
+              }
+            />
+
+            {/* PROTECTED */}
+            <Route
+              element={
+                <ProtectedRoute allowed={["free", "pro", "enterprise", "admin"]}>
+                  <Layout theme={theme} />
+                </ProtectedRoute>
+              }
             >
-              <Routes location={location}>
-                {/* PUBLIC SECTOR */}
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/docs" element={<SEOPillarPage />} />
-                <Route path="/architecture" element={<ArchitecturePage />} />
-                <Route path="/careers" element={<CareersPage />} />
-                <Route path="/contact" element={<ContactPage />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="/pricing" element={<PricingGrid />} />
-                <Route path="/subscription" element={<Subscription />} />
-                <Route path="/tools" element={<ToolsIndex />} />
-                <Route path="/agents" element={<AgentsDirectory />} />
-
-                {/* DIRECT COMPLIANCE DASHBOARD ACCESS */}
-                <Route path="/compliance" element={<CrossBorderCompliance />} />
-                <Route path="/agents/cross-border-compliance" element={<CrossBorderCompliance />} />
-
-                {/* OTHER SPECIALISED AGENTS */}
-                <Route path="/support-ops-ai/*" element={<SupportOpsRoutes />} />
-                <Route path="/agents/support-ops-ai/*" element={<SupportOpsRoutes />} />
-
-                {/* TOOLS ROUTING */}
-                <Route path="/tools/webhook-validator" element={<WebhookValidator />} />
-                <Route path="/tools/auditloganalyzer" element={<AuditLogAnalyzer />} />
-
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
-
-                {/* PROTECTED SECTOR - Single Protected Wrapper */}
-                <Route
-                  element={
-                    <ProtectedRoute allowed={["free", "pro", "enterprise", "admin"]}>
-                      <Layout theme={theme} />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/goals" element={<Goals />} />
-                  <Route
-                    path="/executions"
-                    element={<ExecutionList setSelectedExecutionId={setSelectedExecutionId} />}
-                  />
-                  <Route path="/executions/:id" element={<ExecutionDetail />} />
-                  <Route path="/executions/:executionId/stream" element={<Streams />} />
-                  <Route path="/executions/:executionId/audit" element={<Audit />} />
-
-                  {/* ADMIN ONLY ROUTE */}
-                  <Route
-                    path="/admin"
-                    element={
-                      <ProtectedRoute allowed={["admin"]}>
-                        <AdminDashboard />
-                      </ProtectedRoute>
-                    }
-                  />
-                </Route>
-
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </motion.div>
-          </AnimatePresence>
-
-          {/* AnimatePresence for overlays/modals */}
-          <AnimatePresence>
-            {selectedExecutionId ? (
-              <ExecutionLogsStreamModal
-                key={selectedExecutionId}
-                executionId={selectedExecutionId}
-                onClose={() => setSelectedExecutionId(null)}
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/goals" element={<Goals />} />
+              <Route
+                path="/executions"
+                element={<ExecutionList setSelectedExecutionId={setSelectedExecutionId} />}
               />
-            ) : null}
-          </AnimatePresence>
-        </div>
-      </ToastProvider>
-    </AuthProvider>
+              <Route path="/executions/:id" element={<ExecutionDetail />} />
+              <Route path="/executions/:executionId/stream" element={<Streams />} />
+              <Route path="/executions/:executionId/audit" element={<Audit />} />
+
+              {/* ADMIN ONLY */}
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute allowed={["admin"]}>
+                    <AdminDashboard />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
+
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </motion.div>
+      </AnimatePresence>
+
+      {/* Execution log modal */}
+      <AnimatePresence>
+        {selectedExecutionId ? (
+          <ExecutionLogsStreamModal
+            key={selectedExecutionId}
+            executionId={selectedExecutionId}
+            onClose={() => setSelectedExecutionId(null)}
+          />
+        ) : null}
+      </AnimatePresence>
+    </div>
   );
 }

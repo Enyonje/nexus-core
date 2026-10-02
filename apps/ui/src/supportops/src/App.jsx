@@ -1,45 +1,6 @@
-import { Routes, Route, Navigate } from "react-router-dom";
-import ProtectedRoute from "./routes/ProtectedRoute";
-
-// Public
-import LandingPage from "./pages/LandingPage";
-import LoginPage from "./pages/LoginPage";
-import SignupPage from "./pages/SignupPage";
-import FeaturesPage from "./pages/FeaturesPage";
-import CancelPage from "./pages/CancelPage";
-import SuccessPage from "./pages/SuccessPage";
-
-
-
-// Agent
-import AgentLayout from "./layouts/AgentLayout";
-import Dashboard from "./pages/Dashboard";
-import AnalyticsPage from "./pages/AnalyticsPage";
-import ReviewPage from "./pages/ReviewPage";
-import ReviewPage from "./pages/ReviewPage";
+import React from "react";
+import SupportOpsRoutes from "./routes/SupportOpsRoutes";
 
 export default function App() {
-  return (
-    <Routes>
-      {/* 🌐 Public */}
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/features" element={<FeaturesPage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/signup" element={<SignupPage />} />
-      <Route path="/success" element={<SuccessPage />} />
-      <Route path="/cancel" element={<CancelPage />} />
-
-      {/* 🧑‍💼 Agent Journey */}
-      <Route element={<ProtectedRoute allowRoles={["agent"]} />}>
-        <Route path="/agent" element={<AgentLayout />}>
-          <Route path="dashboard" element={<Dashboard />} />
-          <Route path="analytics" element={<AnalyticsPage />} />
-          <Route path="review" element={<ReviewPage />} /> {/* funnel */}
-        </Route>
-      </Route>
-
-      {/* Fallback */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
+  return <SupportOpsRoutes />;
 }

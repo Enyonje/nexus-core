@@ -1,8 +1,11 @@
-import React, { useContext } from "react";
-import { Routes, Route, Navigate, Outlet } from "react-router-dom";
+import React from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
 
-// Import AuthContext directly from main app context
-import { AuthContext } from "../../../context/AuthProvider";
+// Path helper configuration
+import { p } from "../config/paths";
+
+// Import AuthContext and useAuth directly from the AuthContext file
+import { AuthContext, useAuth } from "../context/AuthContext";
 
 // Import ProtectedRoute & Pages
 import ProtectedRoute from "../components/ProtectedRoute";
@@ -35,15 +38,6 @@ import IncidentCommandCenter from "../pages/IncidentCommandCenter";
 // Investor Pages
 import InvestorMode from "../pages/InvestorMode";
 
-// Custom hook helper using context directly
-function useAuth() {
-    const context = useContext(AuthContext);
-    if (!context) {
-        throw new Error("useAuth must be used within an AuthProvider");
-    }
-    return context;
-}
-
 export default function SupportOpsRoutes() {
     const { user, loading } = useAuth();
 
@@ -58,16 +52,16 @@ export default function SupportOpsRoutes() {
     return (
         <Routes>
             {/* 🌐 Public Routes */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="features" element={<FeaturesPage />} />
-            <Route path="login" element={<LoginPage />} />
-            <Route path="signup" element={<SignupPage />} />
-            <Route path="cancel" element={<CancelPage />} />
-            <Route path="success" element={<SuccessPage />} />
+            <Route path={p("/")} element={<LandingPage />} />
+            <Route path={p("/features")} element={<FeaturesPage />} />
+            <Route path={p("/login")} element={<LoginPage />} />
+            <Route path={p("/signup")} element={<SignupPage />} />
+            <Route path={p("/cancel")} element={<CancelPage />} />
+            <Route path={p("/success")} element={<SuccessPage />} />
 
-            {/* 🧑‍💼 Agent Routes */}
+            {/* 🧑‍‍💼 Agent Routes */}
             <Route element={<ProtectedRoute allowRoles={["agent", "user", "admin"]} />}>
-                <Route path="agent" element={<AgentLayout />}>
+                <Route path={p("/agent")} element={<AgentLayout />}>
                     <Route index element={<Navigate to="dashboard" replace />} />
                     <Route path="dashboard" element={<Dashboard />} />
                     <Route path="analytics" element={<AnalyticsPage />} />
@@ -81,7 +75,7 @@ export default function SupportOpsRoutes() {
 
             {/* 🛡 Admin Routes */}
             <Route element={<ProtectedRoute allowRoles={["admin", "management"]} />}>
-                <Route path="admin" element={<AdminLayout />}>
+                <Route path={p("/admin")} element={<AdminLayout />}>
                     <Route index element={<Navigate to="executive" replace />} />
                     <Route path="executive" element={<ExecutiveDashboard />} />
                     <Route path="analytics" element={<AdminAnalytics />} />
@@ -91,13 +85,13 @@ export default function SupportOpsRoutes() {
 
             {/* 💰 Investor Routes */}
             <Route element={<ProtectedRoute allowRoles={["investor", "admin"]} />}>
-                <Route path="investor" element={<InvestorLayout />}>
+                <Route path={p("/investor")} element={<InvestorLayout />}>
                     <Route index element={<InvestorMode />} />
                 </Route>
             </Route>
 
             {/* Fallback */}
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to={p("/")} replace />} />
         </Routes>
     );
 }

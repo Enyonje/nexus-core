@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { ROUTES } from "../config/paths";
+
+const inputClass =
+  "w-full px-3 py-2 rounded-lg border border-white/10 bg-[#0B1220] text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -20,15 +24,13 @@ export default function LoginPage() {
       const user = await login({ email, password });
 
       if (user) {
-        // ✅ Always redirect to SuccessPage first
-        navigate("/success");
+        // Always redirect to SuccessPage first (kept inside /supportops)
+        navigate(ROUTES.success, { replace: true });
       }
     } catch (err) {
       console.error("Login error:", err);
       setError(
-        err?.response?.data?.detail ||
-        err.message ||
-        "Login failed. Please try again."
+        err?.response?.data?.detail || err.message || "Login failed. Please try again."
       );
     } finally {
       setLoading(false);
@@ -50,7 +52,8 @@ export default function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Email"
             required
-            className="w-full px-3 py-2 rounded-lg border border-white/10 bg-[#0B1220] text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            autoComplete="email"
+            className={inputClass}
           />
           <input
             type="password"
@@ -58,7 +61,8 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
             required
-            className="w-full px-3 py-2 rounded-lg border border-white/10 bg-[#0B1220] text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            autoComplete="current-password"
+            className={inputClass}
           />
         </div>
 
@@ -72,13 +76,9 @@ export default function LoginPage() {
           {loading ? "Logging in..." : "Login"}
         </button>
 
-        {/* ✅ Signup link */}
         <p className="text-center text-sm text-white/70">
           Don’t have an account?{" "}
-          <Link
-            to="/signup"
-            className="text-blue-400 hover:underline font-medium"
-          >
+          <Link to={ROUTES.signup} className="text-blue-400 hover:underline font-medium">
             Sign up
           </Link>
         </p>

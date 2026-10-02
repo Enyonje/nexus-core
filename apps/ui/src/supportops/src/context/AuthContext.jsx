@@ -1,69 +1,98 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import api from "../lib/api";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-const AuthContext = createContext(undefined);
+const STORAGE_KEY = "supportops_user";
+
+export const AuthContext = createContext(null);
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+}
+
+// Never persist passwords in localStorage
+function sanitize(userData = {}) {
+  // eslint-disable-next-line no-unused-vars
+  const { password, ...safe } = userData;
+  return { role: "agent", ...safe };
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Restore session
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    const token = localStorage.getItem("access_token");
-    if (storedUser && token) {
-      setUser(JSON.parse(storedUser));
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) setUser(JSON.parse(stored));
+    } catch (err) {
+      console.error("Failed to parse stored user session", err);
+      localStorage.removeItem(STORAGE_KEY);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
-  async function login(credentials) {
-    const { email, password } = credentials;
+  const persist = useCallback((userData) => {
+    const safe = sanitize(userData);
+    setUser(safe);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
+    return safe;
+  }, []);
 
-    // ✅ Hardcoded admin check
-    if (email === "support@admin.com" && password === "atimmy22") {
-  const adminUser = { email, role: "admin", name: "Support Admin" };
-  localStorage.setItem("access_token", "admin-token"); // dummy token
-  localStorage.setItem("user", JSON.stringify(adminUser));
-  setUser(adminUser);
-  return adminUser;
+  const login = useCallback(async (userData) => persist(userData), [persist]);
 
-    }
-
-    // Normal user login via backend
-    const res = await api.post("/auth/login", credentials);
-    const { access_token, ...userData } = res.data;
-    localStorage.setItem("access_token", access_token);
-    localStorage.setItem("user", JSON.stringify(userData));
-    setUser(userData);
-    return userData;
-  }
-
-  async function register(credentials) {
-    const res = await api.post("/auth/register", credentials);
-    const { access_token, ...userData } = res.data;
-    localStorage.setItem("access_token", access_token);
-    localStorage.setItem("user", JSON.stringify(userData));
-    setUser(userData);
-    return userData;
-  }
-
-  function logout() {
-    localStorage.clear();
-    setUser(null);
-    window.location.href = "/login";
-  }
-
-  return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading }}>
-      {children}
-    </AuthContext.Provider>
+  /**
+   * register({ name, email, password }) -> user
+   * Currently local-only. To use a real backend, replace the body with:
+   *   const res = await api.post("/auth/register", data);
+   *   return persist(res.data.user);
+   */
+  const register = useCallback(
+    async (data) => {
+      if (!data?.email || !data?.password) {
+        throw new Error("Email and password are required");
+      }
+      return persist({
+        id: crypto.randomUUID?.() ?? String(Date.now()),
+        name: data.name,
+        email: data.email,
+        role: "agent",
+      });
+    },
+    [persist]
   );
+
+  const logout = useCallback(() => {
+    setUser(null);
+    localStorage.removeItem(STORAGE_KEY);
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      user,
+      loading,
+      isAuth: !!user,
+      login,
+      register,
+      signup: register, // alias so older code calling signup() keeps working
+      logout,
+      setUser,
+    }),
+    [user, loading, login, register, logout]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (ctx === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return ctx;
-}
+export default AuthContext;

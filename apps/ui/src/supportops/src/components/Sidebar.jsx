@@ -14,7 +14,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import { useAuth } from "../context/AuthProvider.jsx"; // ✅ bring in user role
+import { useAuth } from "../context/AuthContext"; // ✅ bring in user role
 
 const links = [
   { to: "/dashboard", icon: BarChart3, label: "Dashboard" },
@@ -75,10 +75,9 @@ export default function Sidebar() {
                 key={to}
                 to={to}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-4 py-3 rounded-lg transition text-sm ${
-                    isActive
-                      ? "bg-blue-600 text-white shadow-md"
-                      : "text-slate-300 hover:bg-white/10 hover:text-white"
+                  `flex items-center gap-3 px-4 py-3 rounded-lg transition text-sm ${isActive
+                    ? "bg-blue-600 text-white shadow-md"
+                    : "text-slate-300 hover:bg-white/10 hover:text-white"
                   }`
                 }
                 onClick={() => setOpen(false)}

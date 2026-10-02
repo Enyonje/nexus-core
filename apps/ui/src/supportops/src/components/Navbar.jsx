@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { useAuth } from "../context/auth.jsx"; // ✅ ensure filename matches exactly
+import { useAuth } from "../context/AuthContext.jsx"; // ✅ ensure filename matches exactly
 import CTAButton from "./CTAButton.jsx";
 
 export default function Navbar() {
