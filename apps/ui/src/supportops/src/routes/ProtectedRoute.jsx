@@ -1,23 +1,28 @@
-import React from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { useAuth } from "../context/AuthProvider";
+import { useAuth } from "../context/AuthContext";
+import { ROUTES, homeForRole } from "../config/paths";
 
-const ProtectedRoute = ({ allowRoles }) => {
-  const { user } = useAuth();
+/**
+ * Layout-route guard. Usage:
+ *   <Route element={<ProtectedRoute allowRoles={["admin"]} />}> ...children... </Route>
+ */
+export default function ProtectedRoute({ allowRoles = [] }) {
+  const { user, loading } = useAuth();
   const location = useLocation();
 
-  // If no user, redirect to login
+  if (loading) return null;
+
+  // Not signed in -> SupportOps login, remembering where they were headed
   if (!user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to={ROUTES.login} state={{ from: location.pathname }} replace />;
   }
 
-  // If user exists but role not allowed, send them back to landing
-  if (allowRoles && !allowRoles.includes(user.role)) {
-    return <Navigate to="/" replace />;
+  const role = user.role || "agent";
+
+  // Signed in but wrong role -> send them to their own home, not a loop
+  if (allowRoles.length > 0 && !allowRoles.includes(role)) {
+    return <Navigate to={homeForRole(role)} replace />;
   }
 
-  // Otherwise, render the nested routes
   return <Outlet />;
-};
-
-export default ProtectedRoute;
+}
