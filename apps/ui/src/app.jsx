@@ -50,8 +50,10 @@ export default function App() {
   // Dynamically resolve theme based on state
   const theme = isDark ? darkTheme : lightTheme;
 
-  // Check if current route is part of the embedded SupportOps module
+  // Specify routes where the top Navbar should NOT render
+  const hideNavbarRoutes = ["/", "/agents"];
   const isSupportOps = location.pathname.startsWith("/supportops");
+  const showNavbar = !isSupportOps && !hideNavbarRoutes.includes(location.pathname);
 
   // Key for page transition animation
   const animationKey = location.pathname;
@@ -66,7 +68,7 @@ export default function App() {
         color: theme.colors?.text?.primary || "#ffffff",
       }}
     >
-      {!isSupportOps && (
+      {showNavbar && (
         <Navbar
           onToggleTheme={() => setIsDark((prev) => !prev)}
           isDark={isDark}

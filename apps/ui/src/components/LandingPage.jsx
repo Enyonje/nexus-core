@@ -43,7 +43,7 @@ export default function LandingPage() {
       title: "Support-Ops AI",
       slug: "support-ops-ai",
       desc: "Autonomous triage, self-healing integration setups, and SLA escalation tracking powered by internal engineering context.",
-      path: "/support-ops-ai",
+      path: "{targetDashboard}",
       status: "Beta Access",
       color: "from-blue-400 to-indigo-500",
       accent: "blue",
