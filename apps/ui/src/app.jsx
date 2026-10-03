@@ -5,7 +5,6 @@ import { AnimatePresence, motion } from "framer-motion";
 
 // SupportOps (separate project embedded in this app, with its own auth context)
 import SupportOpsRoutes from "./supportops/src/routes/SupportOpsRoutes";
-import { AuthProvider as SupportOpsAuthProvider } from "./supportops/src/context/AuthContext";
 
 // Components
 import Navbar from "./components/Navbar.jsx";
@@ -44,32 +43,36 @@ import { lightTheme, darkTheme } from "./theme";
  */
 export default function App() {
   const [isDark, setIsDark] = useState(true);
-  const theme = isDark ? darkTheme : lightTheme;
-
   const [selectedExecutionId, setSelectedExecutionId] = useState(null);
+
   const location = useLocation();
 
-  // Keep one stable key for everything under /supportops so internal navigation
-  // doesn't remount the SupportOps provider (which would reset its state).
-  const animationKey = location.pathname.startsWith("/supportops")
-    ? "supportops"
-    : location.pathname;
+  // Dynamically resolve theme based on state
+  const theme = isDark ? darkTheme : lightTheme;
+
+  // Check if current route is part of the embedded SupportOps module
+  const isSupportOps = location.pathname.startsWith("/supportops");
+
+  // Key for page transition animation
+  const animationKey = location.pathname;
 
   return (
     <div
       className="transition-colors duration-300"
       style={{
         minHeight: "100vh",
-        fontFamily: theme.typography.fontFamily,
-        backgroundColor: theme.colors.background,
-        color: theme.colors.text.primary,
+        fontFamily: theme.typography?.fontFamily || "sans-serif",
+        backgroundColor: theme.colors?.background || "#0f172a",
+        color: theme.colors?.text?.primary || "#ffffff",
       }}
     >
-      <Navbar
-        onToggleTheme={() => setIsDark((prev) => !prev)}
-        isDark={isDark}
-        theme={theme}
-      />
+      {!isSupportOps && (
+        <Navbar
+          onToggleTheme={() => setIsDark((prev) => !prev)}
+          isDark={isDark}
+          theme={theme}
+        />
+      )}
 
       <Toaster
         position="top-right"
@@ -82,7 +85,6 @@ export default function App() {
         }}
       />
 
-      {/* Route transitions */}
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={animationKey}
@@ -92,7 +94,7 @@ export default function App() {
           transition={{ duration: 0.15 }}
         >
           <Routes location={location}>
-            {/* PUBLIC */}
+            {/* PUBLIC ROUTES */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/docs" element={<SEOPillarPage />} />
             <Route path="/architecture" element={<ArchitecturePage />} />
@@ -118,17 +120,13 @@ export default function App() {
             <Route path="/tools/webhook-validator" element={<WebhookValidator />} />
             <Route path="/tools/auditloganalyzer" element={<AuditLogAnalyzer />} />
 
-            {/* SUPPORTOPS: provider goes INSIDE the element prop, never around <Route> */}
+            {/* SUPPORTOPS EMBEDDED MODULE */}
             <Route
               path="/supportops/*"
-              element={
-                <SupportOpsAuthProvider>
-                  <SupportOpsRoutes />
-                </SupportOpsAuthProvider>
-              }
+              element={<SupportOpsRoutes />}
             />
 
-            {/* PROTECTED */}
+            {/* PROTECTED MAIN APP ROUTES */}
             <Route
               element={
                 <ProtectedRoute allowed={["free", "pro", "enterprise", "admin"]}>

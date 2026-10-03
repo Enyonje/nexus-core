@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import RevenueChart from "../components/RevenueChart";
 import AIImpact from "../components/AIImpact";
 import { useAgentStream } from "../hooks/useAgentStream";
-import { p } from "../config/paths";
+import { API_ENDPOINTS } from "../config/paths";
 
 import {
   Sparkles,
@@ -21,7 +21,11 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// Attach the session token (if any) to every backend request
+function authHeaders() {
+  const token = localStorage.getItem("access_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export default function SupportOpsDashboard() {
   const [metrics, setMetrics] = useState(null);
@@ -32,43 +36,60 @@ export default function SupportOpsDashboard() {
   const [timeframe, setTimeframe] = useState("30d");
 
   // Real-time activity stream via SSE
-  const { events: liveEvents, isConnected: isStreamConnected } = useAgentStream(
-    p(`${API_BASE_URL}/api/v1/agents/activity/stream`)
+  const { events: liveEvents = [], isConnected: isStreamConnected } = useAgentStream(
+    API_ENDPOINTS.activityStream
   );
 
-  // Fetch production metrics & system operational health
-  const fetchDashboardData = useCallback(async () => {
-    try {
-      setError(null);
-      const [metricsRes, healthRes] = await Promise.all([
-        fetch(p(`${API_BASE_URL}/api/v1/dashboard/metrics?timeframe=${timeframe}`)),
-        fetch(p(`${API_BASE_URL}/api/v1/system/health`)),
-      ]);
+  // Fetch production metrics (required) and system health (optional)
+  const loadDashboard = useCallback(
+    async (signal) => {
+      try {
+        setError(null);
+        console.log("DASHBOARD FETCH →", API_ENDPOINTS.metrics(timeframe)); // temporary debug, remove later
 
-      if (!metricsRes.ok || !healthRes.ok) {
-        throw new Error("Failed to sync latest operational data from Nexus Core.");
+        const [metricsResult, healthResult] = await Promise.allSettled([
+          fetch(API_ENDPOINTS.metrics(timeframe), { headers: authHeaders(), signal }),
+          fetch(API_ENDPOINTS.health, { headers: authHeaders(), signal }),
+        ]);
+
+        if (metricsResult.status === "rejected") throw metricsResult.reason;
+
+        const metricsRes = metricsResult.value;
+        if (metricsRes.status === 401) {
+          throw new Error("Your session expired. Please log in again.");
+        }
+        if (!metricsRes.ok) {
+          throw new Error("Failed to sync latest operational data from Nexus Core.");
+        }
+        setMetrics(await metricsRes.json());
+
+        // A failing health check shouldn't take the whole dashboard down
+        if (healthResult.status === "fulfilled" && healthResult.value.ok) {
+          setSystemHealth(await healthResult.value.json());
+        }
+      } catch (err) {
+        if (err.name === "AbortError" || signal?.aborted) return;
+        setError(err.message || "An unexpected error occurred.");
+      } finally {
+        if (!signal?.aborted) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
       }
+    },
+    [timeframe]
+  );
 
-      const metricsData = await metricsRes.json();
-      const healthData = await healthRes.json();
-
-      setMetrics(metricsData);
-      setSystemHealth(healthData);
-    } catch (err) {
-      setError(err.message || "An unexpected error occurred.");
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [timeframe]);
-
+  // Load on mount and when the timeframe changes; cancel in-flight requests on change/unmount
   useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+    const controller = new AbortController();
+    loadDashboard(controller.signal);
+    return () => controller.abort();
+  }, [loadDashboard]);
 
   const handleManualSync = () => {
     setIsRefreshing(true);
-    fetchDashboardData();
+    loadDashboard();
   };
 
   if (isLoading) {
@@ -80,7 +101,8 @@ export default function SupportOpsDashboard() {
     );
   }
 
-  if (error) {
+  // Full-page error only when there's nothing to show yet
+  if (error && !metrics) {
     return (
       <div className="min-h-screen bg-[#030712] flex items-center justify-center px-4">
         <div className="max-w-md w-full bg-slate-900/80 border border-red-500/30 p-6 rounded-2xl text-center backdrop-blur-xl">
@@ -88,6 +110,7 @@ export default function SupportOpsDashboard() {
           <h3 className="text-lg font-bold text-white mb-2">Connection Failed</h3>
           <p className="text-xs text-slate-400 mb-6">{error}</p>
           <button
+            type="button"
             onClick={handleManualSync}
             className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold rounded-xl text-xs transition-colors"
           >
@@ -102,7 +125,7 @@ export default function SupportOpsDashboard() {
     {
       label: "Monthly Recurring Revenue",
       value: `$${(metrics?.mrr ?? 0).toLocaleString()}`,
-      change: metrics?.mrrChange ?? "0%",
+      change: metrics?.mrrChange ?? "+0%",
       icon: DollarSign,
       glowColor: "from-emerald-500/20 to-transparent",
       iconBg: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
@@ -110,7 +133,7 @@ export default function SupportOpsDashboard() {
     {
       label: "Active Customers",
       value: (metrics?.customers ?? 0).toLocaleString(),
-      change: metrics?.customersChange ?? "0",
+      change: metrics?.customersChange ?? "+0",
       icon: Users,
       glowColor: "from-blue-500/20 to-transparent",
       iconBg: "bg-blue-500/10 text-blue-400 border-blue-500/20",
@@ -118,7 +141,7 @@ export default function SupportOpsDashboard() {
     {
       label: `Tickets Processed (${timeframe})`,
       value: (metrics?.tickets ?? 0).toLocaleString(),
-      change: metrics?.ticketsChange ?? "0%",
+      change: metrics?.ticketsChange ?? "+0%",
       icon: Ticket,
       glowColor: "from-purple-500/20 to-transparent",
       iconBg: "bg-purple-500/10 text-purple-400 border-purple-500/20",
@@ -126,7 +149,7 @@ export default function SupportOpsDashboard() {
     {
       label: "AI Resolution Rate",
       value: `${metrics?.aiResolutionRate ?? 0}%`,
-      change: metrics?.aiResolutionRateChange ?? "0%",
+      change: metrics?.aiResolutionRateChange ?? "+0%",
       icon: Sparkles,
       glowColor: "from-cyan-500/20 to-transparent",
       iconBg: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
@@ -139,7 +162,23 @@ export default function SupportOpsDashboard() {
       <div className="absolute top-0 left-1/4 -z-10 w-96 h-96 bg-cyan-500/10 rounded-full blur-[128px] pointer-events-none" />
       <div className="absolute top-1/3 right-10 -z-10 w-96 h-96 bg-purple-500/10 rounded-full blur-[128px] pointer-events-none" />
 
-      {/* Top Banner & Header */}
+      {/* Refresh error banner (keeps the last good data on screen) */}
+      {error && (
+        <div className="mb-6 flex items-center justify-between gap-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-300">
+          <span className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" /> {error} Showing last synced data.
+          </span>
+          <button
+            type="button"
+            onClick={handleManualSync}
+            className="font-semibold text-red-200 hover:text-white underline underline-offset-2"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Header Bar */}
       <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800/80 pb-6">
         <div>
           <div className="flex items-center gap-2.5 mb-1.5">
@@ -148,11 +187,11 @@ export default function SupportOpsDashboard() {
                 <span
                   className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isStreamConnected ? "bg-cyan-400" : "bg-amber-400"
                     } opacity-75`}
-                ></span>
+                />
                 <span
                   className={`relative inline-flex rounded-full h-2 w-2 ${isStreamConnected ? "bg-cyan-500" : "bg-amber-500"
                     }`}
-                ></span>
+                />
               </span>
               {isStreamConnected ? "Nexus Swarm Active" : "Polling Mode"}
             </span>
@@ -163,9 +202,10 @@ export default function SupportOpsDashboard() {
           </h1>
         </div>
 
-        {/* Action Controls */}
+        {/* Control Bar */}
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={handleManualSync}
             disabled={isRefreshing}
             className="flex items-center gap-2 px-3.5 py-2 text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl border border-slate-800 transition-all shadow-sm active:scale-95 disabled:opacity-50"
@@ -187,7 +227,10 @@ export default function SupportOpsDashboard() {
             <Filter className="h-3.5 w-3.5 absolute right-2.5 top-2.5 text-slate-400 pointer-events-none" />
           </div>
 
-          <button className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 rounded-xl transition-all shadow-lg shadow-cyan-500/20 active:scale-95">
+          <button
+            type="button"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 rounded-xl transition-all shadow-lg shadow-cyan-500/20 active:scale-95"
+          >
             <Zap className="h-3.5 w-3.5 fill-current" />
             Deploy Agent Rule
           </button>
@@ -223,9 +266,9 @@ export default function SupportOpsDashboard() {
         ))}
       </div>
 
-      {/* Operations Section */}
+      {/* Operational Feed & Telemetry Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
-        {/* Live SSE Swarm Stream */}
+        {/* SSE Event Stream */}
         <div className="xl:col-span-2 rounded-2xl bg-slate-900/40 border border-slate-800/80 p-6 backdrop-blur-xl flex flex-col justify-between min-h-[300px]">
           <div>
             <div className="flex items-center justify-between mb-6">
@@ -271,12 +314,14 @@ export default function SupportOpsDashboard() {
           </div>
 
           <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-            <span>Streamed from FastAPI Agent Pipeline</span>
-            <span className="text-cyan-400 font-mono text-[11px]">Status: Active</span>
+            <span>Streamed from Nexus Core Agent Pipeline</span>
+            <span className="text-cyan-400 font-mono text-[11px]">
+              Status: {isStreamConnected ? "Active" : "Connecting..."}
+            </span>
           </div>
         </div>
 
-        {/* System & Swarm Health */}
+        {/* System Telemetry */}
         <div className="rounded-2xl bg-slate-900/40 border border-slate-800/80 p-6 backdrop-blur-xl flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-6">
@@ -320,14 +365,16 @@ export default function SupportOpsDashboard() {
 
           <div className="mt-6 pt-4 border-t border-slate-800/80">
             <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>Model Routing: <strong className="text-slate-200">GPT-4o / Claude 3.5</strong></span>
+              <span>
+                Model Routing: <strong className="text-slate-200">GPT-4o / Claude 3.5</strong>
+              </span>
               <span className="text-emerald-400 font-medium">Production</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Analytics Section */}
+      {/* Analytics Charts */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 rounded-2xl bg-slate-900/40 border border-slate-800/80 p-1 backdrop-blur-xl">
           <RevenueChart timeframe={timeframe} />

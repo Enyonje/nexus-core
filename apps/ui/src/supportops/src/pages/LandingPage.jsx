@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
+import { ROUTES } from "../config/paths";
 import {
   Zap,
   LayoutDashboard,
@@ -9,7 +10,6 @@ import {
   CheckCircle2,
   TrendingUp,
 } from "lucide-react";
-import { p } from "../config/paths";
 
 const TABS = [
   {
@@ -67,6 +67,10 @@ const FEATURES = [
 
 export default function LandingPage() {
   const [activeTab, setActiveTab] = useState("inbox");
+
+  // Default target route when no authentication layer is present
+  const targetDashboard = ROUTES.agent?.dashboard || "/supportops/agent/dashboard";
+
   const active = TABS.find((t) => t.id === activeTab) ?? TABS[0];
   const ActiveIcon = active.icon;
 
@@ -105,10 +109,10 @@ export default function LandingPage() {
         {/* Hero CTAs */}
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 w-full sm:w-auto">
           <Link
-            to={p("/signup")}
+            to={targetDashboard}
             className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all inline-flex items-center justify-center gap-2"
           >
-            Start Free Trial <ArrowRight className="w-4 h-4" />
+            Launch Dashboard <ArrowRight className="w-4 h-4" />
           </Link>
 
           <button
@@ -204,10 +208,10 @@ export default function LandingPage() {
             Ready to transform your support operations?
           </h2>
           <Link
-            to={p("/signup")}
+            to={targetDashboard}
             className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-lg font-bold shadow-xl shadow-blue-600/30 transition-all"
           >
-            Start Free Trial Now
+            Launch Dashboard
           </Link>
         </div>
       </section>

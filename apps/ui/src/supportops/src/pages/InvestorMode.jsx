@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { DollarSign, TrendingUp, Users, Bot, ShieldCheck } from "lucide-react";
+import { p } from "../config/paths";
 
 export default function InvestorMode() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    fetch("/api/v1/investors/metrics")
+    fetch(p("/api/v1/investors/metrics"))
       .then((res) => res.json())
       .then(setData)
       .catch((err) => console.error("Failed to load investor metrics", err));
@@ -65,17 +66,15 @@ function Metric({ icon: Icon, label, value, accent }) {
 function DeepMetric({ label, value, highlight }) {
   return (
     <div
-      className={`rounded-2xl p-6 ${
-        highlight
+      className={`rounded-2xl p-6 ${highlight
           ? "bg-blue-500/10 border border-blue-500/30"
           : "bg-white/5 border border-white/10 hover:bg-white/10 transition"
-      }`}
+        }`}
     >
       <p className="text-xs uppercase tracking-wide text-slate-400 mb-2">{label}</p>
       <p
-        className={`text-4xl font-bold ${
-          highlight ? "text-blue-400" : "text-white"
-        }`}
+        className={`text-4xl font-bold ${highlight ? "text-blue-400" : "text-white"
+          }`}
       >
         {value}
       </p>

@@ -6,9 +6,8 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { API_ENDPOINTS } from "../config/paths";
 
-const STORAGE_KEY = "supportops_user";
-const STAFF_ACCESS_CODE = "SUPPORTOPS-STAFF-2026"; // ✅ secure code for admin/management
 
 export const AuthContext = createContext(null);
 
@@ -20,70 +19,82 @@ export function useAuth() {
   return context;
 }
 
-// Never persist passwords in localStorage
-function sanitize(userData = {}) {
-  const { password, ...safe } = userData;
-  return safe;
-}
-
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Restore session
+  const logout = useCallback(() => {
+    clearToken();
+    setUser(null);
+  }, []);
+
+  // On load: use the saved token, or the refresh cookie, then read the user (and role) from the server
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) setUser(JSON.parse(stored));
-    } catch (err) {
-      console.error("Failed to parse stored user session", err);
-      localStorage.removeItem(STORAGE_KEY);
-    } finally {
-      setLoading(false);
+    localStorage.removeItem("supportops_user");
+    localStorage.removeItem("supportops_users");
+
+    const controller = new AbortController();
+
+    async function restore() {
+      try {
+        if (!getToken()) await refreshAccessToken(); // fails quietly when there is no session
+        const { user: me } = await apiFetch(API_ENDPOINTS.auth.me, { signal: controller.signal });
+        setUser(me);
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        clearToken();
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
     }
+
+    restore();
+    return () => controller.abort();
   }, []);
 
-  const persist = useCallback((userData) => {
-    const safe = sanitize(userData);
-    setUser(safe);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
-    return safe;
+  useEffect(() => {
+    window.addEventListener(UNAUTHORIZED_EVENT, logout);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, logout);
+  }, [logout]);
+
+  // Save the token, then load the canonical user (role included) from /me
+  const startSession = useCallback(async ({ token, user: fallbackUser }) => {
+    setToken(token);
+    let me = fallbackUser;
+    try {
+      ({ user: me } = await apiFetch(API_ENDPOINTS.auth.me));
+    } catch {
+      /* fall back to the user returned by login/register */
+    }
+    setUser(me);
+    return me;
   }, []);
 
-  const login = useCallback(async (userData) => persist(userData), [persist]);
-
-  /**
-   * register({ name, email, password, role, accessCode }) -> user
-   */
+  /** register({ name, email, password, role, accessCode }) -> user. The server decides the final role. */
   const register = useCallback(
-    async (data) => {
-      if (!data?.email || !data?.password) {
-        throw new Error("Email and password are required");
-      }
-
-      // ✅ enforce role restrictions
-      let role = data.role || "agent";
-
-      if (role === "admin" || role === "management") {
-        if (data.accessCode !== STAFF_ACCESS_CODE) {
-          throw new Error("Valid staff access code required for Admin/Management signup");
-        }
-      }
-
-      return persist({
-        id: crypto.randomUUID?.() ?? String(Date.now()),
-        name: data.name,
-        email: data.email,
-        role,
+    async ({ name, email, password, role, accessCode }) => {
+      const res = await apiFetch(API_ENDPOINTS.auth.register, {
+        method: "POST",
+        auth: false,
+        body: { name, email, password, role, accessCode: accessCode || undefined },
       });
+      return startSession(res);
     },
-    [persist]
+    [startSession]
   );
 
-  const logout = useCallback(() => {
-    setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
-  }, []);
+  /** login({ email, password }) -> user (with the role stored in the database) */
+  const login = useCallback(
+    async ({ email, password }) => {
+      const res = await apiFetch(API_ENDPOINTS.auth.login, {
+        method: "POST",
+        auth: false,
+        body: { email, password },
+      });
+      return startSession(res);
+    },
+    [startSession]
+  );
 
   const value = useMemo(
     () => ({
@@ -92,9 +103,8 @@ export function AuthProvider({ children }) {
       isAuth: !!user,
       login,
       register,
-      signup: register, // alias for older code
+      signup: register,
       logout,
-      setUser,
     }),
     [user, loading, login, register, logout]
   );
