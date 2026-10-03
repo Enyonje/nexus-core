@@ -1,388 +1,335 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  MessageCircle, Phone, Mail, Smartphone, Globe, Share2, Clock, AlertTriangle,
+  CheckCircle2, TrendingUp, Users, DollarSign, Sparkles, Ticket, RefreshCw,
+  Inbox, Activity, Plug, Zap,
+} from "lucide-react";
 import RevenueChart from "../components/RevenueChart";
 import AIImpact from "../components/AIImpact";
 import { useAgentStream } from "../hooks/useAgentStream";
-import { API_ENDPOINTS } from "../config/paths";
+import { API_ENDPOINTS, SUPPORTOPS_API, ROUTES } from "../config/paths";
 
-import {
-  Sparkles,
-  Ticket,
-  DollarSign,
-  Users,
-  TrendingUp,
-  Activity,
-  Bot,
-  Zap,
-  CheckCircle2,
-  Clock,
-  ArrowUpRight,
-  Filter,
-  RefreshCw,
-  AlertCircle,
-} from "lucide-react";
+/* ---------- config ---------- */
+const CHANNELS = {
+  whatsapp: { label: "WhatsApp", icon: MessageCircle, tone: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+  voice: { label: "Phone", icon: Phone, tone: "text-sky-400 bg-sky-500/10 border-sky-500/20" },
+  email: { label: "Email", icon: Mail, tone: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+  sms: { label: "SMS", icon: Smartphone, tone: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
+  web: { label: "Web chat", icon: Globe, tone: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20" },
+  social: { label: "Social", icon: Share2, tone: "text-pink-400 bg-pink-500/10 border-pink-500/20" },
+};
+const VIEWS = { agent: "Agent", management: "Management", admin: "Admin", investor: "Investor" };
+const ALIAS = { user: "agent", agent: "agent", management: "management", admin: "admin", investor: "investor" };
+const TITLES = {
+  agent: ["My queue", "Your tickets from every channel, most urgent first"],
+  management: ["Operations", "Backlog, SLA health and workload across all channels"],
+  admin: ["Workspace admin", "Channels, integrations, seats and system health"],
+  investor: ["Business performance", "Revenue, growth and what AI is saving"],
+};
 
-// Attach the session token (if any) to every backend request
-function authHeaders() {
-  const token = localStorage.getItem("access_token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
+// Shown only in development when the tickets API returns nothing
+const SAMPLE = [
+  { id: "T-1042", subject: "Payment failed twice at checkout", customer: "Amina K.", channel: "whatsapp", priority: "high", slaMins: 12 },
+  { id: "T-1041", subject: "Missed call: delivery not received", customer: "Brian O.", channel: "voice", priority: "urgent", slaMins: -8 },
+  { id: "T-1039", subject: "Invoice copy request", customer: "Nia Traders", channel: "email", priority: "low", slaMins: 190 },
+  { id: "T-1037", subject: "Cannot reset password", customer: "Joy M.", channel: "web", priority: "normal", slaMins: 55 },
+];
+
+/* ---------- helpers ---------- */
+async function getJSON(url, signal) {
+  const token = localStorage.getItem("authToken");
+  const org = localStorage.getItem("activeOrgId");
+  const res = await fetch(url, {
+    signal,
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(org ? { "X-Org-Id": org } : {}) },
+  });
+  if (!res.ok) throw new Error(String(res.status));
+  return res.json();
+}
+const toList = (d) => (Array.isArray(d) ? d : d?.items ?? d?.tickets ?? []);
+const val = (v, fmt = (x) => x) => (v === undefined || v === null ? "—" : fmt(v));
+const slaMins = (t) => (typeof t.slaMins === "number" ? t.slaMins : t.slaDueAt ? Math.round((new Date(t.slaDueAt) - Date.now()) / 60000) : null);
+
+function SlaPill({ mins }) {
+  if (mins === null) return <span className="text-[11px] text-slate-500">No SLA</span>;
+  const cls = mins < 0 ? "text-red-300 bg-red-500/10 border-red-500/30" : mins <= 60 ? "text-amber-300 bg-amber-500/10 border-amber-500/30" : "text-slate-300 bg-slate-500/10 border-slate-500/30";
+  const text = mins < 0 ? `Breached ${Math.abs(mins)}m` : mins < 120 ? `${mins}m left` : `${Math.round(mins / 60)}h left`;
+  return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium ${cls}`}><Clock className="h-3 w-3" />{text}</span>;
 }
 
-export default function SupportOpsDashboard() {
-  const [metrics, setMetrics] = useState(null);
-  const [systemHealth, setSystemHealth] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+function ChannelBadge({ channel }) {
+  const c = CHANNELS[channel] ?? CHANNELS.web;
+  return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] ${c.tone}`}><c.icon className="h-3 w-3" />{c.label}</span>;
+}
+
+const Card = ({ title, icon: Icon, action, children, className = "" }) => (
+  <section className={`rounded-2xl bg-slate-900/40 border border-slate-800/80 p-5 backdrop-blur-xl ${className}`}>
+    <header className="flex items-center justify-between mb-4">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-white"><Icon className="h-4 w-4 text-cyan-400" />{title}</h2>
+      {action}
+    </header>
+    {children}
+  </section>
+);
+
+const Kpi = ({ label, value, hint, icon: Icon }) => (
+  <div className="rounded-2xl bg-slate-900/40 border border-slate-800/80 p-5">
+    <div className="flex items-center justify-between mb-3">
+      <span className="text-xs font-medium text-slate-400">{label}</span>
+      <span className="p-2 rounded-lg bg-white/5 border border-white/10"><Icon className="h-4 w-4 text-cyan-400" /></span>
+    </div>
+    <div className="text-3xl font-extrabold tracking-tight text-white">{value}</div>
+    {hint && <div className="mt-1 text-xs text-slate-500">{hint}</div>}
+  </div>
+);
+
+const Empty = ({ icon: Icon, title, text }) => (
+  <div className="py-10 text-center">
+    <Icon className="h-8 w-8 mx-auto mb-2 text-slate-600" />
+    <p className="text-sm font-medium text-slate-300">{title}</p>
+    <p className="text-xs text-slate-500 mt-1">{text}</p>
+  </div>
+);
+
+/* ---------- panels ---------- */
+function TicketList({ tickets }) {
+  if (!tickets.length) return <Empty icon={CheckCircle2} title="Inbox zero" text="No open tickets. New WhatsApp, call, email and chat tickets appear here." />;
+  return (
+    <ul className="divide-y divide-slate-800/80">
+      {tickets.map((t) => (
+        <li key={t.id} className="py-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <ChannelBadge channel={t.channel} />
+              <span className="text-[11px] font-mono text-slate-500">{t.id}</span>
+              {["urgent", "high"].includes(t.priority) && <span className="text-[11px] font-semibold text-red-400 uppercase">{t.priority}</span>}
+            </div>
+            <p className="text-sm text-slate-100 truncate">{t.subject}</p>
+            <p className="text-xs text-slate-500">{t.customer}</p>
+          </div>
+          <SlaPill mins={slaMins(t)} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ChannelMix({ tickets, byChannel }) {
+  const counts = useMemo(() => {
+    if (byChannel) return byChannel;
+    return tickets.reduce((a, t) => ({ ...a, [t.channel]: (a[t.channel] ?? 0) + 1 }), {});
+  }, [tickets, byChannel]);
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  if (!total) return <Empty icon={Inbox} title="No volume yet" text="Channel mix appears once tickets arrive." />;
+  return (
+    <ul className="space-y-3">
+      {Object.entries(counts).map(([k, n]) => (
+        <li key={k}>
+          <div className="flex justify-between text-xs mb-1"><ChannelBadge channel={k} /><span className="text-slate-400">{n} · {Math.round((n / total) * 100)}%</span></div>
+          <div className="h-1.5 rounded-full bg-slate-800"><div className="h-full rounded-full bg-cyan-500" style={{ width: `${(n / total) * 100}%` }} /></div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ChannelConnections({ channels }) {
+  return (
+    <ul className="grid sm:grid-cols-2 gap-3">
+      {Object.entries(CHANNELS).map(([k, c]) => {
+        const on = Boolean(channels[k]?.connected);
+        return (
+          <li key={k} className="flex items-center justify-between p-3 rounded-xl border border-slate-800 bg-slate-800/20">
+            <div className="flex items-center gap-3">
+              <span className={`p-2 rounded-lg border ${c.tone}`}><c.icon className="h-4 w-4" /></span>
+              <div>
+                <p className="text-sm text-slate-100">{c.label}</p>
+                <p className={`text-[11px] ${on ? "text-emerald-400" : "text-slate-500"}`}>{on ? "Connected" : "Not connected"}</p>
+              </div>
+            </div>
+            <Link to={ROUTES.admin.channels} className="px-3 py-1.5 rounded-lg text-xs border border-slate-700 text-slate-200 hover:bg-white/5">{on ? "Manage" : "Connect"}</Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function LiveActivity({ events }) {
+  if (!events.length) return <Empty icon={Activity} title="Listening…" text="Live agent and AI activity shows here." />;
+  return (
+    <ul className="space-y-2">
+      {events.slice(0, 5).map((e, i) => (
+        <li key={e.id || i} className="flex items-center gap-2 text-xs text-slate-300 p-2 rounded-lg bg-slate-800/30">
+          <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" /><span className="truncate">{e.description}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/* ---------- main ---------- */
+export default function WorkspaceDashboard({ view, role = "admin", user }) {
+  const [preview, setPreview] = useState(null);
+  const current = preview ?? view ?? ALIAS[role] ?? "agent";
+
   const [timeframe, setTimeframe] = useState("30d");
+  const [metrics, setMetrics] = useState(null);
+  const [health, setHealth] = useState(null);
+  const [tickets, setTickets] = useState([]);
+  const [channels, setChannels] = useState({});
+  const [demo, setDemo] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Real-time activity stream via SSE
-  const { events: liveEvents = [], isConnected: isStreamConnected } = useAgentStream(
-    API_ENDPOINTS.activityStream
-  );
+  const { events = [], isConnected } = useAgentStream(API_ENDPOINTS.activityStream);
 
-  // Fetch production metrics (required) and system health (optional)
-  const loadDashboard = useCallback(
-    async (signal) => {
-      try {
-        setError(null);
-        console.log("DASHBOARD FETCH →", API_ENDPOINTS.metrics(timeframe)); // temporary debug, remove later
+  const load = useCallback(async (signal) => {
+    const [m, h, t, c] = await Promise.allSettled([
+      getJSON(API_ENDPOINTS.metrics(timeframe), signal),
+      getJSON(API_ENDPOINTS.health, signal),
+      getJSON(SUPPORTOPS_API.tickets("", { status: "open", limit: 10 }), signal),
+      getJSON(SUPPORTOPS_API.tickets("/channels"), signal),
+    ]);
+    if (signal?.aborted) return;
 
-        const [metricsResult, healthResult] = await Promise.allSettled([
-          fetch(API_ENDPOINTS.metrics(timeframe), { headers: authHeaders(), signal }),
-          fetch(API_ENDPOINTS.health, { headers: authHeaders(), signal }),
-        ]);
+    if (m.status === "fulfilled") setMetrics(m.value);
+    if (h.status === "fulfilled") setHealth(h.value);
 
-        if (metricsResult.status === "rejected") throw metricsResult.reason;
+    let list = t.status === "fulfilled" ? toList(t.value) : [];
+    const isDemo = list.length === 0 && import.meta.env.DEV;
+    if (isDemo) list = SAMPLE;
+    setDemo(isDemo);
+    setTickets([...list].sort((a, b) => (slaMins(a) ?? 1e9) - (slaMins(b) ?? 1e9)));
 
-        const metricsRes = metricsResult.value;
-        if (metricsRes.status === 401) {
-          throw new Error("Your session expired. Please log in again.");
-        }
-        if (!metricsRes.ok) {
-          throw new Error("Failed to sync latest operational data from Nexus Core.");
-        }
-        setMetrics(await metricsRes.json());
+    const raw = c.status === "fulfilled" ? c.value?.channels ?? c.value : [];
+    setChannels(Array.isArray(raw) ? Object.fromEntries(raw.map((x) => [x.key, x])) : raw ?? {});
 
-        // A failing health check shouldn't take the whole dashboard down
-        if (healthResult.status === "fulfilled" && healthResult.value.ok) {
-          setSystemHealth(await healthResult.value.json());
-        }
-      } catch (err) {
-        if (err.name === "AbortError" || signal?.aborted) return;
-        setError(err.message || "An unexpected error occurred.");
-      } finally {
-        if (!signal?.aborted) {
-          setIsLoading(false);
-          setIsRefreshing(false);
-        }
-      }
-    },
-    [timeframe]
-  );
+    setError(m.status === "rejected" ? "Could not load the latest metrics. Showing what we have." : null);
+    setLoading(false);
+  }, [timeframe]);
 
-  // Load on mount and when the timeframe changes; cancel in-flight requests on change/unmount
   useEffect(() => {
     const controller = new AbortController();
-    loadDashboard(controller.signal);
+    load(controller.signal);
     return () => controller.abort();
-  }, [loadDashboard]);
+  }, [load]);
 
-  const handleManualSync = () => {
-    setIsRefreshing(true);
-    loadDashboard();
-  };
+  const atRisk = tickets.filter((t) => (slaMins(t) ?? 1e9) <= 60);
+  const connected = Object.values(CHANNELS).filter((_, i) => channels[Object.keys(CHANNELS)[i]]?.connected).length;
+  const mrrGrowth = metrics?.mrrChange;
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-[#030712] flex flex-col items-center justify-center text-slate-300">
-        <RefreshCw className="h-8 w-8 animate-spin text-cyan-400 mb-4" />
-        <p className="text-sm font-medium">Connecting to Nexus-Core Swarm Engine...</p>
-      </div>
-    );
-  }
+  // One sentence telling each role what to do first
+  const nextAction = {
+    agent: atRisk.length ? `${atRisk.length} ticket${atRisk.length > 1 ? "s" : ""} will breach SLA within the hour. Start with ${atRisk[0].id}.` : "Nothing is close to breaching SLA. Pick up the oldest ticket.",
+    management: atRisk.length ? `${atRisk.length} open ticket${atRisk.length > 1 ? "s are" : " is"} at SLA risk. Consider rebalancing the queue.` : "SLA health looks good across channels.",
+    admin: connected < 3 ? `Only ${connected} of ${Object.keys(CHANNELS).length} channels are connected. Connect WhatsApp and Phone first.` : "Channels are connected. Review seat usage and integrations.",
+    investor: mrrGrowth ? `MRR is ${mrrGrowth} for this period.` : "Metrics update as revenue data arrives.",
+  }[current];
 
-  // Full-page error only when there's nothing to show yet
-  if (error && !metrics) {
-    return (
-      <div className="min-h-screen bg-[#030712] flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-slate-900/80 border border-red-500/30 p-6 rounded-2xl text-center backdrop-blur-xl">
-          <AlertCircle className="h-10 w-10 text-red-400 mx-auto mb-3" />
-          <h3 className="text-lg font-bold text-white mb-2">Connection Failed</h3>
-          <p className="text-xs text-slate-400 mb-6">{error}</p>
-          <button
-            type="button"
-            onClick={handleManualSync}
-            className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold rounded-xl text-xs transition-colors"
-          >
-            Retry Connection
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const kpiCards = [
-    {
-      label: "Monthly Recurring Revenue",
-      value: `$${(metrics?.mrr ?? 0).toLocaleString()}`,
-      change: metrics?.mrrChange ?? "+0%",
-      icon: DollarSign,
-      glowColor: "from-emerald-500/20 to-transparent",
-      iconBg: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-    },
-    {
-      label: "Active Customers",
-      value: (metrics?.customers ?? 0).toLocaleString(),
-      change: metrics?.customersChange ?? "+0",
-      icon: Users,
-      glowColor: "from-blue-500/20 to-transparent",
-      iconBg: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-    },
-    {
-      label: `Tickets Processed (${timeframe})`,
-      value: (metrics?.tickets ?? 0).toLocaleString(),
-      change: metrics?.ticketsChange ?? "+0%",
-      icon: Ticket,
-      glowColor: "from-purple-500/20 to-transparent",
-      iconBg: "bg-purple-500/10 text-purple-400 border-purple-500/20",
-    },
-    {
-      label: "AI Resolution Rate",
-      value: `${metrics?.aiResolutionRate ?? 0}%`,
-      change: metrics?.aiResolutionRateChange ?? "+0%",
-      icon: Sparkles,
-      glowColor: "from-cyan-500/20 to-transparent",
-      iconBg: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
-    },
-  ];
+  const kpis = {
+    agent: [
+      ["Open tickets", tickets.length, "In your queue", Ticket],
+      ["SLA at risk", atRisk.length, "Due within 60 min", AlertTriangle],
+      ["Avg first response", val(metrics?.avgFirstResponseMin, (v) => `${v} min`), "This period", Clock],
+      ["Customer satisfaction", val(metrics?.csat, (v) => `${v}%`), "CSAT", Sparkles],
+    ],
+    management: [
+      ["Backlog", val(metrics?.backlog ?? tickets.length), "Open across channels", Inbox],
+      ["SLA compliance", val(metrics?.slaCompliance, (v) => `${v}%`), "Resolved on time", CheckCircle2],
+      ["Avg resolution", val(metrics?.avgResolutionHours, (v) => `${v} h`), "This period", Clock],
+      ["AI resolution rate", val(metrics?.aiResolutionRate, (v) => `${v}%`), "Handled without an agent", Sparkles],
+    ],
+    admin: [
+      ["Channels connected", `${connected}/${Object.keys(CHANNELS).length}`, "WhatsApp, calls, email…", Plug],
+      ["Seats used", val(metrics?.seatsUsed, (v) => `${v}${metrics?.seatLimit ? `/${metrics.seatLimit}` : ""}`), "This workspace", Users],
+      ["Tickets processed", val(metrics?.tickets, (v) => v.toLocaleString()), timeframe, Ticket],
+      ["API latency", val(health?.apiLatencyMs, (v) => `${v} ms`), health?.uptime ?? "System health", Activity],
+    ],
+    investor: [
+      ["Monthly recurring revenue", val(metrics?.mrr, (v) => `$${v.toLocaleString()}`), metrics?.mrrChange, DollarSign],
+      ["Active customers", val(metrics?.customers, (v) => v.toLocaleString()), metrics?.customersChange, Users],
+      ["Tickets handled", val(metrics?.tickets, (v) => v.toLocaleString()), metrics?.ticketsChange, Ticket],
+      ["AI resolution rate", val(metrics?.aiResolutionRate, (v) => `${v}%`), "Cost saved by automation", Sparkles],
+    ],
+  }[current];
 
   return (
-    <div className="min-h-screen bg-[#030712] text-slate-100 px-4 sm:px-6 lg:px-8 py-8 font-sans selection:bg-cyan-500 selection:text-black relative overflow-hidden">
-      {/* Background Radial Glow */}
-      <div className="absolute top-0 left-1/4 -z-10 w-96 h-96 bg-cyan-500/10 rounded-full blur-[128px] pointer-events-none" />
-      <div className="absolute top-1/3 right-10 -z-10 w-96 h-96 bg-purple-500/10 rounded-full blur-[128px] pointer-events-none" />
-
-      {/* Refresh error banner (keeps the last good data on screen) */}
-      {error && (
-        <div className="mb-6 flex items-center justify-between gap-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-300">
-          <span className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0" /> {error} Showing last synced data.
-          </span>
-          <button
-            type="button"
-            onClick={handleManualSync}
-            className="font-semibold text-red-200 hover:text-white underline underline-offset-2"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      {/* Header Bar */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800/80 pb-6">
+    <div className="min-h-screen bg-[#030712] text-slate-100 px-4 sm:px-6 lg:px-8 py-8">
+      {/* Header */}
+      <div className="mb-6 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5 mb-1.5">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-              <span className="relative flex h-2 w-2">
-                <span
-                  className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isStreamConnected ? "bg-cyan-400" : "bg-amber-400"
-                    } opacity-75`}
-                />
-                <span
-                  className={`relative inline-flex rounded-full h-2 w-2 ${isStreamConnected ? "bg-cyan-500" : "bg-amber-500"
-                    }`}
-                />
-              </span>
-              {isStreamConnected ? "Nexus Swarm Active" : "Polling Mode"}
-            </span>
-            <span className="text-xs text-slate-500">v2.4.0-production</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-            SupportOps Command Center
-          </h1>
+          <p className="text-xs text-slate-500 mb-1">Welcome back{user?.name ? `, ${user.name}` : ""}</p>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">{TITLES[current][0]}</h1>
+          <p className="text-sm text-slate-400">{TITLES[current][1]}</p>
         </div>
-
-        {/* Control Bar */}
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleManualSync}
-            disabled={isRefreshing}
-            className="flex items-center gap-2 px-3.5 py-2 text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl border border-slate-800 transition-all shadow-sm active:scale-95 disabled:opacity-50"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
-            Sync Swarm
-          </button>
-
-          <div className="relative">
-            <select
-              value={timeframe}
-              onChange={(e) => setTimeframe(e.target.value)}
-              className="appearance-none flex items-center gap-2 px-3.5 py-2 pr-8 text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl border border-slate-800 transition-all shadow-sm focus:outline-none cursor-pointer"
-            >
-              <option value="7d">Last 7 Days</option>
-              <option value="30d">Last 30 Days</option>
-              <option value="90d">Last 90 Days</option>
-            </select>
-            <Filter className="h-3.5 w-3.5 absolute right-2.5 top-2.5 text-slate-400 pointer-events-none" />
-          </div>
-
-          <button
-            type="button"
-            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 rounded-xl transition-all shadow-lg shadow-cyan-500/20 active:scale-95"
-          >
-            <Zap className="h-3.5 w-3.5 fill-current" />
-            Deploy Agent Rule
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {role === "admin" && (
+            <div className="flex rounded-xl border border-slate-800 bg-slate-900 p-1">
+              {Object.entries(VIEWS).map(([k, label]) => (
+                <button key={k} type="button" onClick={() => setPreview(k)}
+                  className={`px-3 py-1.5 text-xs rounded-lg transition ${current === k ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}>{label}</button>
+              ))}
+            </div>
+          )}
+          <select value={timeframe} onChange={(e) => setTimeframe(e.target.value)}
+            className="px-3 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-slate-300 focus:outline-none">
+            <option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option>
+          </select>
+          <button type="button" onClick={() => load()} aria-label="Refresh"
+            className="p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 hover:text-white"><RefreshCw className="h-4 w-4" /></button>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
-        {kpiCards.map((stat) => (
-          <div
-            key={stat.label}
-            className="relative group overflow-hidden rounded-2xl bg-slate-900/40 border border-slate-800/80 p-5 backdrop-blur-xl hover:border-slate-700/80 transition-all duration-300 hover:shadow-2xl hover:shadow-black/50"
-          >
-            <div className={`absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r ${stat.glowColor}`} />
-
-            <div className="flex items-center justify-between mb-4">
-              <div className={`p-2.5 rounded-xl border ${stat.iconBg}`}>
-                <stat.icon className="h-5 w-5" />
-              </div>
-              <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                <TrendingUp className="h-3 w-3" />
-                {stat.change}
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="text-3xl font-extrabold tracking-tight text-white group-hover:scale-[1.01] transition-transform origin-left">
-                {stat.value}
-              </div>
-              <div className="text-xs font-medium text-slate-400">{stat.label}</div>
-            </div>
-          </div>
-        ))}
+      {/* Banners */}
+      <div className="mb-6 flex items-start gap-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-100">
+        <Zap className="h-4 w-4 mt-0.5 shrink-0 text-cyan-400" /><span>{nextAction}</span>
       </div>
+      {error && <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-300">{error}</div>}
+      {demo && <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">Sample data shown because the tickets API returned nothing (development only).</div>}
 
-      {/* Operational Feed & Telemetry Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
-        {/* SSE Event Stream */}
-        <div className="xl:col-span-2 rounded-2xl bg-slate-900/40 border border-slate-800/80 p-6 backdrop-blur-xl flex flex-col justify-between min-h-[300px]">
-          <div>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                  <Activity className="h-4 w-4" />
-                </div>
-                <div>
-                  <h2 className="text-base font-semibold text-white">Live Swarm Activity</h2>
-                  <p className="text-xs text-slate-400">Real-time agent execution stream</p>
-                </div>
-              </div>
-              <span className="text-xs text-slate-400 flex items-center gap-1 bg-slate-800/50 px-2.5 py-1 rounded-lg border border-slate-700/50">
-                <Clock className="h-3 w-3 text-cyan-400" /> SSE Stream
-              </span>
-            </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-24 text-slate-400"><RefreshCw className="h-6 w-6 animate-spin mr-3 text-cyan-400" />Loading your workspace…</div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+            {kpis.map(([label, value, hint, icon]) => <Kpi key={label} label={label} value={value} hint={hint} icon={icon} />)}
+          </div>
 
-            <div className="space-y-3">
-              {liveEvents.length > 0 ? (
-                liveEvents.slice(0, 4).map((item, idx) => (
-                  <div
-                    key={item.id || idx}
-                    className="flex items-center justify-between p-3 rounded-xl bg-slate-800/30 hover:bg-slate-800/50 border border-slate-800 transition-colors animate-in fade-in duration-300"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
-                      <span className="text-sm text-slate-200">{item.description}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                        {item.agentType || "Agent Swarm"}
-                      </span>
-                      <ArrowUpRight className="h-3.5 w-3.5 text-slate-500" />
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="py-8 text-center text-xs text-slate-500">
-                  Waiting for active swarm events...
-                </div>
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <div className="xl:col-span-2 space-y-6">
+              {current === "agent" && (
+                <Card title="Priority queue" icon={Inbox} action={<Link to={ROUTES.agent.inbox} className="text-xs text-cyan-400 hover:underline">Open inbox</Link>}>
+                  <TicketList tickets={tickets} />
+                </Card>
+              )}
+              {current === "management" && (
+                <>
+                  <Card title="Tickets at SLA risk" icon={AlertTriangle}><TicketList tickets={atRisk} /></Card>
+                  <Card title="Channel mix" icon={Inbox}><ChannelMix tickets={tickets} byChannel={metrics?.byChannel} /></Card>
+                </>
+              )}
+              {current === "admin" && (
+                <Card title="Channels" icon={Plug}><ChannelConnections channels={channels} /></Card>
+              )}
+              {current === "investor" && (
+                <div className="rounded-2xl bg-slate-900/40 border border-slate-800/80 p-1"><RevenueChart timeframe={timeframe} /></div>
               )}
             </div>
-          </div>
 
-          <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-            <span>Streamed from Nexus Core Agent Pipeline</span>
-            <span className="text-cyan-400 font-mono text-[11px]">
-              Status: {isStreamConnected ? "Active" : "Connecting..."}
-            </span>
-          </div>
-        </div>
-
-        {/* System Telemetry */}
-        <div className="rounded-2xl bg-slate-900/40 border border-slate-800/80 p-6 backdrop-blur-xl flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <Bot className="h-4 w-4" />
-                </div>
-                <div>
-                  <h2 className="text-base font-semibold text-white">System Health</h2>
-                  <p className="text-xs text-slate-400">Nexus Core Engine Telemetry</p>
-                </div>
-              </div>
-              <span className="text-xs font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                {systemHealth?.uptime || "99.9% Uptime"}
-              </span>
-            </div>
-
-            <div className="space-y-3.5 text-sm">
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-800/20 border border-slate-800/50">
-                <span className="text-slate-300 text-xs">AI Inference Engine</span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> {systemHealth?.aiEngine || "Operational"}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-800/20 border border-slate-800/50">
-                <span className="text-slate-300 text-xs">Workflow Orchestrator</span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> {systemHealth?.orchestrator || "Stable"}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-800/20 border border-slate-800/50">
-                <span className="text-slate-300 text-xs">Average API Latency</span>
-                <span className="text-xs font-mono text-cyan-400 font-semibold">
-                  {systemHealth?.apiLatencyMs ? `${systemHealth.apiLatencyMs}ms` : "118ms"}
-                </span>
-              </div>
+            <div className="space-y-6">
+              {["management", "investor"].includes(current) && (
+                <div className="rounded-2xl bg-slate-900/40 border border-slate-800/80 p-1"><AIImpact timeframe={timeframe} /></div>
+              )}
+              <Card title="Live activity" icon={Activity}
+                action={<span className={`text-[11px] ${isConnected ? "text-emerald-400" : "text-amber-400"}`}>{isConnected ? "Live" : "Connecting…"}</span>}>
+                <LiveActivity events={events} />
+              </Card>
             </div>
           </div>
-
-          <div className="mt-6 pt-4 border-t border-slate-800/80">
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>
-                Model Routing: <strong className="text-slate-200">GPT-4o / Claude 3.5</strong>
-              </span>
-              <span className="text-emerald-400 font-medium">Production</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Analytics Charts */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2 rounded-2xl bg-slate-900/40 border border-slate-800/80 p-1 backdrop-blur-xl">
-          <RevenueChart timeframe={timeframe} />
-        </div>
-        <div className="rounded-2xl bg-slate-900/40 border border-slate-800/80 p-1 backdrop-blur-xl">
-          <AIImpact timeframe={timeframe} />
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
