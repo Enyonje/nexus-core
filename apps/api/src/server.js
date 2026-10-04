@@ -24,7 +24,6 @@ import { stripeRoutes } from "./routes/stripe.js";
 import aiRoutes from "../supportops/routes/ai.js";
 import aiLegacyRoutes from "../supportops/routes/aiRoutes.js";
 import aiReviewRoutes from "../supportops/routes/aiReviewRoutes.js";
-import supportOpsAuthRoutes from "../supportops/routes/auth.js";
 import channelsRoutes from "../supportops/routes/channelsRoutes.js";
 import chatRoutes from "../supportops/routes/chatRoutes.js";
 import incidentsRoutes from "../supportops/routes/incidents.js";
@@ -102,7 +101,6 @@ await app.register(webhooksRoutes);
    SUPPORTOPS ROUTE REGISTRATION
 ========================= */
 await app.register(supportopsRoutes, { prefix: "/api/v1/supportops" });
-await app.register(supportOpsAuthRoutes, { prefix: "/api/v1/supportops/auth" });
 await app.register(aiRoutes, { prefix: "/api/v1/supportops/ai" });
 await app.register(aiLegacyRoutes, { prefix: "/api/v1/supportops/ai-v2" });
 await app.register(aiReviewRoutes, { prefix: "/api/v1/supportops/ai-review" });
