@@ -279,7 +279,7 @@ export default function LandingPage() {
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Sandboxed Runtime
                       </span>
                       <Link
-                        to={agent.path}
+                        to="/supportops/*"
                         state={{ from: location.pathname }}
                         className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white border border-white/10 text-white hover:text-slate-950 text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2"
                       >
