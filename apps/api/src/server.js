@@ -36,7 +36,6 @@ import * as ticketRulesRoutesMod from "../supportops/routes/ticketRules.js";
 import * as ticketServiceRoutesMod from "../supportops/routes/ticketService.js";
 import * as ticketsRoutesMod from "../supportops/routes/tickets.js";
 import * as ticketsLegacyRoutesMod from "../supportops/routes/ticketsRoutes.js";
-import * as usersRoutesMod from "../supportops/routes/users.js";
 
 /**
  * Checks if a function is an ES6/class constructor
@@ -139,7 +138,6 @@ async function start() {
   await app.register(resolvePlugin(ticketServiceRoutesMod), { prefix: "/api/v1/supportops/ticket-service" });
   await app.register(resolvePlugin(ticketsRoutesMod), { prefix: "/api/v1/supportops/tickets" });
   await app.register(resolvePlugin(ticketsLegacyRoutesMod), { prefix: "/api/v1/supportops/tickets-v2" });
-  await app.register(resolvePlugin(usersRoutesMod), { prefix: "/api/v1/supportops/users" });
 
   /* ========================= ERROR HANDLER & LISTEN ========================= */
   app.setErrorHandler((error, request, reply) => {
