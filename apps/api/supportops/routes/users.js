@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 
-export default function usersRoutes(fastify, options) {
+export default async function usersRoutes(fastify, options) {
     // Admin Authorization Guard
     fastify.addHook("onRequest", async (request, reply) => {
         try {
@@ -13,7 +13,7 @@ export default function usersRoutes(fastify, options) {
         }
     });
 
-    // GET / (List Users)
+    // GET /api/v1/supportops/users (List Users)
     fastify.get("/", async (request, reply) => {
         const client = await fastify.pg.connect();
         try {
@@ -29,9 +29,14 @@ export default function usersRoutes(fastify, options) {
         }
     });
 
-    // POST / (Create User)
+    // POST /api/v1/supportops/users (Create User)
     fastify.post("/", async (request, reply) => {
-        const { email, password, role = "agent" } = request.body;
+        const { email, password, role = "agent" } = request.body || {};
+
+        if (!email || !password) {
+            return reply.code(400).send({ error: "Email and password are required" });
+        }
+
         const client = await fastify.pg.connect();
 
         try {
@@ -45,6 +50,9 @@ export default function usersRoutes(fastify, options) {
             return reply.code(201).send(result.rows[0]);
         } catch (err) {
             fastify.log.error(err);
+            if (err.code === "23505") {
+                return reply.code(409).send({ error: "User already exists with this email" });
+            }
             return reply.code(500).send({ error: "Failed to create user" });
         } finally {
             client.release();
