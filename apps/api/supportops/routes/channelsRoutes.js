@@ -20,17 +20,29 @@
 //     @@map("channels")
 //   }
 //
+//   model InboundEvent {            // idempotency: providers retry, we must not create duplicate tickets
+//     id          String   @id @default(uuid())
+//     channel_id  String
+//     external_id String
+//     created_at  DateTime @default(now())
+//     channel     Channel  @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+//     @@unique([channel_id, external_id])
+//     @@map("inbound_events")
+//   }   (and `events InboundEvent[]` on Channel)
+//
 // 2) Env:  CHANNELS_ENC_KEY=$(openssl rand -base64 32)   PUBLIC_API_URL=https://api.yourdomain.com
 // 3) Register: await app.register(channelsRoutes, { prefix: "/api/v1/supportops/tickets/channels" });
 import crypto from "node:crypto";
 import { prisma } from "../config/prisma.js";
 import { guard } from "../security/entitlements.js";
+import { createTicketFromInbound } from "./ticketService.js";
+import { normalize, verifyMetaSignature, verifyTwilioSignature } from "./inbound.js";
 
 const SECRETS = {
     whatsapp: ["accessToken", "appSecret"],
     voice: ["authToken"],
     sms: ["apiKey"],
-    email: [],
+    email: ["postmarkToken"], // outbound replies via Postmark
     web: [],
     social: ["pageAccessToken", "appSecret"],
 };
@@ -43,7 +55,7 @@ const encrypt = (obj) => {
     const data = Buffer.concat([c.update(JSON.stringify(obj), "utf8"), c.final()]);
     return [iv, c.getAuthTag(), data].map((b) => b.toString("base64")).join(".");
 };
-const decrypt = (s) => {
+export const decrypt = (s) => {
     const [iv, tag, data] = s.split(".").map((x) => Buffer.from(x, "base64"));
     const d = crypto.createDecipheriv("aes-256-gcm", KEY, iv);
     d.setAuthTag(tag);
@@ -62,21 +74,15 @@ const view = (row, isAdmin) => ({
     ...(isAdmin ? { webhookUrl: urlFor(row), verifyToken: row.verify_token } : {}),
 });
 
-// TODO: replace with your real ticket creation (new ticket, or append to the customer's open one)
-export async function createTicketFromInbound(t) {
-    console.warn("createTicketFromInbound not implemented", t);
-}
-
-function* whatsappMessages(p) {
-    for (const e of p?.entry ?? []) {
-        for (const c of e.changes ?? []) {
-            const v = c.value ?? {};
-            const names = Object.fromEntries((v.contacts ?? []).map((x) => [x.wa_id, x.profile?.name]));
-            for (const m of v.messages ?? []) {
-                const text = m.text?.body ?? "";
-                yield { externalId: m.id, customerId: m.from, customer: names[m.from] ?? m.from, subject: (text || `[${m.type}]`).slice(0, 80), body: text };
-            }
-        }
+// Returns false if this provider message was already processed (retry)
+async function firstTime(channelId, externalId) {
+    if (!externalId) return true;
+    try {
+        await prisma.inboundEvent.create({ data: { channel_id: channelId, external_id: String(externalId) } });
+        return true;
+    } catch (err) {
+        if (err.code === "P2002") return false;
+        throw err;
     }
 }
 
@@ -89,6 +95,11 @@ export default async function channelsRoutes(app) {
         try { done(null, JSON.parse(body.toString("utf8") || "{}")); }
         catch (err) { err.statusCode = 400; done(err); }
     });
+
+    // Twilio and Africa's Talking post form-encoded bodies
+    app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string" }, (req, body, done) =>
+        done(null, Object.fromEntries(new URLSearchParams(body)))
+    );
 
     const read = guard({ app: "supportops", roles: ["admin", "management"] });
     const admin = guard({ app: "supportops", roles: ["admin"] });
@@ -140,11 +151,14 @@ export default async function channelsRoutes(app) {
         return res.ok ? { ok: true, message: "WhatsApp credentials are valid" } : { ok: false, message: "WhatsApp rejected these credentials" };
     });
 
-    /* ---------- public inbound webhooks (no login; protected by secret URL + signature) ---------- */
-    app.get("/webhook/whatsapp/:token", async (req, reply) => {
-        const row = await prisma.channel.findFirst({ where: { key: "whatsapp", webhook_token: req.params.token } });
+    /* ---------- public inbound webhooks (no login; secret URL token + provider signature) ---------- */
+    // Meta handshake for WhatsApp, Messenger and Instagram
+    app.get("/webhook/:key/:token", async (req, reply) => {
+        const row = await prisma.channel.findFirst({
+            where: { key: req.params.key, webhook_token: req.params.token, status: "connected" },
+        });
         const q = req.query ?? {};
-        if (row && q["hub.mode"] === "subscribe" && q["hub.verify_token"] === row.verify_token) {
+        if (row && ["whatsapp", "social"].includes(row.key) && q["hub.mode"] === "subscribe" && q["hub.verify_token"] === row.verify_token) {
             return reply.code(200).type("text/plain").send(q["hub.challenge"]);
         }
         return reply.code(403).send();
@@ -155,22 +169,37 @@ export default async function channelsRoutes(app) {
             where: { key: req.params.key, webhook_token: req.params.token, status: "connected" },
         });
         if (!row) return reply.code(404).send();
+        if (row.key === "web") return reply.code(405).send({ message: "Web chat uses the widget API" });
 
-        if (row.key !== "whatsapp") {
-            return reply.code(501).send({ message: "Inbound for this channel is not implemented yet" });
-        }
+        // 1) authenticate the sender
+        const secrets = decrypt(row.config_enc);
+        const trusted =
+            row.key === "whatsapp" || row.key === "social"
+                ? verifyMetaSignature(req.rawBody, req.headers["x-hub-signature-256"], secrets.appSecret)
+                : row.key === "voice"
+                    ? verifyTwilioSignature(urlFor(row), req.body, req.headers["x-twilio-signature"], secrets.authToken)
+                    : true; // SMS and email providers don't sign: the secret URL token is the credential
+        if (!trusted) return reply.code(401).send();
 
-        const { appSecret } = decrypt(row.config_enc);
-        const sig = String(req.headers["x-hub-signature-256"] ?? "");
-        const expected = "sha256=" + crypto.createHmac("sha256", appSecret).update(req.rawBody).digest("hex");
-        if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
-            return reply.code(401).send();
-        }
-
-        for (const m of whatsappMessages(req.body)) {
-            await createTicketFromInbound({ orgId: row.org_id, channel: "whatsapp", ...m });
+        // 2) turn the provider payload into tickets, once each
+        for (const m of normalize(row.key, req.body)) {
+            if (!(await firstTime(row.id, m.externalId))) continue;
+            try {
+                await createTicketFromInbound({ orgId: row.org_id, channel: row.key, ...m });
+            } catch (err) {
+                // let the provider retry this message
+                await prisma.inboundEvent.deleteMany({ where: { channel_id: row.id, external_id: String(m.externalId) } });
+                throw err;
+            }
         }
         await prisma.channel.update({ where: { id: row.id }, data: { last_event_at: new Date() } });
+
+        // 3) answer in the format the provider expects
+        if (row.key === "voice") {
+            return reply.code(200).type("text/xml").send(
+                `<Response><Say>Thanks for calling. Please leave a message after the tone.</Say><Record maxLength="120" action="${urlFor(row)}"/></Response>`
+            );
+        }
         return reply.code(200).send();
     });
 }

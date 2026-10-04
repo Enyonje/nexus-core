@@ -300,7 +300,7 @@ export default function WorkspaceDashboard({ view, role = "admin", user }) {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div className="xl:col-span-2 space-y-6">
               {current === "agent" && (
-                <Card title="Priority queue" icon={Inbox} action={<Link to={ROUTES.agent.inbox} className="text-xs text-cyan-400 hover:underline">Open inbox</Link>}>
+                <Card title="Priority queue" icon={Inbox} action={<Link to={ROUTES.agent.tickets} className="text-xs text-cyan-400 hover:underline">Open tickets</Link>}>
                   <TicketList tickets={tickets} />
                 </Card>
               )}

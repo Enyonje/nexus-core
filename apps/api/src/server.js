@@ -20,13 +20,25 @@ import { paymentsRoutes } from "./routes/payments.js";
 import { streamRoutes } from "./routes/stream.js";
 import { stripeRoutes } from "./routes/stripe.js";
 
-// SupportOps Route Plugins (Ensured default or named exports)
-import aiRoutes from "../supportops/routes/aiRoutes.js";
+// SupportOps Route Plugins
+import aiRoutes from "../supportops/routes/ai.js";
+import aiLegacyRoutes from "../supportops/routes/aiRoutes.js";
 import aiReviewRoutes from "../supportops/routes/aiReviewRoutes.js";
+import supportOpsAuthRoutes from "../supportops/routes/auth.js";
+import channelsRoutes from "../supportops/routes/channelsRoutes.js";
+import chatRoutes from "../supportops/routes/chatRoutes.js";
 import incidentsRoutes from "../supportops/routes/incidents.js";
+import inboundRoutes from "../supportops/routes/inbound.js";
 import orgAnalyticsRoutes from "../supportops/routes/orgAnalyticsRoutes.js";
+import outboundRoutes from "../supportops/routes/outbound.js";
+import realTimeRoutes from "../supportops/routes/realtime.js";
+import replyServiceRoutes from "../supportops/routes/replyService.js";
 import stripeWebhookRoutes from "../supportops/routes/stripeWebhook.js";
+import supportopsRoutes from "../supportops/routes/supportops.js";
+import ticketRulesRoutes from "../supportops/routes/ticketRules.js";
+import ticketServiceRoutes from "../supportops/routes/ticketService.js";
 import ticketsRoutes from "../supportops/routes/tickets.js";
+import ticketsLegacyRoutes from "../supportops/routes/ticketsRoutes.js";
 import usersRoutes from "../supportops/routes/users.js";
 
 const app = Fastify({
@@ -89,12 +101,24 @@ await app.register(webhooksRoutes);
 /* =========================
    SUPPORTOPS ROUTE REGISTRATION
 ========================= */
+await app.register(supportopsRoutes, { prefix: "/api/v1/supportops" });
+await app.register(supportOpsAuthRoutes, { prefix: "/api/v1/supportops/auth" });
 await app.register(aiRoutes, { prefix: "/api/v1/supportops/ai" });
+await app.register(aiLegacyRoutes, { prefix: "/api/v1/supportops/ai-v2" });
 await app.register(aiReviewRoutes, { prefix: "/api/v1/supportops/ai-review" });
+await app.register(channelsRoutes, { prefix: "/api/v1/supportops/channels" });
+await app.register(chatRoutes, { prefix: "/api/v1/supportops/chat" });
 await app.register(incidentsRoutes, { prefix: "/api/v1/supportops/incidents" });
+await app.register(inboundRoutes, { prefix: "/api/v1/supportops/inbound" });
 await app.register(orgAnalyticsRoutes, { prefix: "/api/v1/supportops/analytics" });
-await app.register(ticketsRoutes, { prefix: "/api/v1/supportops/tickets" });
+await app.register(outboundRoutes, { prefix: "/api/v1/supportops/outbound" });
+await app.register(realTimeRoutes, { prefix: "/api/v1/supportops/realtime" });
+await app.register(replyServiceRoutes, { prefix: "/api/v1/supportops/replies" });
 await app.register(stripeWebhookRoutes, { prefix: "/api/v1/supportops/webhooks/stripe" });
+await app.register(ticketRulesRoutes, { prefix: "/api/v1/supportops/ticket-rules" });
+await app.register(ticketServiceRoutes, { prefix: "/api/v1/supportops/ticket-service" });
+await app.register(ticketsRoutes, { prefix: "/api/v1/supportops/tickets" });
+await app.register(ticketsLegacyRoutes, { prefix: "/api/v1/supportops/tickets-v2" });
 await app.register(usersRoutes, { prefix: "/api/v1/supportops/users" });
 
 /* =========================

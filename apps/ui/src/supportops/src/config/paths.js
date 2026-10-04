@@ -8,11 +8,14 @@ export const p = (path = "") => `${BASE}${path.startsWith("/") ? path : `/${path
 ========================= */
 
 // Prefer a SupportOps-specific URL, fall back to the shared one. Trailing slash stripped.
-const API_BASE_URL = (
-    import.meta.env.VITE_SUPPORTOPS_API_URL ||
-    import.meta.env.VITE_API_URL ||
-    "http://localhost:8000"
-).replace(/\/$/, "");
+const envUrl = import.meta.env.VITE_SUPPORTOPS_API_URL || import.meta.env.VITE_API_URL;
+
+// In production a missing URL must be loud, never a silent fallback to localhost
+if (!envUrl && import.meta.env.PROD) {
+    console.error("VITE_API_URL is not set for this build. API calls will fail.");
+}
+
+const API_BASE_URL = (envUrl || "http://localhost:8000").replace(/\/$/, "");
 
 // Backend URL helper: api("/api/v1/x") -> "http://host/api/v1/x"
 export const api = (path = "") => `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
@@ -28,6 +31,7 @@ const qs = (params = {}) => {
 // Mirrors the prefixes registered in the Fastify server
 const V1 = "/api/v1";
 const SUPPORTOPS = `${V1}/supportops`;
+const AUTH_PREFIX = import.meta.env.VITE_AUTH_PREFIX || `${V1}/auth`; // where authRoutes is registered
 
 // Joins a router prefix with a sub-path: group("/ai")("/x") -> api("/api/v1/supportops/ai/x")
 const group = (prefix) => {
@@ -45,7 +49,8 @@ export const SUPPORTOPS_API = {
     incidents: group("/incidents"),   // prefix: /api/v1/supportops/incidents
     analytics: group("/analytics"),   // prefix: /api/v1/supportops/analytics
     tickets: group("/tickets"),       // prefix: /api/v1/supportops/tickets
-    users: group("/users"),           // prefix: /api/v1/supportops/users
+    users: group("/users"),
+    chat: group("/chat"),           // prefix: /api/v1/supportops/chat           // prefix: /api/v1/supportops/users
     // webhooks/stripe is server-to-server only (Stripe calls it), so the frontend never uses it
 };
 
@@ -63,19 +68,26 @@ export const API_ENDPOINTS = {
     analytics: SUPPORTOPS_API.analytics,
     tickets: SUPPORTOPS_API.tickets,
     users: SUPPORTOPS_API.users,
+
+    // Your existing authRoutes plugin. Set AUTH_PREFIX to wherever it is registered.
+    auth: {
+        register: api(`${AUTH_PREFIX}/supportops/register`), // new SupportOps route (see backend patch)
+        login: api(`${AUTH_PREFIX}/login`),
+        me: api(`${AUTH_PREFIX}/me`),
+        refresh: api(`${AUTH_PREFIX}/refresh`),
+    },
 };
-
-
 
 /* =========================
    CLIENT ROUTES
 ========================= */
 
+// Named absolute client routes
 export const ROUTES = {
-    home: p(""),             // "/supportops"
-    features: p("/features"), // "/supportops/features"
-    login: "/login",         // Outer app route
-    signup: "/register",     // Outer app route
+    home: p("/"),
+    features: p("/features"),
+    login: "/login",      // main app (central login)
+    signup: "/register",  // main app (central signup)
     cancel: p("/cancel"),
     success: p("/success"),
 
@@ -88,6 +100,8 @@ export const ROUTES = {
         inbox: p("/agent/inbox"),
         billing: p("/agent/billing"),
         playbooks: p("/agent/playbooks"),
+        chats: p("/agent/chats"),
+        tickets: p("/agent/tickets"),
     },
 
     admin: {
@@ -95,11 +109,13 @@ export const ROUTES = {
         executive: p("/admin/executive"),
         analytics: p("/admin/analytics"),
         incidents: p("/admin/incidents"),
+        channels: p("/admin/channels"),
     },
 
     investor: p("/investor"),
 };
 
+// Role landing redirect helper
 export function homeForRole(role) {
     switch (role) {
         case "admin":
