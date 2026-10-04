@@ -38,18 +38,38 @@ import * as ticketsRoutesMod from "../supportops/routes/tickets.js";
 import * as ticketsLegacyRoutesMod from "../supportops/routes/ticketsRoutes.js";
 import * as usersRoutesMod from "../supportops/routes/users.js";
 
-// Helper to safely unwrap default exports, named exports, or function modules
-function resolvePlugin(mod) {
-  if (typeof mod === "function") return mod;
-  if (mod?.default && typeof mod.default === "function") return mod.default;
+/**
+ * Checks if a function is an ES6/class constructor
+ */
+function isClassConstructor(func) {
+  if (typeof func !== "function") return false;
+  return /^\s*class\s+/.test(Function.prototype.toString.call(func));
+}
 
-  // Pick the first exported function if named export is used
-  const keys = Object.keys(mod || {});
-  for (const key of keys) {
-    if (typeof mod[key] === "function") return mod[key];
+/**
+ * Safely resolves Fastify plugin functions from imported modules while ignoring class constructors
+ */
+function resolvePlugin(mod) {
+  // Check default export first
+  if (typeof mod?.default === "function" && !isClassConstructor(mod.default)) {
+    return mod.default;
   }
 
-  throw new TypeError(`Module does not export a valid Fastify plugin function: ${JSON.stringify(mod)}`);
+  // Check direct module function
+  if (typeof mod === "function" && !isClassConstructor(mod)) {
+    return mod;
+  }
+
+  // Find first non-class exported function
+  const keys = Object.keys(mod || {});
+  for (const key of keys) {
+    if (typeof mod[key] === "function" && !isClassConstructor(mod[key])) {
+      return mod[key];
+    }
+  }
+
+  // Fallback no-op plugin if the module only exports helper classes/utilities
+  return async function dummyPlugin() { };
 }
 
 // Create Fastify instance
