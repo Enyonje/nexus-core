@@ -1,7 +1,6 @@
-// security/entitlements.js  TEMPORARY version that works with your CURRENT auth (requireAuth + User.role + User.org_id).
+// apps/api/supportops/security/entitlements.js  TEMPORARY version that works with your CURRENT auth (requireAuth + User.role + User.org_id).
 // Replace this file with the full central-auth guard later; the route files will not need to change.
-import { prisma } from "../config/prisma.js";
-import { requireAuth } from "./authMiddleware.js";
+import { prisma, requireAuth } from "../lib/deps.js";
 
 // guard({ app: "supportops", roles: ["agent", "management", "admin"] })
 export function guard({ roles } = {}) {
