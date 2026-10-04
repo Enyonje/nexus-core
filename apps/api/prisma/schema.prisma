@@ -57,27 +57,41 @@ enum PaymentStatus {
   CANCELLED
 }
 
+enum SubStatus {
+  trialing
+  active
+  past_due
+  canceled
+}
+
+enum OrgRole {
+  owner
+  admin
+  member
+  billing
+}
+
 // MODELS
 model User {
-  id                    String           @id @default(uuid())
-  email                 String           @unique
+  id                    String            @id @default(uuid())
+  email                 String            @unique
   password_hash         String
-  created_at            DateTime         @default(now())
+  created_at            DateTime          @default(now())
   org_id                String?
-  role                  UserRole         @default(user)
-  subscription          SubscriptionType @default(free)
+  role                  UserRole          @default(user)
+  subscription          SubscriptionType  @default(free)
   name                  String?
   refresh_token         String?
-  failed_attempts       Int              @default(0)
-  locked_until          DateTime?        @db.Timestamptz(6)
-  mfa_enabled           Boolean          @default(false)
+  failed_attempts       Int               @default(0)
+  locked_until          DateTime?         @db.Timestamptz(6)
+  mfa_enabled           Boolean           @default(false)
   mfa_secret            String?
   reset_token           String?
-  reset_token_expires   DateTime?        @db.Timestamptz(6)
-  refresh_token_expires DateTime?        @db.Timestamptz(6)
+  reset_token_expires   DateTime?         @db.Timestamptz(6)
+  refresh_token_expires DateTime?         @db.Timestamptz(6)
   deleted_at            DateTime?
-  ai_used               Int              @default(0)
-  executions_count      Int              @default(0)
+  ai_used               Int               @default(0)
+  executions_count      Int               @default(0)
 
   // Relations
   authAudits      AuthAudit[]
@@ -85,7 +99,10 @@ model User {
   executions      Execution[]
   goals           Goal[]
   adminAudits     AdminAudit[]
-  organization    Organization?   @relation(fields: [org_id], references: [id])
+  organization    Organization?     @relation(fields: [org_id], references: [id])
+  memberships     Membership[]
+  appAccesses     AppAccess[]
+  sessions        Session[]
 
   @@map("users")
   @@index([org_id])
@@ -93,11 +110,14 @@ model User {
 }
 
 model Organization {
-  id         String    @id @default(uuid())
-  name       String
-  created_at DateTime  @default(now())
-  users      User[]
-  deleted_at DateTime?
+  id            String         @id @default(uuid())
+  name          String
+  created_at    DateTime       @default(now())
+  users         User[]
+  subscriptions Subscription[]
+  memberships   Membership[]
+  appAccesses   AppAccess[]
+  deleted_at    DateTime?
 
   @@map("organizations")
 }
@@ -205,59 +225,79 @@ model ExecutionAudit {
   @@index([created_at])
 }
 
-model App {            // the registry: adding an agent = adding a row
-  id     String   @id @default(uuid())
-  slug   String   @unique          // "supportops", "compliance"
-  name   String
-  roles  String[]                  // roles this app understands
-  active Boolean  @default(true)
-  plans  Plan[]
+model App {
+  id            String         @id @default(uuid())
+  slug          String         @unique // "supportops", "compliance"
+  name          String
+  roles         String[] // roles this app understands
+  active        Boolean        @default(true)
+  plans         Plan[]
+  subscriptions Subscription[]
+  appAccesses   AppAccess[]
 }
 
-model Plan {           // pricing lives in data, not code
-  id            String  @id @default(uuid())
+model Plan {
+  id            String         @id @default(uuid())
   appId         String
-  key           String             // "free" | "pro" | "enterprise"
-  features      String[]           // "ai_review", "revenue_forecast"
-  limits        Json               // { "seats": 5, "tickets_per_month": 1000 }
-  stripePriceId String? @unique
-  app           App     @relation(fields: [appId], references: [id])
+  key           String // "free" | "pro" | "enterprise"
+  features      String[] // "ai_review", "revenue_forecast"
+  limits        Json // { "seats": 5, "tickets_per_month": 1000 }
+  stripePriceId String?        @unique
+  app           App            @relation(fields: [appId], references: [id])
+  subscriptions Subscription[]
+
   @@unique([appId, key])
 }
 
-model Subscription {   // one per organization per app
-  id                   String   @id @default(uuid())
+model Subscription {
+  id                   String    @id @default(uuid())
   orgId                String
   appId                String
   planId               String
-  status               SubStatus  // trialing | active | past_due | canceled
+  status               SubStatus // trialing | active | past_due | canceled
   currentPeriodEnd     DateTime?
-  stripeSubscriptionId String?  @unique
+  stripeSubscriptionId String?   @unique
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  app          App          @relation(fields: [appId], references: [id], onDelete: Cascade)
+  plan         Plan         @relation(fields: [planId], references: [id], onDelete: Cascade)
+
   @@unique([orgId, appId])
 }
 
-model Membership {     // user ↔ org
+model Membership {
   orgId   String
   userId  String
-  orgRole OrgRole       // owner | admin | member | billing
+  orgRole OrgRole // owner | admin | member | billing
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@id([orgId, userId])
 }
 
-model AppAccess {      // user ↔ app, with the app-specific role
+model AppAccess {
   orgId   String
   userId  String
   appId   String
-  appRole String        // validated against App.roles
+  appRole String // validated against App.roles
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  app          App          @relation(fields: [appId], references: [id], onDelete: Cascade)
+
   @@id([orgId, userId, appId])
 }
 
-model Session {        // replaces User.refresh_token: many devices, rotation, revocation
-  id          String    @id @default(uuid())
-  userId      String
-  tokenHash   String    @unique
-  familyId    String            // detects refresh-token reuse
-  expiresAt   DateTime
-  revokedAt   DateTime?
+model Session {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  familyId  String // detects refresh-token reuse
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ExecutionStep {
@@ -297,17 +337,17 @@ model AdminAudit {
 }
 
 model CargoDeclaration {
-  id              String            @id @default(uuid())
+  id              String   @id @default(uuid())
   importerName    String
   importerTaxId   String // e.g. KRA PIN "KE-0519283741"
   exporterName    String
-  originCountry   String            @default("UG")
-  portOfDischarge String            @default("Nairobi ICD")
-  incoterm        String            @default("CIF")
+  originCountry   String   @default("UG")
+  portOfDischarge String   @default("Nairobi ICD")
+  incoterm        String   @default("CIF")
   grossWeightKg   Float
   totalUnits      Int
   cifValueUsd     Float
-  exchangeRateKe  Float             @default(130.0)
+  exchangeRateKe  Float    @default(130.0)
 
   pipelineStage PipelineStage @default(IDLE)
 
@@ -335,9 +375,9 @@ model CargoItem {
 }
 
 model AuditFlag {
-  id                 String              @id @default(uuid())
+  id                 String           @id @default(uuid())
   cargoDeclarationId String
-  cargoDeclaration   CargoDeclaration    @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
+  cargoDeclaration   CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
 
   severity DiscrepancySeverity @default(WARNING)
   field    String              // e.g. "grossWeightKg"
