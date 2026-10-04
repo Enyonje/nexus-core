@@ -46,25 +46,41 @@ function isClassConstructor(func) {
 }
 
 /**
- * Safely resolves Fastify plugin functions from imported modules while ignoring class constructors
+ * Resolves a Fastify plugin from an imported module.
+ * Unlike before, it SAYS what it picked. A module with no `export default` falls back to the first
+ * exported function (alphabetical), which may be a helper rather than the plugin, and a module with no
+ * function at all used to register nothing without any warning. Both cause silent 404s.
  */
-function resolvePlugin(mod) {
+function resolvePlugin(mod, label = "unknown") {
+  let picked = null;
+  let via = null;
+
   if (typeof mod?.default === "function" && !isClassConstructor(mod.default)) {
-    return mod.default;
-  }
-
-  if (typeof mod === "function" && !isClassConstructor(mod)) {
-    return mod;
-  }
-
-  const keys = Object.keys(mod || {});
-  for (const key of keys) {
-    if (typeof mod[key] === "function" && !isClassConstructor(mod[key])) {
-      return mod[key];
+    picked = mod.default; via = "default";
+  } else if (typeof mod === "function" && !isClassConstructor(mod)) {
+    picked = mod; via = "module";
+  } else {
+    for (const key of Object.keys(mod || {})) {
+      if (typeof mod[key] === "function" && !isClassConstructor(mod[key])) {
+        picked = mod[key]; via = key; break;
+      }
     }
   }
 
-  return async function dummyPlugin() { };
+  if (!picked) {
+    console.warn(`[routes] ${label}: exports no plugin function, so NOTHING was registered (expect 404s)`);
+    return async function emptyPlugin() { };
+  }
+  // An express.Router() is a function too, so it passes the checks above. Fastify calls it with the wrong
+  // arguments, it returns without defining a single route, and every request to it 404s with no error.
+  if (typeof picked.handle === "function" && Array.isArray(picked.stack)) {
+    console.error(`[routes] ${label}: this is an EXPRESS router, not a Fastify plugin. None of its routes are registered. Convert it to: export default async function (app) { app.get(...) }`);
+    return async function emptyPlugin() { };
+  }
+  if (via !== "default") {
+    console.warn(`[routes] ${label}: no default export, using '${via}'. If that is not the route plugin, add \`export default <plugin>\`.`);
+  }
+  return picked;
 }
 
 // Create Fastify instance
@@ -74,6 +90,8 @@ const app = Fastify({
 });
 
 async function start() {
+  const mount = (label, mod, prefix) => app.register(resolvePlugin(mod, label), prefix ? { prefix } : undefined);
+
   /* ========================= CORS PLUGIN ========================= */
   const allowedOrigins = [
     "https://nexusthecore.com",
@@ -98,6 +116,7 @@ async function start() {
       "X-Requested-With",
       "Accept",
       "Cache-Control",
+      "Last-Event-ID",
     ],
     exposedHeaders: ["Content-Type", "Cache-Control", "Connection"],
   });
@@ -123,10 +142,25 @@ async function start() {
   });
 
   /* ========================= HEALTH CHECKS ========================= */
+  // Cheap liveness checks (keep these dependency-free so Render does not restart you over a DB blip)
   app.get("/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
   app.get("/api/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
 
+  // Readiness: actually checks the database. It previously returned "connected" and "healthy"
+  // for the database and Redis without checking either.
+  app.get("/api/v1/system/health", async (_request, reply) => {
+    let database = "connected";
+    try { await app.pg.query("SELECT 1"); } catch { database = "unreachable"; }
+    const ok = database === "connected";
+    return reply.code(ok ? 200 : 503).send({
+      status: ok ? "ok" : "degraded",
+      services: { database },
+      timestamp: new Date().toISOString(),
+    });
+  });
+
   /* ========================= DASHBOARD & REALTIME FALLBACKS ========================= */
+  // NOTE: these numbers are hard-coded placeholders, not real data. Replace with a query before showing to customers.
   app.get("/api/v1/dashboard/metrics", async (request, reply) => {
     const { timeframe = "30d" } = request.query;
     return reply.send({
@@ -139,71 +173,87 @@ async function start() {
     });
   });
 
+  // SSE fallback. The old version never called reply.hijack(), so Fastify ended the response as soon as
+  // the async handler returned. The browser saw the stream close at once and logged "SSE stream connection
+  // error". It also echoed ANY origin with credentials allowed, which defeats the CORS allowlist.
   app.get("/api/v1/agents/activity/stream", async (request, reply) => {
-    reply.raw.setHeader("Content-Type", "text/event-stream");
-    reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
-    reply.raw.setHeader("Connection", "keep-alive");
-    reply.raw.setHeader("Access-Control-Allow-Origin", request.headers.origin || "*");
-    reply.raw.setHeader("Access-Control-Allow-Credentials", "true");
-
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      ...reply.getHeaders(), // CORS headers from @fastify/cors (allowlist only)
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    reply.raw.write("retry: 3000\n\n");
     reply.raw.write(`data: ${JSON.stringify({ status: "connected", timestamp: new Date() })}\n\n`);
 
-    const keepAliveInterval = setInterval(() => {
-      reply.raw.write(`: keepalive\n\n`);
-    }, 15000);
-
-    request.raw.on("close", () => {
-      clearInterval(keepAliveInterval);
-    });
-  });
-
-  app.get("/api/v1/supportops/tickets/channels", async (request, reply) => {
-    return reply.send([
-      { id: "email", name: "Email Support", active: true },
-      { id: "chat", name: "In-App Chat", active: true },
-      { id: "api", name: "API Integrations", active: true },
-    ]);
+    const keepAliveInterval = setInterval(() => reply.raw.write(`: keepalive\n\n`), 15000);
+    request.raw.on("close", () => clearInterval(keepAliveInterval));
   });
 
   /* ========================= CORE ROUTES ========================= */
-  await app.register(resolvePlugin(authRoutesMod), { prefix: "/api/auth" });
-  await app.register(resolvePlugin(goalsRoutesMod), { prefix: "/api/goals" });
-  await app.register(resolvePlugin(adminRoutesMod), { prefix: "/api/admin" });
-  await app.register(resolvePlugin(executionsRoutesMod), { prefix: "/api/executions" });
-  await app.register(resolvePlugin(auditRoutesMod), { prefix: "/api/audit" });
-  await app.register(resolvePlugin(billingRoutesMod), { prefix: "/api/billing" });
-  await app.register(resolvePlugin(paymentsRoutesMod), { prefix: "/api/payments" });
-  await app.register(resolvePlugin(streamRoutesMod), { prefix: "/api/stream" });
-  await app.register(resolvePlugin(stripeRoutesMod), { prefix: "/api/stripe" });
-  await app.register(resolvePlugin(webhooksRoutesMod));
+  await mount("auth", authRoutesMod, "/api/auth");
+  await mount("goals", goalsRoutesMod, "/api/goals");
+  await mount("admin", adminRoutesMod, "/api/admin");
+  await mount("executions", executionsRoutesMod, "/api/executions");
+  await mount("audit", auditRoutesMod, "/api/audit");
+  await mount("billing", billingRoutesMod, "/api/billing");
+  await mount("payments", paymentsRoutesMod, "/api/payments");
+  await mount("stream", streamRoutesMod, "/api/stream");
+  await mount("stripe", stripeRoutesMod, "/api/stripe");
+  await mount("webhooks", webhooksRoutesMod);
 
   /* ========================= SUPPORTOPS ROUTES ========================= */
-  await app.register(resolvePlugin(supportopsRoutesMod), { prefix: "/api/v1/supportops" });
-  await app.register(resolvePlugin(aiRoutesMod), { prefix: "/api/v1/supportops/ai" });
-  await app.register(resolvePlugin(aiLegacyRoutesMod), { prefix: "/api/v1/supportops/ai-v2" });
-  await app.register(resolvePlugin(aiReviewRoutesMod), { prefix: "/api/v1/supportops/ai-review" });
-  await app.register(resolvePlugin(channelsRoutesMod), { prefix: "/api/v1/supportops/channels" });
-  await app.register(resolvePlugin(chatRoutesMod), { prefix: "/api/v1/supportops/chat" });
-  await app.register(resolvePlugin(incidentsRoutesMod), { prefix: "/api/v1/supportops/incidents" });
-  await app.register(resolvePlugin(orgAnalyticsRoutesMod), { prefix: "/api/v1/supportops/analytics" });
-  await app.register(resolvePlugin(outboundRoutesMod), { prefix: "/api/v1/supportops/outbound" });
-  await app.register(resolvePlugin(replyServiceRoutesMod), { prefix: "/api/v1/supportops/replies" });
-  await app.register(resolvePlugin(stripeWebhookRoutesMod), { prefix: "/api/v1/supportops/webhooks/stripe" });
-  await app.register(resolvePlugin(ticketRulesRoutesMod), { prefix: "/api/v1/supportops/ticket-rules" });
-  await app.register(resolvePlugin(ticketServiceRoutesMod), { prefix: "/api/v1/supportops/ticket-service" });
-  await app.register(resolvePlugin(ticketsRoutesMod), { prefix: "/api/v1/supportops/tickets" });
-  await app.register(resolvePlugin(ticketsLegacyRoutesMod), { prefix: "/api/v1/supportops/tickets-v2" });
+  // Routes inside each plugin are relative to its prefix: a plugin that declares GET "/tickets" under
+  // "/api/v1/supportops" serves /api/v1/supportops/tickets. One that declares "/" serves /api/v1/supportops/ (no "tickets").
+  await mount("supportops/tickets", ticketsRoutesMod, "/api/v1/supportops");
+  await mount("supportops/supportops", supportopsRoutesMod, "/api/v1/supportops");
+  await mount("supportops/ai", aiRoutesMod, "/api/v1/supportops/ai");
+  await mount("supportops/ai-v2", aiLegacyRoutesMod, "/api/v1/supportops/ai-v2");
+  await mount("supportops/ai-review", aiReviewRoutesMod, "/api/v1/supportops/ai-review");
+  // channelsRoutes.js builds webhook URLs as /api/v1/supportops/tickets/channels/webhook/:key/:token and the frontend
+  // calls PUT /tickets/channels/:key, so the plugin must live here (it was mounted at /channels, so both 404ed).
+  await mount("supportops/channels", channelsRoutesMod, "/api/v1/supportops/tickets/channels");
+  await mount("supportops/chat", chatRoutesMod, "/api/v1/supportops/chat");
+  await mount("supportops/incidents", incidentsRoutesMod, "/api/v1/supportops/incidents");
+  await mount("supportops/analytics", orgAnalyticsRoutesMod, "/api/v1/supportops/analytics");
+  await mount("supportops/outbound", outboundRoutesMod, "/api/v1/supportops/outbound");
+  await mount("supportops/replies", replyServiceRoutesMod, "/api/v1/supportops/replies");
+  await mount("supportops/webhooks-stripe", stripeWebhookRoutesMod, "/api/v1/supportops/webhooks/stripe");
+  await mount("supportops/ticket-rules", ticketRulesRoutesMod, "/api/v1/supportops/ticket-rules");
+  await mount("supportops/ticket-service", ticketServiceRoutesMod, "/api/v1/supportops/ticket-service");
+  await mount("supportops/tickets-v2", ticketsLegacyRoutesMod, "/api/v1/supportops/tickets-v2");
 
-  /* ========================= ERROR HANDLER & LISTEN ========================= */
-  app.setErrorHandler((error, request, reply) => {
-    request.log.error(error);
-    reply.code(error.statusCode || 500).send({
-      error: error.message || "Internal Server Error",
+  /* ========================= NOT FOUND & ERROR HANDLER ========================= */
+  app.setNotFoundHandler((request, reply) => {
+    reply.code(404).send({
+      statusCode: 404,
+      error: "Not Found",
+      message: `Route ${request.method}:${request.url} not found`,
     });
   });
+
+  app.setErrorHandler((error, request, reply) => {
+    request.log.error(error);
+    const status = error.statusCode || 500;
+    reply.code(status).send({
+      statusCode: status,
+      error: error.name || "Internal Server Error",
+      // Don't leak internals (SQL errors, stack hints) on server errors in production
+      message: status >= 500 && env.NODE_ENV === "production" ? "An error occurred" : error.message || "An error occurred",
+    });
+  });
+
+  // Print the real route table to the Render logs so a 404 can be checked against what is registered
+  await app.ready();
+  app.log.info(`\nRegistered routes:\n${app.printRoutes()}`);
 
   await app.listen({ port: env.PORT, host: "0.0.0.0" });
   console.log(`🚀 API running on port ${env.PORT} in ${env.NODE_ENV} mode`);
 }
 
-start();
+start().catch((err) => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
+});
