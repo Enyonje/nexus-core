@@ -1,17 +1,14 @@
 // src/execution/retry.js
-import { publishEvent } from "../events/publish.js";
-import { db } from "../db/db.js";
+import { publishEvent } from "./runtime.js";
 
-const SYSTEM_IDENTITY = {
-  sub: "nexus-core",
-  role: "service",
-};
+const abortError = () => Object.assign(new Error("Execution cancelled"), { name: "AbortError", retryable: false });
 
 /**
- * Enterprise-grade Async Retry wrapper with Exponential Backoff, 
- * Full Jitter, Execution Timeout bounds, and Non-retryable Error Classification.
+ * Async retry with exponential backoff, full jitter, per-attempt timeout,
+ * cancellation, and non-retryable error classification.
+ * options: { retries, backoffMs, maxBackoffMs, timeoutMs, jitter, executionId, stepId, signal, isRetryable }
  */
-export async function withRetry(fn, options = {}, context = {}) {
+export async function withRetry(fn, options = {}) {
   const {
     retries = 3,
     backoffMs = 300,
@@ -20,128 +17,87 @@ export async function withRetry(fn, options = {}, context = {}) {
     jitter = true,
     executionId = null,
     stepId = null,
+    signal = null,
     isRetryable = defaultIsRetryable,
   } = options;
 
   let attempt = 0;
 
-  while (true) {
+  for (; ;) {
+    if (signal?.aborted) throw abortError();
+
     try {
-      // Wrap operation with strict per-attempt timeout execution limit
-      const result = await executeWithTimeout(fn, timeoutMs);
-
-      // Only publish retry-success if a retry actually took place
-      if (attempt > 0 && executionId && stepId) {
-        await safePublishEvent("EXECUTION_RETRY_SUCCESS", {
-          executionId,
-          stepId,
-          attempt,
-          durationMs: result.durationMs,
-        });
-      }
-
-      return result.data;
+      return await executeWithTimeout(fn, timeoutMs, signal);
     } catch (err) {
       attempt++;
+      if (signal?.aborted || !isRetryable(err) || attempt > retries) throw err;
 
-      const isFatal = !isRetryable(err);
-
-      // Publish attempt failure trace
+      const delay = calculateBackoffDelay(attempt, backoffMs, maxBackoffMs, jitter);
       if (executionId && stepId) {
-        await safePublishEvent("EXECUTION_RETRY_ATTEMPT", {
-          executionId,
-          stepId,
+        // One event type the UI can show as "retrying (2/3)". Final failure is reported by step_failed.
+        await safePublish(executionId, {
+          event: "execution_step_retrying",
+          stepId: String(stepId),
           attempt,
-          isFatal,
+          maxRetries: retries,
+          nextDelayMs: delay,
           error: err.message,
           code: err.code || err.status || "UNKNOWN_ERROR",
         });
       }
-
-      // Stop immediately if max retries exceeded or error marked as fatal/non-retryable
-      if (attempt > retries || isFatal) {
-        if (executionId && stepId) {
-          await safePublishEvent("EXECUTION_RETRY_FAILED", {
-            executionId,
-            stepId,
-            totalAttempts: attempt,
-            fatalReason: isFatal ? "NON_RETRYABLE_ERROR" : "EXCEEDED_MAX_RETRIES",
-            error: err.message,
-          });
-        }
-        throw err;
-      }
-
-      // Calculate true exponential backoff with full jitter
-      const delay = calculateBackoffDelay(attempt, backoffMs, maxBackoffMs, jitter);
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await sleep(delay, signal);
     }
   }
 }
 
-/* =========================================================
-   Utility Helpers & Strategy Classifiers
-========================================================= */
-
-/**
- * Calculates exponential delay with Full Jitter to prevent stampeding herd issues.
- * Formula: min(maxBackoffMs, backoffMs * 2^(attempt - 1)) * Jitter
- */
-function calculateBackoffDelay(attempt, baseBackoff, maxBackoff, useJitter) {
-  const expDelay = Math.min(maxBackoff, baseBackoff * Math.pow(2, attempt - 1));
-  if (!useJitter) return expDelay;
-
-  // Full Jitter algorithm
-  return Math.floor(Math.random() * expDelay);
+/* Full-jitter exponential backoff: random(0, min(max, base * 2^(attempt-1))) */
+function calculateBackoffDelay(attempt, base, max, useJitter) {
+  const exp = Math.min(max, base * Math.pow(2, attempt - 1));
+  return useJitter ? Math.floor(Math.random() * exp) : exp;
 }
 
-/**
- * Enforces per-attempt execution timeout.
- */
-async function executeWithTimeout(fn, timeoutMs) {
-  const startTime = Date.now();
-  let timer;
-
-  const timeoutPromise = new Promise((_, reject) => {
-    timer = setTimeout(() => {
-      const timeoutError = new Error(`Operation timed out after ${timeoutMs}ms`);
-      timeoutError.code = "ETIMEDOUT";
-      reject(timeoutError);
-    }, timeoutMs);
+// Resolves early on abort so cancelling never waits out a backoff
+function sleep(ms, signal) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms);
+    function done() { clearTimeout(timer); signal?.removeEventListener("abort", done); resolve(); }
+    signal?.addEventListener("abort", done, { once: true });
   });
+}
 
+async function executeWithTimeout(fn, timeoutMs, signal) {
+  let timer;
+  let onAbort;
+  const guard = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(Object.assign(new Error(`Operation timed out after ${timeoutMs}ms`), { code: "ETIMEDOUT" }));
+    }, timeoutMs);
+    if (signal) {
+      onAbort = () => reject(abortError());
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
   try {
-    const data = await Promise.race([fn(), timeoutPromise]);
-    return { data, durationMs: Date.now() - startTime };
+    return await Promise.race([fn(), guard]);
   } finally {
     clearTimeout(timer);
+    if (signal && onAbort) signal.removeEventListener("abort", onAbort);
   }
 }
 
-/**
- * Default Classifier to prevent retrying 4xx client/validation errors or auth failures.
- */
+/* Don't retry validation, auth or other 4xx errors, cancellations, or errors flagged `retryable: false`. 429 is retried. */
 function defaultIsRetryable(error) {
-  const status = error.status || error.statusCode || error.response?.status;
-
-  // Do not retry 4xx Client Errors (400, 401, 403, 404, 422)
-  if (status && status >= 400 && status < 500) {
-    // Exception: 429 Rate Limits are retryable
-    if (status === 429) return true;
-    return false;
-  }
-
-  // Network errors, timeouts, and 5xx server errors are retryable
+  if (error?.retryable === false || error?.name === "AbortError") return false;
+  const status = error?.status || error?.statusCode || error?.response?.status;
+  if (status && status >= 400 && status < 500) return status === 429;
   return true;
 }
 
-/**
- * Non-blocking event publication to protect main execution loop from telemetry crashes.
- */
-async function safePublishEvent(eventType, payload) {
+// Telemetry must never break the run
+async function safePublish(executionId, event) {
   try {
-    await publishEvent(db, SYSTEM_IDENTITY, eventType, payload);
-  } catch (pubErr) {
-    console.error(`[RetryEngine:EventError] Failed to publish event '${eventType}':`, pubErr);
+    await publishEvent(executionId, event);
+  } catch (err) {
+    console.error(`[RetryEngine] Failed to publish '${event.event}':`, err);
   }
 }

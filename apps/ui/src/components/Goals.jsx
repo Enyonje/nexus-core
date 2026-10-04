@@ -1,292 +1,266 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
 
+const TYPES = {
+  analysis: { label: "Analysis", fields: [["title", "Title"], ["description", "What should the agent look into?", "area"], ["website", "Target URL"]] },
+  ai_plan: { label: "Plan an outcome", fields: [["objective", "Describe the outcome you want", "area"]] },
+  ai_analysis: { label: "AI analysis", fields: [["prompt", "What should be analysed?", "area"]] },
+  ai_summary: { label: "Summarise", fields: [["text", "Text to summarise", "area"]] },
+  http_request: { label: "API request", fields: [["url", "URL"], ["method", "Method", "method"], ["body", "Body (JSON)", "area"]] },
+  automation: { label: "Automation", fields: [] },
+};
+const TRIGGERS = [["manual", "Manual"], ["hourly", "Every hour"], ["daily", "Every day"], ["webhook", "Incoming webhook"]];
+const APPROVALS = [["risky", "Ask before risky actions"], ["always", "Ask before every step"], ["never", "Run without asking"]];
+const RISK = { low: "text-emerald-400", medium: "text-amber-400", high: "text-rose-400" };
+
+const blank = (type) =>
+  type === "http_request" ? { url: "", method: "GET", body: "" } : type === "automation" ? { steps: [""] } : Object.fromEntries((TYPES[type]?.fields || []).map(([k]) => [k, ""]));
+
+const unwrapId = (o) => o?.id ?? o?.execution?.id ?? o?.data?.id ?? o?.executionId ?? o?.execution_id ?? null;
+const unwrapList = (r) => (Array.isArray(r) ? r : r?.goals ?? []);
+
 export default function Goals() {
+  const navigate = useNavigate();
+  const { addToast } = useToast();
   const [goals, setGoals] = useState([]);
-  const [goalType, setGoalType] = useState("analysis");
-  const [payload, setPayload] = useState({ title: "", description: "", website: "" });
-  const [errorMessage, setErrorMessage] = useState("");
+  const [goalType, setGoalType] = useState("ai_plan");
+  const [payload, setPayload] = useState(blank("ai_plan"));
+  const [plan, setPlan] = useState([]); // [{title, tool, risk}]
+  const [settings, setSettings] = useState({ trigger: "manual", approval: "risky", budgetUsd: 1 });
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [planning, setPlanning] = useState(false);
   const [running, setRunning] = useState(null);
-  const { addToast } = useToast();
-  const [progress, setProgress] = useState({});
+  const [error, setError] = useState("");
 
-  // helper: attempt to extract execution id from many shapes
-  function extractExecutionId(obj) {
-    if (!obj) return null;
-    // if string, try parse
-    if (typeof obj === "string") {
-      try {
-        obj = JSON.parse(obj);
-      } catch {
-        return null;
-      }
+  const load = useCallback(async () => {
+    try {
+      setGoals(unwrapList(await apiFetch("/goals")));
+    } catch (err) {
+      addToast(err?.message || "Could not load goals", "error");
+    } finally {
+      setLoading(false);
     }
-    const candidate =
-      obj?.execution ??
-      obj?.data ??
-      obj?.result ??
-      obj ??
-      null;
-    const id =
-      candidate?.id ||
-      candidate?.execution?.id ||
-      obj?.id ||
-      obj?.executionId ||
-      obj?.execution_id ||
-      obj?.executionId ||
-      candidate?.execution_id;
-    return id ?? null;
+  }, [addToast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const changeType = (t) => { setGoalType(t); setPayload(blank(t)); setPlan([]); setError(""); };
+  const set = (k, v) => { setPayload((p) => ({ ...p, [k]: v })); setPlan([]); };
+
+  /* Draft a plan the user can edit before anything runs */
+  async function draftPlan() {
+    setPlanning(true);
+    setError("");
+    try {
+      const res = await apiFetch("/goals/plan", { method: "POST", body: JSON.stringify({ goalType, payload }) });
+      const steps = Array.isArray(res) ? res : res?.steps ?? res?.plan ?? [];
+      setPlan(steps.map((s) => (typeof s === "string" ? { title: s, risk: "low" } : s)));
+      if (!steps.length) addToast("The agent returned no steps. Add detail and try again.", "error");
+    } catch (err) {
+      setError(err?.message || "Could not draft a plan");
+    } finally {
+      setPlanning(false);
+    }
   }
-
-  useEffect(() => {
-    // ensure payload initialized for the current goalType
-    resetPayload(goalType);
-
-    async function load() {
-      try {
-        const res = await apiFetch("/goals");
-        // handle array or wrapper { goals: [...] }
-        const list = Array.isArray(res) ? res : res?.goals ?? [];
-        setGoals(list);
-      } catch (err) {
-        addToast(err?.message || "Critical: Failed to load objectives", "error");
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const editStep = (i, patch) => setPlan((p) => p.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  const moveStep = (i, d) => setPlan((p) => { const n = [...p]; const j = i + d; if (j < 0 || j >= n.length) return p;[n[i], n[j]] = [n[j], n[i]]; return n; });
 
   async function createGoal(e) {
     e.preventDefault();
     setCreating(true);
-    setErrorMessage("");
+    setError("");
     try {
-      // send JSON string explicitly to avoid mismatched headers/body
-      const res = await apiFetch("/goals", {
-        method: "POST",
-        body: JSON.stringify({ goalType, payload }),
-      });
-
-      // Normalize possible response shapes and pick an object with an id
-      const created =
-        res?.goal ?? res?.data ?? res?.created ?? res?.execution ?? res ?? null;
-      const createdObj = Array.isArray(created) ? created[0] : created;
-
-      if (createdObj && (createdObj.id || createdObj.goal_id || createdObj._id)) {
-        // normalize id field
-        const normalized = { ...createdObj, id: createdObj.id ?? createdObj.goal_id ?? createdObj._id };
-        setGoals((g) => [normalized, ...g]);
-      } else {
-        // fallback: reload list if server didn't return created object
-        const fresh = await apiFetch("/goals");
-        setGoals(Array.isArray(fresh) ? fresh : fresh?.goals ?? []);
-      }
-
-      resetPayload(goalType);
-      addToast("Objective Uploaded", "success");
+      const body = { goalType, payload: plan.length ? { ...payload, plan } : payload, settings };
+      const res = await apiFetch("/goals", { method: "POST", body: JSON.stringify(body) });
+      const created = Array.isArray(res?.goal ?? res) ? (res.goal ?? res)[0] : res?.goal ?? res?.data ?? res;
+      if (created?.id) setGoals((g) => [created, ...g]);
+      else await load();
+      setPayload(blank(goalType));
+      setPlan([]);
+      addToast("Goal saved", "success");
     } catch (err) {
-      setErrorMessage(err?.message || err?.error || "Submission rejected");
-      addToast(err?.message || "Protocol Error", "error");
+      setError(err?.message || "Goal was rejected");
     } finally {
       setCreating(false);
     }
   }
 
-  async function deleteGoal(goalId) {
+  async function deleteGoal(id) {
+    if (!window.confirm("Delete this goal? Its past runs stay in the archive.")) return;
     try {
-      await apiFetch(`/goals/${encodeURIComponent(goalId)}`, { method: "DELETE" });
-      setGoals((g) => g.filter((goal) => goal.id !== goalId));
-      addToast("Objective Terminated", "success");
+      await apiFetch(`/goals/${encodeURIComponent(id)}`, { method: "DELETE" });
+      setGoals((g) => g.filter((x) => x.id !== id));
+      addToast("Goal deleted", "success");
     } catch (err) {
-      addToast(err?.message || "Deletion Interrupted", "error");
+      addToast(err?.message || "Delete failed", "error");
     }
   }
 
-  async function runGoal(goalId) {
-    // guard
-    if (!goalId) {
-      addToast("Invalid goal id", "error");
-      return;
-    }
-
-    setRunning(goalId);
+  async function runGoal(id) {
+    setRunning(id);
     try {
-      // 1) create execution — send stringified body to avoid Content-Type mismatch
-      const createRes = await apiFetch("/executions", {
-        method: "POST",
-        body: JSON.stringify({ goalId }),
-      });
-
-      // 2) extract execution id robustly
-      const execId = extractExecutionId(createRes);
-
-      if (!execId) {
-        // server didn't return an id — log and notify, abort run
-        console.error("Unexpected execution response:", createRes);
-        addToast("Server returned no execution id; run aborted", "error");
-        return;
-      }
-
-      // 3) start run — send explicit JSON body (empty object) to avoid header/body mismatch
-      await apiFetch(`/executions/${encodeURIComponent(execId)}/run`, {
-        method: "POST",
-        body: JSON.stringify({}), // explicit valid JSON body
-      });
-
-      addToast("Swarm Dispatched", "success");
+      const created = await apiFetch("/executions", { method: "POST", body: JSON.stringify({ goalId: id }) });
+      const execId = unwrapId(created);
+      if (!execId) throw new Error("Server returned no execution id");
+      await apiFetch(`/executions/${encodeURIComponent(execId)}/run`, { method: "POST", body: JSON.stringify({}) });
+      navigate(`/executions/${execId}`); // watch it live instead of guessing progress
     } catch (err) {
-      // surface server message when available
-      console.error("Run failed:", err);
-      addToast(err?.message || "Dispatch Failed", "error");
-    } finally {
+      addToast(err?.message || "Run failed to start", "error");
       setRunning(null);
     }
   }
 
-  function resetPayload(type) {
-    if (type === "analysis") setPayload({ title: "", description: "", website: "" });
-    else if (type === "test") setPayload({ message: "" });
-    else if (type === "automation") setPayload({ steps: [""] });
-    else if (type === "http_request") setPayload({ url: "", method: "GET", headers: {}, body: "" });
-    else if (type === "ai_analysis") setPayload({ prompt: "" });
-    else if (type === "ai_summary") setPayload({ text: "" });
-    else if (type === "ai_plan") setPayload({ objective: "" });
-    else setPayload({});
+  const input = "w-full bg-slate-950/60 border border-slate-800 text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-slate-600 text-sm";
+  const label = "block text-xs font-medium text-slate-400 mb-1.5";
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#020617] text-sm text-blue-400 animate-pulse">Loading goals...</div>;
   }
 
-  const inputClass =
-    "w-full bg-slate-950/50 border-none text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all placeholder:text-slate-700";
-
-  function renderPayloadFields() {
-    switch (goalType) {
-      case "analysis":
-        return (
-          <div className="space-y-4">
-            <input value={payload.title} onChange={(e) => setPayload({ ...payload, title: e.target.value })} placeholder="Mission Title" className={inputClass} />
-            <textarea value={payload.description} onChange={(e) => setPayload({ ...payload, description: e.target.value })} placeholder="Operational Description" className={inputClass} rows="3" />
-            <input value={payload.website} onChange={(e) => setPayload({ ...payload, website: e.target.value })} placeholder="Target URL" className={inputClass} />
-          </div>
-        );
-      case "automation":
-        return (
-          <div className="space-y-3">
-            {(payload.steps || []).map((step, idx) => (
-              <div key={idx} className="flex gap-2">
-                <input
-                  value={step}
-                  onChange={(e) => {
-                    const newSteps = [...(payload.steps || [])];
-                    newSteps[idx] = e.target.value;
-                    setPayload({ ...payload, steps: newSteps });
-                  }}
-                  placeholder={`Step ${idx + 1}`}
-                  className={inputClass}
-                />
-                <button type="button" onClick={() => setPayload({ ...payload, steps: (payload.steps || []).filter((_, i) => i !== idx) })} className="px-3 text-red-500 hover:bg-red-500/10 rounded-xl transition">✖</button>
-              </div>
-            ))}
-            <button type="button" onClick={() => setPayload({ ...payload, steps: [...(payload.steps || []), ""] })} className="text-xs font-bold text-blue-400 uppercase tracking-widest">+ Add Sub-Process</button>
-          </div>
-        );
-      default:
-        // safe single-field editor
-        const key = Object.keys(payload)[0] || "value";
-        return (
-          <textarea value={payload[key] ?? ""} onChange={(e) => setPayload({ ...payload, [key]: e.target.value })} placeholder="Configure Parameters..." className={inputClass} rows="4" />
-        );
-    }
-  }
-
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#020617]">
-      <div className="animate-pulse text-blue-500 font-mono tracking-widest uppercase">Initializing Core...</div>
-    </div>
-  );
+  const canSubmit = !creating && Object.values(payload).some((v) => (Array.isArray(v) ? v.some(Boolean) : v));
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 py-12 px-6 relative overflow-hidden">
-      {/* Background Decor */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-600/5 blur-[120px] rounded-full pointer-events-none" />
-      
       <div className="max-w-6xl mx-auto relative z-10">
-        <header className="mb-12 text-center">
-          <h1 className="text-4xl font-black bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">MISSION CONTROL</h1>
-          <p className="text-slate-500 text-xs font-bold uppercase tracking-[0.4em] mt-2">Active Objective Management</p>
+        <header className="mb-10">
+          <h1 className="text-3xl font-black text-white">Goals</h1>
+          <p className="text-sm text-slate-400 mt-1">Describe an outcome, review the plan, set the guardrails, then let the agent work.</p>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-          {/* Sidebar: Creation Form */}
-          <div className="lg:col-span-4">
-            <form onSubmit={createGoal} className="bg-slate-900/40 backdrop-blur-xl p-8 rounded-3xl shadow-2xl sticky top-8 space-y-6">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Protocol Type</label>
-                <select 
-                  value={goalType} 
-                  onChange={(e) => { setGoalType(e.target.value); resetPayload(e.target.value); }} 
-                  className="w-full bg-slate-950 text-blue-400 font-bold border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500/40 appearance-none"
-                >
-                  <option value="analysis">Neural Analysis</option>
-                  <option value="automation">Swarm Automation</option>
-                  <option value="http_request">Network Request</option>
-                  <option value="ai_plan">Strategic Planning</option>
+          {/* Builder */}
+          <form onSubmit={createGoal} className="lg:col-span-5 bg-slate-900/40 backdrop-blur-xl p-6 rounded-3xl border border-slate-800/60 space-y-5 h-fit lg:sticky lg:top-8">
+            <div>
+              <label className={label} htmlFor="gtype">Goal type</label>
+              <select id="gtype" value={goalType} onChange={(e) => changeType(e.target.value)} className={`${input} text-blue-300 font-semibold`}>
+                {Object.entries(TYPES).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
+              </select>
+            </div>
+
+            {goalType === "automation" ? (
+              <div className="space-y-2">
+                <span className={label}>Steps, in order</span>
+                {(payload.steps || []).map((s, i) => (
+                  <div key={i} className="flex gap-2">
+                    <input value={s} onChange={(e) => set("steps", payload.steps.map((x, j) => (j === i ? e.target.value : x)))} placeholder={`Step ${i + 1}`} className={input} />
+                    <button type="button" aria-label={`Remove step ${i + 1}`} onClick={() => set("steps", payload.steps.filter((_, j) => j !== i))} className="px-3 text-rose-400 hover:bg-rose-500/10 rounded-xl">Remove</button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => set("steps", [...(payload.steps || []), ""])} className="text-xs font-semibold text-blue-400">Add step</button>
+              </div>
+            ) : (
+              (TYPES[goalType]?.fields || []).map(([k, ph, kind]) => (
+                <div key={k}>
+                  <label className={label} htmlFor={`f-${k}`}>{ph}</label>
+                  {kind === "area" ? (
+                    <textarea id={`f-${k}`} rows={4} value={payload[k] ?? ""} onChange={(e) => set(k, e.target.value)} className={input} />
+                  ) : kind === "method" ? (
+                    <select id={`f-${k}`} value={payload[k]} onChange={(e) => set(k, e.target.value)} className={input}>
+                      {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => <option key={m}>{m}</option>)}
+                    </select>
+                  ) : (
+                    <input id={`f-${k}`} value={payload[k] ?? ""} onChange={(e) => set(k, e.target.value)} className={input} />
+                  )}
+                </div>
+              ))
+            )}
+
+            {/* Editable AI plan */}
+            <div className="border-t border-slate-800 pt-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-white">Plan</span>
+                <button type="button" onClick={draftPlan} disabled={planning || !canSubmit} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/40 disabled:opacity-40">
+                  {planning ? "Drafting..." : plan.length ? "Redraft plan" : "Draft plan with AI"}
+                </button>
+              </div>
+              {plan.length === 0 ? (
+                <p className="text-xs text-slate-500">Optional. Draft a plan to review each step before the agent runs it.</p>
+              ) : (
+                <ol className="space-y-2">
+                  {plan.map((s, i) => (
+                    <li key={i} className="flex items-start gap-2 bg-slate-950/50 border border-slate-800 rounded-lg p-2.5">
+                      <div className="flex-1 min-w-0">
+                        <input value={s.title} onChange={(e) => editStep(i, { title: e.target.value })} aria-label={`Plan step ${i + 1}`} className="w-full bg-transparent text-sm text-white focus:outline-none" />
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {s.tool ? `${s.tool} · ` : ""}<span className={RISK[s.risk] || RISK.low}>{s.risk || "low"} risk</span>
+                        </p>
+                      </div>
+                      <div className="flex gap-1 text-xs text-slate-400">
+                        <button type="button" aria-label="Move up" onClick={() => moveStep(i, -1)} className="px-1.5 hover:text-white">Up</button>
+                        <button type="button" aria-label="Move down" onClick={() => moveStep(i, 1)} className="px-1.5 hover:text-white">Down</button>
+                        <button type="button" aria-label="Remove step" onClick={() => setPlan((p) => p.filter((_, j) => j !== i))} className="px-1.5 text-rose-400">Remove</button>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+
+            {/* Guardrails + trigger */}
+            <div className="border-t border-slate-800 pt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={label} htmlFor="trig">Starts</label>
+                <select id="trig" value={settings.trigger} onChange={(e) => setSettings({ ...settings, trigger: e.target.value })} className={input}>
+                  {TRIGGERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
-
-              {renderPayloadFields()}
-
-              {errorMessage && <div className="text-[10px] font-bold text-red-400 uppercase tracking-tighter bg-red-400/10 p-2 rounded-lg text-center">{errorMessage}</div>}
-
-              <button type="submit" disabled={creating} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 py-4 rounded-xl font-black text-white uppercase tracking-widest text-xs hover:from-blue-500 transition-all shadow-[0_0_20px_rgba(37,99,235,0.2)]">
-                {creating ? "Syncing..." : "Deploy Objective"}
-              </button>
-            </form>
-          </div>
-
-          {/* Main Area: Objectives Grid */}
-          <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-4 h-fit">
-            {goals.map((goal) => (
-              <div key={goal.id} className="group relative bg-slate-900/20 backdrop-blur-md p-6 rounded-2xl border border-slate-800/50 hover:border-blue-500/30 transition-all duration-300">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="space-y-1">
-                    <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-500/10 px-2 py-0.5 rounded-full">
-                      {goal.goal_type}
-                    </span>
-                    <h3 className="font-bold text-white truncate max-w-[150px]">
-                      {goal.goal_payload?.title || goal.goal_payload?.objective || "Standard Operation"}
-                    </h3>
-                  </div>
-                  <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => runGoal(goal.id)} disabled={running === goal.id} className="p-2 bg-blue-600/20 text-blue-400 rounded-lg hover:bg-blue-600 hover:text-white transition">
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M4.512 1.512a.5.5 0 01.5.5v15a.5.5 0 01-1 0V2a.5.5 0 01.5-.5zM16.5 10l-10 6V4l10 6z" /></svg>
-                    </button>
-                    <button onClick={() => deleteGoal(goal.id)} className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Status & Progress */}
-                <div className="space-y-3 pt-4 border-t border-slate-800/50">
-                  <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
-                    <span>Signal Strength</span>
-                    <span className={progress[goal.id]?.status === 'failed' ? 'text-red-400' : 'text-blue-400'}>
-                      {progress[goal.id]?.status || "Standby"}
-                    </span>
-                  </div>
-                  <div className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full transition-all duration-1000 shadow-[0_0_10px_rgba(59,130,246,0.5)] ${progress[goal.id]?.status === 'failed' ? 'bg-red-500' : 'bg-blue-500'}`}
-                      style={{ width: `${progress[goal.id]?.percent || 5}%` }}
-                    />
-                  </div>
-                </div>
+              <div>
+                <label className={label} htmlFor="budget">Spend limit per run (USD)</label>
+                <input id="budget" type="number" min="0" step="0.25" value={settings.budgetUsd} onChange={(e) => setSettings({ ...settings, budgetUsd: Number(e.target.value) })} className={input} />
               </div>
-            ))}
+              <div className="sm:col-span-2">
+                <label className={label} htmlFor="appr">Approvals</label>
+                <select id="appr" value={settings.approval} onChange={(e) => setSettings({ ...settings, approval: e.target.value })} className={input}>
+                  {APPROVALS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {error && <div role="alert" className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-lg">{error}</div>}
+
+            <button type="submit" disabled={!canSubmit} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 py-3.5 rounded-xl font-bold text-white text-sm hover:from-blue-500 transition-all disabled:opacity-40">
+              {creating ? "Saving..." : "Save goal"}
+            </button>
+          </form>
+
+          {/* Goal list */}
+          <div className="lg:col-span-7 grid grid-cols-1 md:grid-cols-2 gap-4 h-fit">
+            {goals.length === 0 && (
+              <div className="md:col-span-2 text-center py-16 border border-dashed border-slate-800 rounded-2xl text-sm text-slate-500">
+                No goals yet. Describe an outcome on the left to create your first one.
+              </div>
+            )}
+            {goals.map((g) => {
+              const p = g.goal_payload || {};
+              const s = g.settings || p.settings || {};
+              const last = g.last_execution_status;
+              return (
+                <div key={g.id} className="bg-slate-900/30 p-5 rounded-2xl border border-slate-800/60 hover:border-blue-500/30 transition-colors flex flex-col">
+                  <span className="self-start text-[11px] font-semibold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full mb-2">{TYPES[g.goal_type]?.label || g.goal_type}</span>
+                  <h3 className="font-bold text-white line-clamp-2">{p.title || p.objective || p.prompt || p.url || "Untitled goal"}</h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {(TRIGGERS.find(([v]) => v === s.trigger) || TRIGGERS[0])[1]}
+                    {p.plan?.length ? ` · ${p.plan.length} planned steps` : ""}
+                    {s.budgetUsd ? ` · max $${s.budgetUsd}` : ""}
+                  </p>
+                  <div className="mt-auto pt-4 flex items-center gap-2">
+                    <button onClick={() => runGoal(g.id)} disabled={running === g.id} className="flex-1 text-xs font-semibold py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50">
+                      {running === g.id ? "Starting..." : "Run now"}
+                    </button>
+                    {g.last_execution_id && (
+                      <Link to={`/executions/${g.last_execution_id}`} className={`text-xs px-3 py-2 rounded-lg border border-slate-700 hover:bg-slate-800 ${last === "failed" ? "text-rose-400" : "text-slate-300"}`}>
+                        Last run{last ? `: ${last}` : ""}
+                      </Link>
+                    )}
+                    <button onClick={() => deleteGoal(g.id)} aria-label="Delete goal" className="text-xs px-3 py-2 rounded-lg text-rose-400 hover:bg-rose-500/10">Delete</button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

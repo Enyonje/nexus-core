@@ -1,330 +1,180 @@
+// src/execution/logic.js
+// Goal handlers DEFINE steps; the runner EXECUTES them (retry, approval, sentinel, metering, events, DB rows).
 import OpenAI from "openai";
-import { db } from "../db/db.js";
-import { publishEvent } from "../events/stream.js";
-import { v4 as uuidv4 } from "uuid";
+import { v5 as uuidv5 } from "uuid";
 import dotenv from "dotenv";
 
-// Load environment variables from .env file
 dotenv.config();
 
-// Singleton OpenAI client initialization
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  maxRetries: 3,
-  timeout: 30000,
-});
+const NS = "6f1b2d5e-3c4a-4e8b-9a71-2d0c5b8f1a34";
+const MODELS = new Set(["gpt-4o", "gpt-4o-mini"]);
 
-/* =========================================================
-   Helper: Cached Metadata Batch Execution Logger
-========================================================= */
-async function recordStep({
-  executionId,
-  type,
-  status,
-  reasoning = "",
-  output = null,
-  error = null,
-  name = null,
-  meta = {},
-  ctx = null, // Cached execution context { user_id, org_id }
-}) {
-  try {
-    let userId = ctx?.user_id;
-    let orgId = ctx?.org_id;
+// Deterministic ids: the same step gets the same id on a retry-from-step, so rows upsert instead of duplicating
+const stepId = (executionId, key) => uuidv5(`${executionId}:${key}`, NS);
+const fatal = (msg, status = 400) => Object.assign(new Error(msg), { status, retryable: false });
 
-    // Fallback to query if context is not supplied
-    if (!userId || !orgId) {
-      const { rows } = await db.query(
-        `SELECT user_id, org_id FROM executions WHERE id = $1`,
-        [executionId]
-      );
-      if (!rows.length) throw new Error(`Execution context missing for ID: ${executionId}`);
-      userId = rows[0].user_id;
-      orgId = rows[0].org_id;
-    }
-
-    const stepId = uuidv4();
-    const stepName = name || type;
-
-    const { rows } = await db.query(
-      `INSERT INTO execution_steps (
-          id, execution_id, user_id, org_id, name, step_type, status, reasoning, output, error, metadata, started_at
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
-       RETURNING *`,
-      [
-        stepId,
-        executionId,
-        userId,
-        orgId,
-        stepName,
-        type,
-        status,
-        reasoning,
-        output ? JSON.stringify(output) : null,
-        error ? String(error) : null,
-        JSON.stringify(meta),
-      ]
-    );
-
-    const stepData = rows[0];
-
-    // Real-time Event Streaming via SSE/WebSockets
-    publishEvent({
-      event: "execution_step_updated",
-      executionId,
-      data: {
-        id: stepData.id,
-        name: stepData.name,
-        type: stepData.step_type,
-        status: stepData.status,
-        reasoning: stepData.reasoning,
-        output: stepData.output,
-        error: stepData.error,
-        started_at: stepData.started_at,
-      },
-    });
-
-    return stepId;
-  } catch (err) {
-    console.error(`[ExecutionEngine:Error] Step recording failed on execution ${executionId}:`, err);
-    throw err;
-  }
+// Lazy client: a missing key no longer crashes the server at import time
+let _openai = null;
+function openai() {
+  if (!process.env.OPENAI_API_KEY) throw fatal("OPENAI_API_KEY is not configured", 500);
+  return (_openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 1, timeout: 60_000 }));
 }
 
-/* =========================================================
-   Goal Handler: Enterprise Analysis Engine
-========================================================= */
-async function runAnalysisGoal(payload, executionId, ctx, cb) {
+/* ---------------- Goal: analysis ---------------- */
+function runAnalysisGoal(payload, executionId, step) {
   const text = payload?.text || "";
-
-  const stepId = await recordStep({
-    executionId,
-    type: "analysis",
-    status: "running",
-    reasoning: "Performing token and structure analysis...",
-    ctx,
+  return step({
+    id: stepId(executionId, "analysis"),
+    name: "analysis",
+    step_type: "analysis",
+    reasoning: "Measuring length, words and structure of the input",
+    run: async () => {
+      const words = text.trim() ? text.trim().split(/\s+/) : [];
+      return {
+        length: text.length,
+        wordCount: words.length,
+        characterCountNoSpaces: text.replace(/\s+/g, "").length,
+        timestamp: new Date().toISOString(),
+      };
+    },
   });
-  cb?.({ id: stepId, name: "analysis", status: "running" });
-
-  const words = text.trim() ? text.trim().split(/\s+/) : [];
-  const result = {
-    length: text.length,
-    wordCount: words.length,
-    characterCountNoSpaces: text.replace(/\s+/g, "").length,
-    timestamp: new Date().toISOString(),
-  };
-
-  const completedId = await recordStep({
-    executionId,
-    type: "analysis",
-    status: "completed",
-    reasoning: "Analysis complete.",
-    output: result,
-    ctx,
-  });
-  cb?.({ id: completedId, name: "analysis", status: "completed", result });
-
-  return result;
 }
 
-/* =========================================================
-   Goal Handler: Parallel Concurrent Task Pipeline
-========================================================= */
-async function runAutomationGoal(payload, executionId, ctx, cb) {
-  const tasks = payload?.steps;
-  if (!Array.isArray(tasks) || tasks.length === 0) {
-    throw new Error("Automation execution requires a non-empty 'steps' array.");
-  }
+/* ---------------- Goal: automation (uses the reviewed plan when the user saved one) ---------------- */
+async function runAutomationGoal(payload, executionId, step) {
+  const raw = Array.isArray(payload?.plan) && payload.plan.length ? payload.plan : payload?.steps;
+  const items = (Array.isArray(raw) ? raw : [])
+    .map((t) => (typeof t === "string" ? { title: t } : t))
+    .filter((t) => t?.title && String(t.title).trim());
+  if (!items.length) throw fatal("Automation requires at least one step.");
 
-  const maxConcurrency = payload?.concurrency || 3;
+  // Default is sequential, because the UI promises "steps, in order"
+  const concurrency = Math.min(Math.max(Number(payload?.concurrency) || 1, 1), 5);
   const results = [];
 
-  // Helper for resilient step execution with retry policies
-  const executeSingleTask = async (taskName) => {
-    const runningId = await recordStep({
-      executionId,
-      type: "automation_task",
-      status: "running",
-      reasoning: `Executing automated pipeline step: ${taskName}`,
-      name: taskName,
-      ctx,
+  const runItem = async (item, i) => {
+    const out = await step({
+      id: stepId(executionId, `task:${i}`),
+      name: String(item.title).slice(0, 200),
+      step_type: "automation_task",
+      tool: item.tool,
+      risk: item.risk,
+      payload: item.payload || item.params || {},
+      reasoning: item.reasoning || `Pipeline step ${i + 1} of ${items.length}`,
+      // Fallback used only when no registered plugin matches `tool` (see registerStepPlugin in runner.js)
+      run: async () => {
+        await new Promise((r) => setTimeout(r, Number(payload?.delayMs) || 400));
+        return { task: item.title, status: "success", executedAt: new Date().toISOString() };
+      },
     });
-    cb?.({ id: runningId, name: taskName, status: "running" });
-
-    try {
-      // Dynamic task processing simulation / API call hook
-      await new Promise((resolve) => setTimeout(resolve, payload?.delayMs || 400));
-
-      const stepOutput = { task: taskName, status: "success", executedAt: new Date().toISOString() };
-
-      const completedId = await recordStep({
-        executionId,
-        type: "automation_task",
-        status: "completed",
-        reasoning: `Task '${taskName}' completed successfully.`,
-        output: stepOutput,
-        name: taskName,
-        ctx,
-      });
-
-      const res = { id: completedId, name: taskName, status: "completed", result: stepOutput };
-      cb?.(res);
-      return res;
-    } catch (err) {
-      const failedId = await recordStep({
-        executionId,
-        type: "automation_task",
-        status: "failed",
-        reasoning: `Task '${taskName}' execution failed.`,
-        error: err.message,
-        name: taskName,
-        ctx,
-      });
-      const res = { id: failedId, name: taskName, status: "failed", error: err.message };
-      cb?.(res);
-      throw err;
-    }
+    return { id: stepId(executionId, `task:${i}`), name: item.title, status: "completed", result: out };
   };
 
-  // Chunked concurrent pool processing
-  for (let i = 0; i < tasks.length; i += maxConcurrency) {
-    const chunk = tasks.slice(i, i + maxConcurrency);
-    const chunkResults = await Promise.all(chunk.map((task) => executeSingleTask(task)));
-    results.push(...chunkResults);
+  for (let i = 0; i < items.length; i += concurrency) {
+    const chunk = items.slice(i, i + concurrency);
+    results.push(...(await Promise.all(chunk.map((it, j) => runItem(it, i + j)))));
   }
-
   return { status: "all_tasks_completed", summary: results };
 }
 
-/* =========================================================
-   Goal Handler: Structured AI Agentic Orchestration
-========================================================= */
-async function runAiPlanGoal(payload, executionId, ctx, cb) {
-  const prompt = payload?.prompt;
-  if (!prompt) throw new Error("AI Plan requires a target 'prompt' parameter.");
+/* ---------------- Goal: ai_plan ---------------- */
+function runAiPlanGoal(payload, executionId, step) {
+  const prompt = payload?.prompt || payload?.objective; // the Goals form sends `objective`
+  if (!prompt) throw fatal("AI Plan needs an objective.");
+  const model = MODELS.has(payload?.model) ? payload.model : "gpt-4o";
 
-  const stepId = await recordStep({
-    executionId,
-    type: "ai_plan",
-    status: "running",
-    reasoning: "Synthesizing goal context and structuring agentic plan...",
+  return step({
+    id: stepId(executionId, "ai_plan"),
     name: "ai_plan",
-    ctx,
-  });
-  cb?.({ id: stepId, name: "ai_plan", status: "running" });
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: payload?.model || "gpt-4o",
-      messages: [
+    step_type: "ai_plan",
+    reasoning: "Turning the objective into a structured plan",
+    timeoutMs: 90_000,
+    run: async ({ signal } = {}) => {
+      const response = await openai().chat.completions.create(
         {
-          role: "system",
-          content:
-            "You are Nexus Core's autonomous agent engine. Output clear, deterministic, and structured execution plans formatted in strict JSON.",
+          model,
+          messages: [
+            { role: "system", content: "You are Nexus Core's planning engine. Reply with one JSON object containing the plan." },
+            { role: "user", content: prompt },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.2,
         },
-        { role: "user", content: prompt },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-    });
-
-    const rawContent = response.choices[0]?.message?.content || "{}";
-    const structuredPlan = JSON.parse(rawContent);
-
-    const usageMeta = {
-      tokens: response.usage,
-      model: response.model,
-    };
-
-    const completedId = await recordStep({
-      executionId,
-      type: "ai_plan",
-      status: "completed",
-      reasoning: "AI plan successfully synthesized.",
-      output: structuredPlan,
-      meta: usageMeta,
-      name: "ai_plan",
-      ctx,
-    });
-
-    const result = { plan: structuredPlan, usage: usageMeta };
-    cb?.({ id: completedId, name: "ai_plan", status: "completed", result });
-
-    return result;
-  } catch (err) {
-    const failedId = await recordStep({
-      executionId,
-      type: "ai_plan",
-      status: "failed",
-      reasoning: "Failed to generate AI plan.",
-      error: err.message,
-      name: "ai_plan",
-      ctx,
-    });
-    cb?.({ id: failedId, name: "ai_plan", status: "failed", error: err.message });
-    throw err;
-  }
+        { signal }
+      );
+      let plan;
+      try { plan = JSON.parse(response.choices[0]?.message?.content || "{}"); }
+      catch { throw fatal("The model returned invalid JSON", 502); }
+      return { plan, model: response.model, usage: response.usage, tokensUsed: response.usage?.total_tokens || 0 };
+    },
+  });
 }
 
-/* =========================================================
-   Default Fallback Handler
-========================================================= */
-async function runNoopGoal(payload, executionId, ctx, cb) {
-  const stepId = await recordStep({
-    executionId,
-    type: "noop",
-    status: "running",
-    reasoning: "Executing fallback default goal handler...",
-    name: "noop",
-    ctx,
+/* ---------------- Goal: http_request (executed by the runner's built-in http_request step) ---------------- */
+function runHttpGoal(payload, executionId, step) {
+  if (!payload?.url) throw fatal("An API request needs a URL.");
+  return step({
+    id: stepId(executionId, "http_request"),
+    name: "http_request",
+    step_type: "http_request",
+    reasoning: `${(payload.method || "GET").toUpperCase()} ${payload.url}`,
+    payload,
   });
-  cb?.({ id: stepId, name: "noop", status: "running" });
-
-  const result = { echo: payload || null, processedAt: new Date().toISOString() };
-
-  const completedId = await recordStep({
-    executionId,
-    type: "noop",
-    status: "completed",
-    reasoning: "Default goal processed successfully.",
-    output: result,
-    name: "noop",
-    ctx,
-  });
-
-  cb?.({ id: completedId, name: "noop", status: "completed", result });
-  return result;
 }
 
-/* =========================================================
-   Primary Export Wrapper (Context-Aware Routing)
-========================================================= */
-export async function executeGoalLogic(goalType, payload, executionId, cb) {
-  // 1. Fetch & Cache Execution Context once at entry to resolve N+1 DB bottleneck
-  const { rows } = await db.query(
-    `SELECT user_id, org_id FROM executions WHERE id = $1`,
-    [executionId]
-  );
+/* ---------------- Fallback ---------------- */
+function runNoopGoal(payload, executionId, step) {
+  return step({
+    id: stepId(executionId, "noop"),
+    name: "noop",
+    step_type: "noop",
+    reasoning: "No handler for this goal type; echoing the payload",
+    run: async () => ({ echo: payload || null, processedAt: new Date().toISOString() }),
+  });
+}
 
-  if (!rows.length) {
-    throw new Error(`Invalid Execution ID: ${executionId}`);
-  }
-
-  const ctx = {
-    user_id: rows[0].user_id,
-    org_id: rows[0].org_id,
-  };
-
-  // 2. Route Execution
+/* ---------------- Entry point ---------------- */
+export async function executeGoalLogic(goalType, payload, executionId, executeStep = (s) => s.run({})) {
   switch (goalType) {
-    case "analysis":
-      return await runAnalysisGoal(payload, executionId, ctx, cb);
-    case "automation":
-      return await runAutomationGoal(payload, executionId, ctx, cb);
-    case "ai_plan":
-      return await runAiPlanGoal(payload, executionId, ctx, cb);
-    default:
-      return await runNoopGoal(payload, executionId, ctx, cb);
+    case "analysis": return runAnalysisGoal(payload, executionId, executeStep);
+    case "automation": return runAutomationGoal(payload, executionId, executeStep);
+    case "ai_plan": return runAiPlanGoal(payload, executionId, executeStep);
+    case "http_request": return runHttpGoal(payload, executionId, executeStep);
+    default: return runNoopGoal(payload, executionId, executeStep);
   }
+}
+
+/* ---------------- Plan drafting for POST /goals/plan (used by the Goals page) ---------------- */
+export async function draftPlan(goalType, payload = {}) {
+  const goal =
+    payload.objective || payload.prompt || payload.description || payload.title || payload.text ||
+    (Array.isArray(payload.steps) ? payload.steps.filter(Boolean).join("; ") : "");
+  if (!String(goal).trim()) throw fatal("Describe the goal first.");
+
+  const res = await openai().chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content:
+          'Break the goal into 3 to 8 concrete steps. Reply with JSON: {"steps":[{"title":string,"tool":string,"risk":"low"|"medium"|"high"}]}. ' +
+          "Use risk high for anything that sends messages, spends money, or deletes or writes external data.",
+      },
+      { role: "user", content: String(goal).slice(0, 4000) },
+    ],
+  });
+
+  let steps = [];
+  try { steps = JSON.parse(res.choices[0]?.message?.content || "{}").steps || []; } catch { /* handled below */ }
+  const risks = new Set(["low", "medium", "high"]);
+  return steps
+    .filter((s) => s?.title)
+    .slice(0, 12)
+    .map((s) => ({
+      title: String(s.title).slice(0, 200),
+      tool: s.tool ? String(s.tool).slice(0, 60) : undefined,
+      risk: risks.has(s.risk) ? s.risk : "low",
+    }));
 }
