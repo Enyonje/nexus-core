@@ -113,8 +113,25 @@ export async function addNote({ orgId, number, authorId, body }) {
     return view(note);
 }
 
-/* ---------- default export ---------- */
-export default {
-    sendReply,
-    addNote,
-};
+/* ---------- Fastify plugin ---------- */
+export default async function replyServiceRoutes(app) {
+    // POST /reply
+    app.post("/reply", async (req, reply) => {
+        try {
+            const result = await sendReply(req.body);
+            return reply.code(201).send(result);
+        } catch (err) {
+            return reply.code(err.statusCode || 500).send({ error: err.message });
+        }
+    });
+
+    // POST /note
+    app.post("/note", async (req, reply) => {
+        try {
+            const result = await addNote(req.body);
+            return reply.code(201).send(result);
+        } catch (err) {
+            return reply.code(err.statusCode || 500).send({ error: err.message });
+        }
+    });
+}

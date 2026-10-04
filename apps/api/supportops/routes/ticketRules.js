@@ -1,9 +1,8 @@
 // backend/routes/ticketRules.js
 // Pure ticket rules (no database) so they can be unit tested.
 
-// First-response targets in minutes. Later, load these per plan or per organization.
 export const SLA_MINUTES = { urgent: 15, high: 60, normal: 240, low: 1440 };
-export const REOPEN_WINDOW_MS = 72 * 60 * 60 * 1000; // a customer replying within 72h of "solved" reopens the ticket
+export const REOPEN_WINDOW_MS = 72 * 60 * 60 * 1000; // 72h window to reopen a solved ticket
 
 export const slaDueAt = (priority, from = new Date()) =>
     new Date(from.getTime() + (SLA_MINUTES[priority] ?? SLA_MINUTES.normal) * 60000);
@@ -28,11 +27,21 @@ export function canAppend(ticket, now = new Date()) {
     return false; // closed tickets stay closed
 }
 
-/* ---------- default export ---------- */
-export default {
-    SLA_MINUTES,
-    REOPEN_WINDOW_MS,
-    slaDueAt,
-    priorityFor,
-    canAppend,
-};
+/* ---------- Fastify plugin ---------- */
+export default async function ticketRulesRoutes(app) {
+    // POST /priority
+    app.post("/priority", async (req, reply) => {
+        return { priority: priorityFor(req.body) };
+    });
+
+    // POST /can-append
+    app.post("/can-append", async (req, reply) => {
+        return { canAppend: canAppend(req.body.ticket) };
+    });
+
+    // POST /sla
+    app.post("/sla", async (req, reply) => {
+        const { priority } = req.body;
+        return { dueAt: slaDueAt(priority) };
+    });
+}

@@ -32,11 +32,3 @@ export const push = (bucket, id, event) => {
     for (const r of bucket.get(id) ?? [])
         r.raw.write(`data: ${JSON.stringify(event)}\n\n`);
 };
-
-/* ---------- default export ---------- */
-export default {
-    visitors,
-    staff,
-    openStream,
-    push,
-};

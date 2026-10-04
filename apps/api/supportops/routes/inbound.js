@@ -122,10 +122,3 @@ const NORMALIZERS = { whatsapp, social, sms, email, voice };
 
 export const normalize = (key, payload) =>
     NORMALIZERS[key] ? NORMALIZERS[key](payload) : [];
-
-/* ---------- default export ---------- */
-export default {
-    verifyMetaSignature,
-    verifyTwilioSignature,
-    normalize,
-};

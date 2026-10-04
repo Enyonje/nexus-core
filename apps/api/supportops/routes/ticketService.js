@@ -54,7 +54,6 @@ export async function createTicketFromInbound({
         },
     });
 
-    // Same customer, same channel: join their open ticket instead of creating a new one
     const latest = await prisma.supportTicket.findFirst({
         where: { org_id: orgId, customer_id: person.id, channel },
         orderBy: { created_at: "desc" },
@@ -84,7 +83,6 @@ export async function createTicketFromInbound({
         return ticket;
     }
 
-    // New ticket. Retry on unique violation.
     for (let attempt = 0; ; attempt++) {
         try {
             const last = await prisma.supportTicket.findFirst({
@@ -117,8 +115,15 @@ export async function createTicketFromInbound({
     }
 }
 
-/* ---------- default export ---------- */
-export default {
-    toView,
-    createTicketFromInbound,
-};
+/* ---------- Fastify plugin ---------- */
+export default async function ticketServiceRoutes(app) {
+    // POST /create
+    app.post("/create", async (req, reply) => {
+        try {
+            const ticket = await createTicketFromInbound(req.body);
+            return reply.code(201).send(ticket);
+        } catch (err) {
+            return reply.code(err.statusCode || 500).send({ error: err.message });
+        }
+    });
+}
