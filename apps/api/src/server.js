@@ -49,17 +49,14 @@ function isClassConstructor(func) {
  * Safely resolves Fastify plugin functions from imported modules while ignoring class constructors
  */
 function resolvePlugin(mod) {
-  // Check default export first
   if (typeof mod?.default === "function" && !isClassConstructor(mod.default)) {
     return mod.default;
   }
 
-  // Check direct module function
   if (typeof mod === "function" && !isClassConstructor(mod)) {
     return mod;
   }
 
-  // Find first non-class exported function
   const keys = Object.keys(mod || {});
   for (const key of keys) {
     if (typeof mod[key] === "function" && !isClassConstructor(mod[key])) {
@@ -67,7 +64,6 @@ function resolvePlugin(mod) {
     }
   }
 
-  // Fallback no-op plugin if the module only exports helper classes/utilities
   return async function dummyPlugin() { };
 }
 
@@ -109,6 +105,10 @@ async function start() {
   await app.register(fastifyJwt, {
     secret: env.JWT_SECRET,
   });
+
+  /* ========================= HEALTH CHECKS ========================= */
+  app.get("/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
+  app.get("/api/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
 
   /* ========================= CORE ROUTES ========================= */
   await app.register(resolvePlugin(authRoutesMod), { prefix: "/api/auth" });
