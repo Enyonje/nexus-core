@@ -59,17 +59,24 @@ async function firstTime(channelId, externalId) {
 export default async function channelsRoutes(app) {
     if (KEY.length !== 32) throw new Error("CHANNELS_ENC_KEY must be 32 bytes, base64 encoded");
 
-    // Keep the raw body so provider signatures can be verified
+    // Preserve raw buffer for signature verification
     app.addContentTypeParser("application/json", { parseAs: "buffer" }, (req, body, done) => {
         req.rawBody = body;
-        try { done(null, JSON.parse(body.toString("utf8") || "{}")); }
-        catch (err) { err.statusCode = 400; done(err); }
+        try {
+            const parsed = JSON.parse(body.toString("utf8") || "{}");
+            done(null, parsed);
+        } catch (err) {
+            err.statusCode = 400;
+            done(err);
+        }
     });
 
-    // Twilio and Africa's Talking post form-encoded bodies
-    app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string" }, (req, body, done) =>
-        done(null, Object.fromEntries(new URLSearchParams(body)))
-    );
+    // Handle Twilio and Africa's Talking form-encoded bodies
+    app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "buffer" }, (req, body, done) => {
+        req.rawBody = body;
+        const bodyStr = body.toString("utf8");
+        done(null, Object.fromEntries(new URLSearchParams(bodyStr)));
+    });
 
     const read = guard({ app: "supportops", roles: ["admin", "management"] });
     const admin = guard({ app: "supportops", roles: ["admin"] });
@@ -149,17 +156,32 @@ export default async function channelsRoutes(app) {
         const row = await prisma.channel.findFirst({
             where: { key: req.params.key, webhook_token: req.params.token, status: "connected" },
         });
-        if (!row) return reply.code(404).send();
+        if (!row) return reply.code(404).send({ error: "Channel webhook endpoint not found or disconnected" });
         if (row.key === "web") return reply.code(405).send({ message: "Web chat uses the widget API" });
 
         const secrets = decrypt(row.config_enc);
-        const trusted =
-            row.key === "whatsapp" || row.key === "social"
-                ? verifyMetaSignature(req.rawBody, req.headers["x-hub-signature-256"], secrets.appSecret)
-                : row.key === "voice"
-                    ? verifyTwilioSignature(urlFor(row), req.body, req.headers["x-twilio-signature"], secrets.authToken)
-                    : true;
-        if (!trusted) return reply.code(401).send();
+
+        let trusted = true;
+        if (row.key === "whatsapp" || row.key === "social") {
+            const signature = req.headers["x-hub-signature-256"];
+            if (!secrets.appSecret || !signature) {
+                trusted = false;
+            } else {
+                trusted = verifyMetaSignature(req.rawBody, signature, secrets.appSecret);
+            }
+        } else if (row.key === "voice") {
+            const signature = req.headers["x-twilio-signature"];
+            if (!secrets.authToken || !signature) {
+                trusted = false;
+            } else {
+                trusted = verifyTwilioSignature(urlFor(row), req.body, signature, secrets.authToken);
+            }
+        }
+
+        if (!trusted) {
+            req.log.warn({ key: row.key, orgId: row.org_id }, "Webhook signature validation failed");
+            return reply.code(401).send({ error: "UNAUTHORIZED_WEBHOOK_SIGNATURE" });
+        }
 
         for (const m of normalize(row.key, req.body)) {
             if (!(await firstTime(row.id, m.externalId))) continue;
@@ -177,6 +199,6 @@ export default async function channelsRoutes(app) {
                 `<Response><Say>Thanks for calling. Please leave a message after the tone.</Say><Record maxLength="120" action="${urlFor(row)}"/></Response>`
             );
         }
-        return reply.code(200).send();
+        return reply.code(200).send({ status: "processed" });
     });
 }

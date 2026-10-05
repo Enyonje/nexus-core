@@ -3,9 +3,10 @@ import { prisma } from "../config/prisma.js";
 import { guard } from "../security/entitlements.js";
 
 export default async function ticketsRoutes(app) {
+    // Entitlement guard requiring "supportops" app permissions
     const access = guard({ app: "supportops" });
 
-    // 1. GET /api/v1/supportops/tickets
+    // GET /api/v1/supportops/tickets
     app.get(
         "/tickets",
         {
@@ -20,69 +21,31 @@ export default async function ticketsRoutes(app) {
                 },
             },
         },
-        async (req) => {
+        async (req, reply) => {
             const { status, limit = 20 } = req.query;
-            const orgId = req.access?.org?.id || req.user?.orgId;
+            const orgId = req.access?.org?.id;
 
-            return prisma.ticket.findMany({
+            if (!orgId) {
+                return reply.code(400).send({
+                    error: "MISSING_ORG_CONTEXT",
+                    message: "Organization ID could not be determined from user token"
+                });
+            }
+
+            const tickets = await prisma.ticket.findMany({
                 where: {
-                    ...(orgId ? { org_id: orgId } : {}),
+                    org_id: orgId,
                     ...(status ? { status } : {})
                 },
                 orderBy: { created_at: "desc" },
                 take: Number(limit),
             });
-        }
-    );
 
-    // 2. GET /api/v1/supportops/tickets/channels
-    app.get(
-        "/tickets/channels",
-        { preHandler: access },
-        async (req, reply) => {
-            const orgId = req.access?.org?.id || req.user?.orgId;
-
-            // Fetch configured channels for org, or return active channel states
-            const channels = await prisma.channelIntegration?.findMany({
-                where: { org_id: orgId }
-            }).catch(() => null);
-
-            if (channels && channels.length > 0) {
-                return reply.send({ success: true, channels });
-            }
-
-            // Standard channel status response expected by UI
-            return reply.send({
-                success: true,
-                channels: {
-                    email: { status: "connected" },
-                    sms: { status: "connected" },
-                    web: { status: "connected" },
-                    whatsapp: { status: "disconnected" },
-                    phone: { status: "disconnected" }
-                }
-            });
-        }
-    );
-
-    // 3. PUT /api/v1/supportops/tickets/channels/:channel
-    app.put(
-        "/tickets/channels/:channel",
-        { preHandler: access },
-        async (req, reply) => {
-            const { channel } = req.params;
-            const orgId = req.access?.org?.id || req.user?.orgId;
-
-            return reply.send({
-                success: true,
-                channel,
-                connected: true,
-                orgId,
-                updatedAt: new Date().toISOString()
-            });
+            return reply.send(tickets);
         }
     );
 }
 
+// Named exports to maintain backward compatibility across module imports
 export { ticketsRoutes };
 export const ticketRoutes = ticketsRoutes;
