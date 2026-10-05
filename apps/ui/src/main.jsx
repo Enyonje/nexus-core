@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import { AccessProvider } from "./context/AccessProvider.jsx";
 
 import App from "./app.jsx";
 import { ToastProvider } from "./components/ToastContext.jsx";
@@ -11,9 +12,11 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <ToastProvider>
-          <App />
-        </ToastProvider>
+        <AccessProvider>
+          <ToastProvider>
+            <App />
+          </ToastProvider>
+        </AccessProvider>
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>

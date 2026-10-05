@@ -69,6 +69,12 @@ export const API_ENDPOINTS = {
     tickets: SUPPORTOPS_API.tickets,
     users: SUPPORTOPS_API.users,
 
+    billing: {
+        plans: (app = "supportops") => api(`${V1}/billing/plans?app=${app}`),
+        trial: api(`${V1}/billing/trial`),
+        checkout: api(`${V1}/billing/checkout`),
+    },
+
     // Your existing authRoutes plugin. Set AUTH_PREFIX to wherever it is registered.
     auth: {
         register: api(`${AUTH_PREFIX}/supportops/register`), // new SupportOps route (see backend patch)
@@ -90,6 +96,7 @@ export const ROUTES = {
     signup: "/register",  // main app (central signup)
     cancel: p("/cancel"),
     success: p("/success"),
+    pricing: p("/pricing"),
 
     agent: {
         root: p("/agent"),

@@ -6,6 +6,7 @@ import {
   Inbox, Activity, Plug, Zap,
 } from "lucide-react";
 import RevenueChart from "../components/RevenueChart";
+import { PlanBanner } from "../components/Access";
 import AIImpact from "../components/AIImpact";
 import { useAgentStream } from "../hooks/useAgentStream";
 import { API_ENDPOINTS, SUPPORTOPS_API, ROUTES } from "../config/paths";
@@ -281,6 +282,8 @@ export default function WorkspaceDashboard({ view, role = "admin", user }) {
             className="p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 hover:text-white"><RefreshCw className="h-4 w-4" /></button>
         </div>
       </div>
+
+      <PlanBanner />
 
       {/* Banners */}
       <div className="mb-6 flex items-start gap-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-100">

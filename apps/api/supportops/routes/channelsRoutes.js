@@ -1,8 +1,39 @@
 // backend/routes/channelsRoutes.js
 // Admin-managed channel connections + public inbound webhooks.
-
+//
+// 1) Add to schema.prisma (and `channels Channel[]` on Organization), then migrate:
+//
+//   model Channel {
+//     id            String    @id @default(uuid())
+//     org_id        String
+//     key           String                      // whatsapp | voice | sms | email | web | social
+//     status        String    @default("connected")
+//     config_enc    String                      // AES-256-GCM encrypted credentials
+//     public_config Json      @default("{}")    // non-secret fields shown back to the admin
+//     webhook_token String    @unique           // random, lives in the webhook URL
+//     verify_token  String                      // WhatsApp handshake
+//     last_event_at DateTime?
+//     created_at    DateTime  @default(now())
+//     updated_at    DateTime  @updatedAt
+//     org           Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+//     @@unique([org_id, key])
+//     @@map("channels")
+//   }
+//
+//   model InboundEvent {            // idempotency: providers retry, we must not create duplicate tickets
+//     id          String   @id @default(uuid())
+//     channel_id  String
+//     external_id String
+//     created_at  DateTime @default(now())
+//     channel     Channel  @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+//     @@unique([channel_id, external_id])
+//     @@map("inbound_events")
+//   }   (and `events InboundEvent[]` on Channel)
+//
+// 2) Env:  CHANNELS_ENC_KEY=$(openssl rand -base64 32)   PUBLIC_API_URL=https://api.yourdomain.com
+// 3) Register: await app.register(channelsRoutes, { prefix: "/api/v1/supportops/tickets/channels" });
 import crypto from "node:crypto";
-import { prisma } from "../config/prisma.js";
+import { prisma } from "../lib/deps.js";
 import { guard } from "../security/entitlements.js";
 import { createTicketFromInbound } from "./ticketService.js";
 import { normalize, verifyMetaSignature, verifyTwilioSignature } from "./inbound.js";
@@ -11,7 +42,7 @@ const SECRETS = {
     whatsapp: ["accessToken", "appSecret"],
     voice: ["authToken"],
     sms: ["apiKey"],
-    email: ["postmarkToken"],
+    email: ["postmarkToken"], // outbound replies via Postmark
     web: [],
     social: ["pageAccessToken", "appSecret"],
 };
@@ -32,7 +63,6 @@ export const decrypt = (s) => {
 };
 const rand = (n) => crypto.randomBytes(n).toString("hex");
 
-// Updated to reflect the plugin prefix /tickets/channels set in supportops.js
 const urlFor = (row) =>
     `${process.env.PUBLIC_API_URL}/api/v1/supportops/tickets/channels/webhook/${row.key}/${row.webhook_token}`;
 
@@ -56,28 +86,22 @@ async function firstTime(channelId, externalId) {
     }
 }
 
-/* ---------- Fastify plugin ---------- */
 export default async function channelsRoutes(app) {
     if (KEY.length !== 32) throw new Error("CHANNELS_ENC_KEY must be 32 bytes, base64 encoded");
 
-    // Preserve raw buffer for signature verification
+    // Keep the raw body so provider signatures can be verified
+    if (app.hasContentTypeParser("application/json")) app.removeContentTypeParser("application/json");
     app.addContentTypeParser("application/json", { parseAs: "buffer" }, (req, body, done) => {
         req.rawBody = body;
-        try {
-            const parsed = JSON.parse(body.toString("utf8") || "{}");
-            done(null, parsed);
-        } catch (err) {
-            err.statusCode = 400;
-            done(err);
-        }
+        try { done(null, JSON.parse(body.toString("utf8") || "{}")); }
+        catch (err) { err.statusCode = 400; done(err); }
     });
 
-    // Handle Twilio and Africa's Talking form-encoded bodies
-    app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "buffer" }, (req, body, done) => {
-        req.rawBody = body;
-        const bodyStr = body.toString("utf8");
-        done(null, Object.fromEntries(new URLSearchParams(bodyStr)));
-    });
+    // Twilio and Africa's Talking post form-encoded bodies
+    if (app.hasContentTypeParser("application/x-www-form-urlencoded")) app.removeContentTypeParser("application/x-www-form-urlencoded");
+    app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string" }, (req, body, done) =>
+        done(null, Object.fromEntries(new URLSearchParams(body)))
+    );
 
     const read = guard({ app: "supportops", roles: ["admin", "management"] });
     const admin = guard({ app: "supportops", roles: ["admin"] });
@@ -92,6 +116,10 @@ export default async function channelsRoutes(app) {
     app.put("/:key", { preHandler: admin }, async (req, reply) => {
         const { key } = req.params;
         if (!SECRETS[key]) return reply.code(404).send({ message: "Unknown channel" });
+        // Channels are sold per plan or as add-ons (channel_whatsapp, channel_voice, ...)
+        if (!req.access.features?.includes(`channel_${key}`)) {
+            return reply.code(403).send({ error: "PLAN_UPGRADE_REQUIRED", feature: `channel_${key}`, message: `The ${key} channel is not in your plan. Add it as an add-on or upgrade.` });
+        }
 
         const incoming = Object.entries(req.body?.config ?? {}).slice(0, 10);
         const existing = await prisma.channel.findUnique({ where: where(req) });
@@ -100,24 +128,14 @@ export default async function channelsRoutes(app) {
 
         for (const [k, v] of incoming) {
             if (typeof v !== "string" || v.length > 2000) continue;
-            if (SECRETS[key].includes(k)) {
-                if (v.trim()) secrets[k] = v.trim();
-            } else {
-                pub[k] = v.trim();
-            }
+            if (SECRETS[key].includes(k)) { if (v.trim()) secrets[k] = v.trim(); } // blank keeps the saved secret
+            else pub[k] = v.trim();
         }
 
         const row = await prisma.channel.upsert({
             where: where(req),
             update: { config_enc: encrypt(secrets), public_config: pub, status: "connected" },
-            create: {
-                org_id: req.access.org.id,
-                key,
-                config_enc: encrypt(secrets),
-                public_config: pub,
-                webhook_token: rand(24),
-                verify_token: rand(16),
-            },
+            create: { org_id: req.access.org.id, key, config_enc: encrypt(secrets), public_config: pub, webhook_token: rand(24), verify_token: rand(16) },
         });
         return view(row, true);
     });
@@ -136,12 +154,11 @@ export default async function channelsRoutes(app) {
         const res = await fetch(`https://graph.facebook.com/v20.0/${row.public_config.phoneNumberId}`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });
-        return res.ok
-            ? { ok: true, message: "WhatsApp credentials are valid" }
-            : { ok: false, message: "WhatsApp rejected these credentials" };
+        return res.ok ? { ok: true, message: "WhatsApp credentials are valid" } : { ok: false, message: "WhatsApp rejected these credentials" };
     });
 
-    /* ---------- public inbound webhooks ---------- */
+    /* ---------- public inbound webhooks (no login; secret URL token + provider signature) ---------- */
+    // Meta handshake for WhatsApp, Messenger and Instagram
     app.get("/webhook/:key/:token", async (req, reply) => {
         const row = await prisma.channel.findFirst({
             where: { key: req.params.key, webhook_token: req.params.token, status: "connected" },
@@ -157,49 +174,38 @@ export default async function channelsRoutes(app) {
         const row = await prisma.channel.findFirst({
             where: { key: req.params.key, webhook_token: req.params.token, status: "connected" },
         });
-        if (!row) return reply.code(404).send({ error: "Channel webhook endpoint not found or disconnected" });
+        if (!row) return reply.code(404).send();
         if (row.key === "web") return reply.code(405).send({ message: "Web chat uses the widget API" });
 
+        // 1) authenticate the sender
         const secrets = decrypt(row.config_enc);
+        const trusted =
+            row.key === "whatsapp" || row.key === "social"
+                ? verifyMetaSignature(req.rawBody, req.headers["x-hub-signature-256"], secrets.appSecret)
+                : row.key === "voice"
+                    ? verifyTwilioSignature(urlFor(row), req.body, req.headers["x-twilio-signature"], secrets.authToken)
+                    : true; // SMS and email providers don't sign: the secret URL token is the credential
+        if (!trusted) return reply.code(401).send();
 
-        let trusted = true;
-        if (row.key === "whatsapp" || row.key === "social") {
-            const signature = req.headers["x-hub-signature-256"];
-            if (!secrets.appSecret || !signature) {
-                trusted = false;
-            } else {
-                trusted = verifyMetaSignature(req.rawBody, signature, secrets.appSecret);
-            }
-        } else if (row.key === "voice") {
-            const signature = req.headers["x-twilio-signature"];
-            if (!secrets.authToken || !signature) {
-                trusted = false;
-            } else {
-                trusted = verifyTwilioSignature(urlFor(row), req.body, signature, secrets.authToken);
-            }
-        }
-
-        if (!trusted) {
-            req.log.warn({ key: row.key, orgId: row.org_id }, "Webhook signature validation failed");
-            return reply.code(401).send({ error: "UNAUTHORIZED_WEBHOOK_SIGNATURE" });
-        }
-
+        // 2) turn the provider payload into tickets, once each
         for (const m of normalize(row.key, req.body)) {
             if (!(await firstTime(row.id, m.externalId))) continue;
             try {
                 await createTicketFromInbound({ orgId: row.org_id, channel: row.key, ...m });
             } catch (err) {
+                // let the provider retry this message
                 await prisma.inboundEvent.deleteMany({ where: { channel_id: row.id, external_id: String(m.externalId) } });
                 throw err;
             }
         }
         await prisma.channel.update({ where: { id: row.id }, data: { last_event_at: new Date() } });
 
+        // 3) answer in the format the provider expects
         if (row.key === "voice") {
             return reply.code(200).type("text/xml").send(
                 `<Response><Say>Thanks for calling. Please leave a message after the tone.</Say><Record maxLength="120" action="${urlFor(row)}"/></Response>`
             );
         }
-        return reply.code(200).send({ status: "processed" });
+        return reply.code(200).send();
     });
 }

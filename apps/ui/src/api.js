@@ -1,9 +1,9 @@
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:3001").replace(/\/$/, "");
 
 export async function apiFetch(path, options = {}) {
-  const token = localStorage.getItem("token") || localStorage.getItem("authToken");
+  // Always use authToken
+  const token = localStorage.getItem("authToken");
 
-  // normalize path and ensure /api prefix if not present
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const fullPath = normalizedPath.startsWith("/api") ? normalizedPath : `/api${normalizedPath}`;
   const url = `${API_URL}${fullPath}`;
@@ -12,13 +12,11 @@ export async function apiFetch(path, options = {}) {
   const timeoutMs = options.timeout ?? 15000;
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  // start with caller headers then add auth
   const headers = { ...(options.headers || {}) };
-  if (token && !headers.Authorization && !headers.authorization) {
+  if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // Prepare body safely (avoid double-stringify and avoid invalid JSON header)
   let body = options.body;
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const isBlob = typeof Blob !== "undefined" && body instanceof Blob;
@@ -26,34 +24,9 @@ export async function apiFetch(path, options = {}) {
 
   if (body != null && !isFormData && !isBlob && !isArrayBuffer) {
     if (typeof body === "object") {
-      try {
-        body = JSON.stringify(body);
-        if (!headers["Content-Type"] && !headers["content-type"]) {
-          headers["Content-Type"] = "application/json";
-        }
-      } catch (e) {
-        clearTimeout(timeout);
-        throw new Error("Failed to serialize request body");
-      }
-    } else if (typeof body === "string") {
-      // If caller passed a string and Content-Type is application/json, validate it.
-      const ct = (headers["Content-Type"] || headers["content-type"] || "").toLowerCase();
-      if (ct.includes("application/json")) {
-        try {
-          JSON.parse(body);
-        } catch {
-          // invalid JSON string but header set -> remove header to avoid server 400
-          delete headers["Content-Type"];
-          delete headers["content-type"];
-        }
-      } else if (!ct) {
-        // If no content-type and string looks like JSON, set header
-        try {
-          JSON.parse(body);
-          headers["Content-Type"] = "application/json";
-        } catch {
-          // leave as plain text (no content-type)
-        }
+      body = JSON.stringify(body);
+      if (!headers["Content-Type"]) {
+        headers["Content-Type"] = "application/json";
       }
     }
   }
@@ -68,7 +41,7 @@ export async function apiFetch(path, options = {}) {
     });
     clearTimeout(timeout);
 
-    if (res.status === 204) return null; // No Content
+    if (res.status === 204) return null;
 
     const text = await res.text();
     let data = null;
@@ -79,7 +52,7 @@ export async function apiFetch(path, options = {}) {
     }
 
     if (res.status === 401) {
-      localStorage.removeItem("token");
+      localStorage.removeItem("authToken");
       const err = new Error("Session expired. Please log in again.");
       err.status = 401;
       err.body = data;

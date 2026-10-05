@@ -7,7 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================================
 // ENUMS
+// ============================================================
+
 enum UserRole {
   user
   admin
@@ -57,11 +60,9 @@ enum PaymentStatus {
   CANCELLED
 }
 
-enum SubStatus {
-  trialing
-  active
-  past_due
-  canceled
+enum OrgType {
+  PERSONAL
+  TEAM
 }
 
 enum OrgRole {
@@ -71,7 +72,36 @@ enum OrgRole {
   billing
 }
 
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+  incomplete
+}
+
+enum PlanAudience {
+  INDIVIDUAL
+  TEAM
+  BOTH
+}
+
+enum BillingModel {
+  FLAT
+  PER_SEAT
+}
+
+enum InviteStatus {
+  pending
+  accepted
+  revoked
+  expired
+}
+
+// ============================================================
 // MODELS
+// ============================================================
+
 model User {
   id                    String            @id @default(uuid())
   email                 String            @unique
@@ -92,6 +122,7 @@ model User {
   deleted_at            DateTime?
   ai_used               Int               @default(0)
   executions_count      Int               @default(0)
+  is_platform_admin     Boolean           @default(false)
 
   // Relations
   authAudits      AuthAudit[]
@@ -101,7 +132,7 @@ model User {
   adminAudits     AdminAudit[]
   organization    Organization?     @relation(fields: [org_id], references: [id])
   memberships     Membership[]
-  appAccesses     AppAccess[]
+  appAccess       AppAccess[]
   sessions        Session[]
 
   @@map("users")
@@ -110,16 +141,24 @@ model User {
 }
 
 model Organization {
-  id            String         @id @default(uuid())
-  name          String
-  created_at    DateTime       @default(now())
+  id                 String         @id @default(uuid())
+  name               String
+  type               OrgType        @default(TEAM)
+  owner_id           String?
+  stripe_customer_id String?        @unique
+  created_at         DateTime       @default(now())
+  deleted_at         DateTime?
+
+  // Relations
   users         User[]
   subscriptions Subscription[]
   memberships   Membership[]
-  appAccesses   AppAccess[]
-  deleted_at    DateTime?
+  appAccess     AppAccess[]
+  invites       Invite[]
+  usage         UsageRecord[]
 
   @@map("organizations")
+  @@index([owner_id])
 }
 
 model Goal {
@@ -132,10 +171,12 @@ model Goal {
   goal_type    String?
   goal_payload Json?
   org_id       String?
-  executions   Execution[]
-  user         User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  objectives   Objective[]
   deleted_at   DateTime?
+
+  // Relations
+  executions Execution[]
+  user       User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  objectives Objective[]
 
   @@map("goals")
   @@index([user_id])
@@ -151,9 +192,11 @@ model Objective {
   completed    Boolean     @default(false)
   created_at   DateTime    @default(now())
   goal_payload Json?
-  executions   Execution[]
-  goal         Goal        @relation(fields: [goal_id], references: [id], onDelete: Cascade)
   deleted_at   DateTime?
+
+  // Relations
+  executions Execution[]
+  goal       Goal        @relation(fields: [goal_id], references: [id], onDelete: Cascade)
 
   @@map("objectives")
   @@index([goal_id])
@@ -226,74 +269,179 @@ model ExecutionAudit {
 }
 
 model App {
-  id            String         @id @default(uuid())
-  slug          String         @unique // "supportops", "compliance"
-  name          String
-  roles         String[] // roles this app understands
-  active        Boolean        @default(true)
+  id           String   @id @default(uuid())
+  slug         String   @unique // "supportops", "compliance"
+  name         String
+  roles        String[] // roles this app understands
+  default_role String   // role given to a new owner
+  active       Boolean  @default(true)
+  created_at   DateTime @default(now())
+
+  // Relations
   plans         Plan[]
+  addons        Addon[]
   subscriptions Subscription[]
-  appAccesses   AppAccess[]
+  appAccess     AppAccess[]
+  invites       Invite[]
+  usage         UsageRecord[]
+
+  @@map("apps")
 }
 
 model Plan {
-  id            String         @id @default(uuid())
-  appId         String
-  key           String // "free" | "pro" | "enterprise"
-  features      String[] // "ai_review", "revenue_forecast"
-  limits        Json // { "seats": 5, "tickets_per_month": 1000 }
-  stripePriceId String?        @unique
-  app           App            @relation(fields: [appId], references: [id])
+  id              String       @id @default(uuid())
+  app_id          String
+  key             String       // "free" | "pro" | "enterprise"
+  name            String
+  audience        PlanAudience @default(BOTH)
+  billing_model   BillingModel @default(FLAT)
+  features        String[]     // "ai_review", "revenue_forecast", ...
+  limits          Json         @default("{}") // { "seats": 5, "ai_calls": 1000 }
+  price_cents     Int?
+  currency        String       @default("usd")
+  stripe_price_id String?      @unique
+  active          Boolean      @default(true)
+
+  // Relations
+  app           App            @relation(fields: [app_id], references: [id], onDelete: Cascade)
   subscriptions Subscription[]
 
-  @@unique([appId, key])
+  @@unique([app_id, key])
+  @@map("plans")
 }
 
 model Subscription {
-  id                   String    @id @default(uuid())
-  orgId                String
-  appId                String
-  planId               String
-  status               SubStatus // trialing | active | past_due | canceled
-  currentPeriodEnd     DateTime?
-  stripeSubscriptionId String?   @unique
+  id                     String             @id @default(uuid())
+  org_id                 String
+  app_id                 String
+  plan_id                String
+  status                 SubscriptionStatus @default(active)
+  quantity               Int                @default(1) // seats billed (PER_SEAT plans)
+  current_period_end     DateTime?
+  trial_ends_at          DateTime?
+  cancel_at_period_end   Boolean            @default(false)
+  limit_overrides        Json?              // trial caps, e.g. { "ai_resolutions": 100 }
+  stripe_subscription_id String?            @unique
+  created_at             DateTime           @default(now())
+  updated_at             DateTime           @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  app          App          @relation(fields: [appId], references: [id], onDelete: Cascade)
-  plan         Plan         @relation(fields: [planId], references: [id], onDelete: Cascade)
+  // Relations
+  org    Organization        @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  app    App                 @relation(fields: [app_id], references: [id])
+  plan   Plan                @relation(fields: [plan_id], references: [id])
+  addons SubscriptionAddon[]
 
-  @@unique([orgId, appId])
+  @@unique([org_id, app_id])
+  @@index([status])
+  @@map("subscriptions")
 }
 
 model Membership {
-  orgId   String
-  userId  String
-  orgRole OrgRole // owner | admin | member | billing
+  org_id     String
+  user_id    String
+  org_role   OrgRole  @default(member)
+  created_at DateTime @default(now())
 
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  @@id([orgId, userId])
+  @@id([org_id, user_id])
+  @@index([user_id])
+  @@map("memberships")
 }
 
 model AppAccess {
-  orgId   String
-  userId  String
-  appId   String
-  appRole String // validated against App.roles
+  org_id     String
+  user_id    String
+  app_id     String
+  app_role   String   // validated against App.roles
+  created_at DateTime @default(now())
 
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  app          App          @relation(fields: [appId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  app  App          @relation(fields: [app_id], references: [id], onDelete: Cascade)
 
-  @@id([orgId, userId, appId])
+  @@id([org_id, user_id, app_id])
+  @@index([user_id])
+  @@map("app_access")
+}
+
+model Invite {
+  id         String       @id @default(uuid())
+  org_id     String
+  email      String
+  org_role   OrgRole      @default(member)
+  app_id     String?
+  app_role   String?
+  token_hash String       @unique
+  status     InviteStatus @default(pending)
+  invited_by String
+  expires_at DateTime
+  created_at DateTime     @default(now())
+
+  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  app App?         @relation(fields: [app_id], references: [id])
+
+  @@index([email])
+  @@map("invites")
+}
+
+model UsageRecord {
+  id     String @id @default(uuid())
+  org_id String
+  app_id String
+  metric String
+  period String
+  count  Int    @default(0)
+
+  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  app App          @relation(fields: [app_id], references: [id], onDelete: Cascade)
+
+  @@unique([org_id, app_id, metric, period])
+  @@map("usage_records")
+}
+
+model StripeEvent {
+  id           String   @id // Stripe's event id
+  type         String
+  processed_at DateTime @default(now())
+
+  @@map("stripe_events")
+}
+
+model Addon {
+  id              String   @id @default(uuid())
+  app_id          String
+  key             String
+  name            String
+  features        String[]
+  price_cents     Int?
+  stripe_price_id String?  @unique
+
+  app           App                 @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  subscriptions SubscriptionAddon[]
+
+  @@unique([app_id, key])
+  @@map("addons")
+}
+
+model SubscriptionAddon {
+  subscription_id String
+  addon_id        String
+  created_at      DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
+  addon        Addon        @relation(fields: [addon_id], references: [id], onDelete: Cascade)
+
+  @@id([subscription_id, addon_id])
+  @@map("subscription_addons")
 }
 
 model Session {
   id        String    @id @default(uuid())
   userId    String
   tokenHash String    @unique
-  familyId  String // detects refresh-token reuse
+  familyId  String    // detects refresh-token reuse
   expiresAt DateTime
   revokedAt DateTime?
 
@@ -326,28 +474,28 @@ model ExecutionStep {
 }
 
 model AdminAudit {
-  id         String   @id @default(uuid())
-  admin_id   String
-  action     String
-  target_id  String?
-  meta       Json?
+  id        String   @id @default(uuid())
+  admin_id  String
+  action    String
+  target_id String?
+  meta      Json?
   created_at DateTime @default(now())
 
   admin User @relation(fields: [admin_id], references: [id], onDelete: Cascade)
 }
 
 model CargoDeclaration {
-  id              String   @id @default(uuid())
+  id              String        @id @default(uuid())
   importerName    String
-  importerTaxId   String // e.g. KRA PIN "KE-0519283741"
+  importerTaxId   String        // e.g. KRA PIN "KE-0519283741"
   exporterName    String
-  originCountry   String   @default("UG")
-  portOfDischarge String   @default("Nairobi ICD")
-  incoterm        String   @default("CIF")
+  originCountry   String        @default("UG")
+  portOfDischarge String        @default("Nairobi ICD")
+  incoterm        String        @default("CIF")
   grossWeightKg   Float
   totalUnits      Int
   cifValueUsd     Float
-  exchangeRateKe  Float    @default(130.0)
+  exchangeRateKe  Float         @default(130.0)
 
   pipelineStage PipelineStage @default(IDLE)
 
@@ -366,18 +514,18 @@ model CargoItem {
   cargoDeclarationId String
   cargoDeclaration   CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
 
-  description   String
-  hsCode        String
+  description  String
+  hsCode       String
   totalPriceUsd Float
-  cetRate       Float // Tariff rate (e.g. 0.25 for 25%)
+  cetRate      Float // Tariff rate (e.g. 0.25 for 25%)
 
   createdAt DateTime @default(now())
 }
 
 model AuditFlag {
-  id                 String           @id @default(uuid())
+  id                 String              @id @default(uuid())
   cargoDeclarationId String
-  cargoDeclaration   CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
+  cargoDeclaration   CargoDeclaration    @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
 
   severity DiscrepancySeverity @default(WARNING)
   field    String              // e.g. "grossWeightKg"

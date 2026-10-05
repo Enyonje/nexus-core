@@ -1,284 +1,200 @@
-import crypto from "crypto";
-import bcrypt from "bcryptjs";
-import { requireAuth } from "../security/authMiddleware.js";
-import { prisma } from "../config/prisma.js";
-import { auditLog } from "../security/auditLog.js";
-import { hashToken } from "../lib/crypto.js";
-import {
-  registerUser,
-  loginUser,
-  refreshTokens,
-  createStripeCheckoutSession,
-} from "../services/authService.js";
+// apps/api/supportops/security/entitlements.js  The one guard for every app: plan + add-ons + role + usage.
+// Replaces entitlements-compat.js. Needs entitlementRules.js in the same folder.
+import { prisma, requireAuth } from "../lib/deps.js";
+import { effectiveFeatures, effectiveLimit, isTrial, usageDecision } from "./entitlementRules.js";
 
-function generateRandomToken(bytes = 32) {
-  return crypto.randomBytes(bytes).toString("hex");
+const GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+const TTL_MS = 30_000;
+
+export class AccessError extends Error {
+  constructor(status, code, message, extra = {}) { super(message); this.status = status; this.code = code; this.extra = extra; }
 }
 
-function setRefreshCookie(reply, token) {
-  if (!token) return;
-  reply.setCookie("refreshToken", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/",
-    maxAge: 30 * 24 * 60 * 60,
+const appCache = new Map();
+const subCache = new Map();
+const cached = async (map, key, load) => {
+  const hit = map.get(key);
+  if (hit && hit.exp > Date.now()) return hit.value;
+  const value = await load();
+  map.set(key, { value, exp: Date.now() + TTL_MS });
+  return value;
+};
+export const invalidateSubscription = (orgId, appId) => subCache.delete(`${orgId}:${appId}`);
+
+const getApp = (slug) => cached(appCache, slug, () => prisma.app.findFirst({ where: { slug, active: true } }));
+const getSub = (orgId, appId) =>
+  cached(subCache, `${orgId}:${appId}`, () =>
+    prisma.subscription.findUnique({
+      where: { org_id_app_id: { org_id: orgId, app_id: appId } },
+      include: { plan: true, addons: { include: { addon: true } } },
+    }));
+
+export function subscriptionUsable(sub) {
+  if (!sub) return false;
+  if (sub.status === "active") return true;
+  if (sub.status === "trialing") return !sub.trial_ends_at || sub.trial_ends_at > new Date();
+  if (sub.status === "past_due" && sub.current_period_end) return Date.now() < sub.current_period_end.getTime() + GRACE_MS;
+  return false;
+}
+
+async function resolveOrg(userId, requestedOrgId) {
+  const memberships = await prisma.membership.findMany({ where: { user_id: userId, org: { deleted_at: null } }, include: { org: true } });
+  let active;
+  if (requestedOrgId) {
+    active = memberships.find((m) => m.org_id === requestedOrgId);
+    if (!active) throw new AccessError(403, "NOT_A_MEMBER", "You are not a member of this organization");
+  } else {
+    active = memberships.find((m) => m.org.type === "PERSONAL") ?? memberships[0];
+  }
+  return { memberships, active: active ?? null };
+}
+
+export async function getAccess(userId, requestedOrgId, appSlug) {
+  const { active } = await resolveOrg(userId, requestedOrgId);
+  if (!active) throw new AccessError(403, "NO_ORGANIZATION", "No workspace found for this account");
+  const app = await getApp(appSlug);
+  if (!app) throw new AccessError(404, "UNKNOWN_APP", `Unknown app "${appSlug}"`);
+
+  const sub = await getSub(active.org_id, app.id);
+  if (!subscriptionUsable(sub)) {
+    const ended = sub?.status === "trialing";
+    throw new AccessError(403, ended ? "TRIAL_ENDED" : "NO_SUBSCRIPTION", ended ? "Your trial has ended. Choose a plan to continue." : `No active ${app.name} subscription`, { app: app.slug });
+  }
+  const grant = await prisma.appAccess.findUnique({ where: { org_id_user_id_app_id: { org_id: active.org_id, user_id: userId, app_id: app.id } } });
+  if (!grant) throw new AccessError(403, "NO_APP_ACCESS", `You have not been given access to ${app.name} in this workspace`, { app: app.slug });
+
+  return {
+    userId, org: active.org, orgRole: active.org_role, app, subscription: sub, plan: sub.plan, appRole: grant.app_role,
+    features: effectiveFeatures(sub.plan, sub.addons.map((a) => a.addon)),
+    limit: (metric) => effectiveLimit(sub.plan, sub, metric),
+  };
+}
+
+// guard({ app, feature?, roles?, orgRoles? })  ->  Fastify preHandler
+export function guard({ app, feature, roles, orgRoles } = {}) {
+  return async (req, reply) => {
+    await requireAuth(req, reply);
+    if (reply.sent) return;
+    try {
+      const ctx = await getAccess(req.user.id, req.headers["x-org-id"], app ?? "supportops");
+      if (orgRoles && !orgRoles.includes(ctx.orgRole)) throw new AccessError(403, "ORG_ROLE_FORBIDDEN", "Your organization role does not allow this");
+      if (roles && !roles.includes(ctx.appRole)) throw new AccessError(403, "ROLE_FORBIDDEN", "Your role does not allow this", { role: ctx.appRole });
+      if (feature && !ctx.features.includes(feature)) throw upgradeError(ctx, feature);
+      req.access = ctx;
+    } catch (err) {
+      if (err instanceof AccessError) return reply.code(err.status).send({ error: err.code, message: err.message, ...err.extra });
+      throw err;
+    }
+  };
+}
+
+// Tells the frontend exactly what to sell: a higher plan, or a single add-on
+export function upgradeError(ctx, feature) {
+  return new AccessError(403, "PLAN_UPGRADE_REQUIRED", "Your plan does not include this feature", {
+    app: ctx.app.slug, feature, currentPlan: ctx.plan.key,
   });
 }
 
-export async function authRoutes(server) {
-  // REGISTER
-  server.post("/register", async (req, reply) => {
-    try {
-      const result = await registerUser(req.body);
-      setRefreshCookie(reply, result.rawRefreshToken);
-      return reply.send({
-        token: result.token,
-        user: result.user,
-        redirectTo: result.redirectTo || "/",
-      });
-    } catch (err) {
-      if (err.code || err.status) {
-        return reply.code(err.status || 400).send({
-          error: err.code || "AUTH_REGISTER_FAILED",
-          message: err.message,
-        });
-      }
-      console.error("Register error:", err);
-      return reply.code(500).send({ error: "AUTH_REGISTER_ERROR", message: "Registration failed" });
+/* ---------- AI resolution metering ---------- */
+const period = () => new Date().toISOString().slice(0, 7);
+
+async function reportOverage(orgId) {
+  try {
+    if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_METER_EVENT_NAME) return;
+    const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { stripe_customer_id: true } });
+    if (!org?.stripe_customer_id) return;
+    const { default: Stripe } = await import("stripe");
+    await new Stripe(process.env.STRIPE_SECRET_KEY).billing.meterEvents.create({
+      event_name: process.env.STRIPE_METER_EVENT_NAME,
+      payload: { stripe_customer_id: org.stripe_customer_id, value: "1" },
+    });
+  } catch (err) {
+    console.error("Overage report failed (usage is still recorded):", err.message);
+  }
+}
+
+/**
+ * Call once each time AI successfully resolves a ticket or an agent accepts an AI draft.
+ *   const u = await recordAiResolution(orgId);   // -> { count, included, overage }
+ * Trials stop at their cap (429 TRIAL_LIMIT_REACHED); paid plans keep going and bill the overage.
+ */
+export async function recordAiResolution(orgId, appSlug = "supportops") {
+  const app = await getApp(appSlug);
+  const sub = app && (await getSub(orgId, app.id));
+  if (!subscriptionUsable(sub)) throw new AccessError(403, "NO_SUBSCRIPTION", "No active subscription");
+
+  const included = effectiveLimit(sub.plan, sub, "ai_resolutions");
+  const row = await prisma.usageRecord.upsert({
+    where: { org_id_app_id_metric_period: { org_id: orgId, app_id: app.id, metric: "ai_resolutions", period: period() } },
+    update: { count: { increment: 1 } },
+    create: { org_id: orgId, app_id: app.id, metric: "ai_resolutions", period: period(), count: 1 },
+  });
+  const d = usageDecision({ count: row.count, limit: included, hardCap: isTrial(sub) });
+  if (!d.allowed) {
+    await prisma.usageRecord.update({ where: { id: row.id }, data: { count: { decrement: 1 } } });
+    throw new AccessError(429, "TRIAL_LIMIT_REACHED", `Trial limit of ${included} AI resolutions reached. Choose a plan to continue.`, { limit: included });
+  }
+  if (d.overage > 0) reportOverage(orgId); // fire and forget
+  return { count: row.count, included, overage: d.overage };
+}
+
+/* ---------- workspace bootstrap (idempotent) ---------- */
+export async function ensurePersonalWorkspace(userId) {
+  const user = await prisma.user.findFirst({ where: { id: userId, deleted_at: null }, select: { id: true, email: true, name: true, role: true } });
+  if (!user) return null;
+  let org = await prisma.organization.findFirst({ where: { owner_id: userId, type: "PERSONAL" } });
+  if (!org) org = await prisma.organization.create({ data: { name: `${user.name || user.email}'s workspace`, type: "PERSONAL", owner_id: userId } });
+
+  await prisma.membership.upsert({
+    where: { org_id_user_id: { org_id: org.id, user_id: userId } }, update: {},
+    create: { org_id: org.id, user_id: userId, org_role: "owner" },
+  });
+  const core = await prisma.app.findUnique({ where: { slug: "nexus-core" }, include: { plans: true } });
+  const free = core?.plans.find((p) => p.key === "free");
+  if (free) {
+    await prisma.subscription.upsert({
+      where: { org_id_app_id: { org_id: org.id, app_id: core.id } }, update: {},
+      create: { org_id: org.id, app_id: core.id, plan_id: free.id, status: "active" },
+    });
+    await prisma.appAccess.upsert({
+      where: { org_id_user_id_app_id: { org_id: org.id, user_id: userId, app_id: core.id } }, update: {},
+      create: { org_id: org.id, user_id: userId, app_id: core.id, app_role: user.role === "admin" ? "admin" : core.default_role },
+    });
+  }
+  return org;
+}
+
+/* ---------- the /me payload ---------- */
+export async function buildSession(userId, requestedOrgId) {
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deleted_at: null },
+    select: { id: true, email: true, name: true, role: true, subscription: true, is_platform_admin: true },
+  });
+  if (!user) return null;
+  await ensurePersonalWorkspace(userId);
+
+  const { memberships, active } = await resolveOrg(userId, requestedOrgId);
+  const apps = {};
+  if (active) {
+    const [subs, grants, usage] = await Promise.all([
+      prisma.subscription.findMany({ where: { org_id: active.org_id }, include: { app: true, plan: true, addons: { include: { addon: true } } } }),
+      prisma.appAccess.findMany({ where: { org_id: active.org_id, user_id: userId } }),
+      prisma.usageRecord.findMany({ where: { org_id: active.org_id, period: period() } }),
+    ]);
+    const roleByApp = new Map(grants.map((g) => [g.app_id, g.app_role]));
+    for (const s of subs) {
+      if (!s.app.active || !subscriptionUsable(s) || !roleByApp.has(s.app_id)) continue;
+      apps[s.app.slug] = {
+        plan: s.plan.key, status: s.status, role: roleByApp.get(s.app_id),
+        features: effectiveFeatures(s.plan, s.addons.map((a) => a.addon)),
+        limits: { ...s.plan.limits, ...(s.limit_overrides ?? {}) },
+        usage: Object.fromEntries(usage.filter((u) => u.app_id === s.app_id).map((u) => [u.metric, u.count])),
+        trialEndsAt: s.trial_ends_at, currentPeriodEnd: s.current_period_end,
+      };
     }
-  });
-
-  // LOGIN
-  server.post("/login", async (req, reply) => {
-    try {
-      const result = await loginUser(req.body);
-      setRefreshCookie(reply, result.rawRefreshToken);
-      return reply.send({
-        token: result.token,
-        user: result.user,
-        redirectTo: result.redirectTo || "/",
-      });
-    } catch (err) {
-      if (err.code || err.status) {
-        return reply.code(err.status || 400).send({
-          error: err.code || "AUTH_LOGIN_FAILED",
-          message: err.message,
-        });
-      }
-      console.error("Login error:", err);
-      return reply.code(500).send({ error: "AUTH_LOGIN_ERROR", message: "Login failed" });
-    }
-  });
-
-  // CURRENT USER SESSION DECODE/VERIFY
-  server.get("/me", { preHandler: requireAuth }, async (req, reply) => {
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: req.user.id },
-        select: {
-          id: true,
-          email: true,
-          organization: true,
-          role: true,
-          subscription: true,
-          createdAt: true,
-        },
-      });
-
-      if (!user) {
-        return reply.code(404).send({ error: "USER_NOT_FOUND", message: "User account no longer exists" });
-      }
-
-      return reply.send({ user });
-    } catch (err) {
-      console.error("Fetch user error:", err);
-      return reply.code(500).send({ error: "AUTH_ME_ERROR", message: "Failed to fetch user session" });
-    }
-  });
-
-  // CROSSBORDER ALIASES
-  server.post("/crossborder/auth/register", async (req, reply) => {
-    const { email, password, company, organization } = req.body || {};
-    req.body = { email, accessKey: password, company, organization: organization || company };
-
-    try {
-      const result = await registerUser(req.body);
-      setRefreshCookie(reply, result.rawRefreshToken);
-      return reply.send({
-        token: result.token,
-        user: result.user,
-        redirectTo: result.redirectTo || "/",
-      });
-    } catch (err) {
-      if (err.code || err.status) {
-        return reply.code(err.status || 400).send({
-          error: err.code || "AUTH_REGISTER_FAILED",
-          message: err.message,
-        });
-      }
-      return reply.code(500).send({ error: "AUTH_REGISTER_ERROR", message: "Registration failed" });
-    }
-  });
-
-  server.post("/crossborder/auth/login", async (req, reply) => {
-    const { email, password, mfaCode } = req.body || {};
-    req.body = { email, accessKey: password, mfaCode };
-
-    try {
-      const result = await loginUser(req.body);
-      setRefreshCookie(reply, result.rawRefreshToken);
-      return reply.send({
-        token: result.token,
-        user: result.user,
-        redirectTo: result.redirectTo || "/",
-      });
-    } catch (err) {
-      if (err.code || err.status) {
-        return reply.code(err.status || 400).send({
-          error: err.code || "AUTH_LOGIN_FAILED",
-          message: err.message,
-        });
-      }
-      return reply.code(500).send({ error: "AUTH_LOGIN_ERROR", message: "Login failed" });
-    }
-  });
-
-  // REFRESH TOKEN
-  server.post("/refresh", async (req, reply) => {
-    try {
-      const rawRefreshToken = req.cookies?.refreshToken;
-      if (!rawRefreshToken) {
-        return reply.code(401).send({ error: "NO_REFRESH_TOKEN", message: "Refresh token missing" });
-      }
-
-      const result = await refreshTokens(rawRefreshToken);
-      setRefreshCookie(reply, result.rawRefreshToken);
-      return reply.send({ token: result.token });
-    } catch (err) {
-      if (err.code || err.status) {
-        return reply.code(err.status || 400).send({
-          error: err.code || "AUTH_REFRESH_FAILED",
-          message: err.message,
-        });
-      }
-      console.error("Refresh error:", err);
-      return reply.code(500).send({ error: "AUTH_REFRESH_ERROR", message: "Token refresh failed" });
-    }
-  });
-
-  // FORGOT PASSWORD
-  server.post("/forgot-password", async (req, reply) => {
-    try {
-      const { email } = req.body || {};
-      if (!email) {
-        return reply.code(400).send({ error: "INVALID_EMAIL", message: "Email is required" });
-      }
-
-      const user = await prisma.user.findUnique({ where: { email } });
-
-      if (!user) {
-        return reply.send({ success: true, message: "If account exists, reset link sent" });
-      }
-
-      const resetToken = generateRandomToken(32);
-      const hashedResetToken = hashToken(resetToken);
-
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          reset_token: hashedResetToken,
-          reset_token_expires: new Date(Date.now() + 3600 * 1000),
-        },
-      });
-
-      await auditLog(user.id, "password_reset_requested", {});
-      return reply.send({ success: true, message: "If account exists, reset link sent" });
-    } catch (err) {
-      console.error("Forgot password error:", err);
-      return reply.code(500).send({ error: "AUTH_FORGOT_PASSWORD_ERROR", message: "Password reset request failed" });
-    }
-  });
-
-  // RESET PASSWORD
-  server.post("/reset-password", async (req, reply) => {
-    try {
-      const { token, newPassword } = req.body || {};
-      if (!token || !newPassword) {
-        return reply.code(400).send({ error: "INVALID_PAYLOAD", message: "Token and new password required" });
-      }
-
-      const hashedToken = hashToken(token);
-
-      const user = await prisma.user.findFirst({
-        where: {
-          reset_token: hashedToken,
-          reset_token_expires: { gt: new Date() },
-        },
-      });
-
-      if (!user) {
-        return reply.code(400).send({ error: "AUTH_INVALID_RESET_TOKEN", message: "Reset token expired or invalid" });
-      }
-
-      const hash = await bcrypt.hash(newPassword, 12);
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { password_hash: hash, reset_token: null, reset_token_expires: null },
-      });
-
-      await auditLog(user.id, "password_reset_success", {});
-      return reply.send({ success: true });
-    } catch (err) {
-      console.error("Reset password error:", err);
-      return reply.code(500).send({ error: "AUTH_RESET_PASSWORD_ERROR", message: "Password reset failed" });
-    }
-  });
-
-  // SUBSCRIPTION STATUS (Beta mode)
-  server.get("/subscription", async (req, reply) => {
-    try {
-      return reply.send({
-        id: "beta-user",
-        email: "beta@nexus.com",
-        tier: "free",
-        active: false,
-        role: "user",
-        created_at: new Date().toISOString(),
-      });
-    } catch (err) {
-      req.log.error("Subscription error:", err);
-      return reply.code(500).send({ error: "AUTH_SUBSCRIPTION_ERROR", message: "Failed to fetch subscription" });
-    }
-  });
-
-  // STRIPE CHECKOUT
-  server.post("/stripe/checkout", { preHandler: requireAuth }, async (req, reply) => {
-    try {
-      const sessionId = await createStripeCheckoutSession(
-        req.user.id,
-        req.user.email,
-        req.body?.tier
-      );
-      return reply.send({ sessionId });
-    } catch (err) {
-      if (err.code || err.status) {
-        return reply.code(err.status || 400).send({
-          error: err.code || "STRIPE_CHECKOUT_FAILED",
-          message: err.message,
-        });
-      }
-      console.error("Stripe checkout error:", err);
-      return reply.code(500).send({ error: "AUTH_STRIPE_ERROR", message: "Checkout creation failed" });
-    }
-  });
-
-  // OAUTH CALLBACKS
-  server.get("/oauth/:provider/callback", async (req, reply) => {
-    return reply.send({ success: true, provider: req.params.provider });
-  });
-
-  server.post("/external-login", async (req, reply) => {
-    return reply.send({ success: true, provider: "external" });
-  });
+  }
+  return {
+    user, activeOrgId: active?.org_id ?? null, apps,
+    orgs: memberships.map((m) => ({ id: m.org_id, name: m.org.name, type: m.org.type, role: m.org_role })),
+  };
 }
