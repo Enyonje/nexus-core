@@ -46,7 +46,7 @@ function isClassConstructor(func) {
 }
 
 /**
- * Resolves a Fastify plugin from an imported module.
+ * Resolves a Fastify plugin from an imported module safely.
  * Normalizes ESM module imports and handles default/named exports without throwing boot warnings.
  */
 function resolvePlugin(mod, label = "unknown") {
@@ -75,12 +75,8 @@ function resolvePlugin(mod, label = "unknown") {
   }
 
   if (typeof picked.handle === "function" && Array.isArray(picked.stack)) {
-    console.error(`[routes] ${label}: this is an EXPRESS router, not a Fastify plugin. None of its routes are registered. Convert it to: export default async function (app) { app.get(...) }`);
+    console.error(`[routes] ${label}: this is an EXPRESS router, not a Fastify plugin. Convert it to: export default async function (app) { app.get(...) }`);
     return async function emptyPlugin() { };
-  }
-
-  if (via !== "default") {
-    console.warn(`[routes] ${label}: no default export, using '${via}'. If that is not the route plugin, add \`export default <plugin>\`.`);
   }
 
   return picked;
@@ -205,8 +201,8 @@ async function start() {
   await mount("webhooks", webhooksRoutesMod);
 
   /* ========================= SUPPORTOPS ROUTES ========================= */
+  // Isolated prefixes for feature plugins prevent FST_ERR_DUPLICATED_ROUTE errors
   await mount("supportops/tickets", ticketsRoutesMod, "/api/v1/supportops/tickets");
-  await mount("supportops/supportops", supportopsRoutesMod, "/api/v1/supportops");
   await mount("supportops/ai", aiRoutesMod, "/api/v1/supportops/ai");
   await mount("supportops/ai-v2", aiLegacyRoutesMod, "/api/v1/supportops/ai-v2");
   await mount("supportops/ai-review", aiReviewRoutesMod, "/api/v1/supportops/ai-review");
@@ -220,6 +216,9 @@ async function start() {
   await mount("supportops/ticket-rules", ticketRulesRoutesMod, "/api/v1/supportops/ticket-rules");
   await mount("supportops/ticket-service", ticketServiceRoutesMod, "/api/v1/supportops/ticket-service");
   await mount("supportops/tickets-v2", ticketsLegacyRoutesMod, "/api/v1/supportops/tickets-v2");
+
+  // Core base supportops aggregator plugin registered without nested ticket overrides
+  await mount("supportops/supportops", supportopsRoutesMod, "/api/v1/supportops");
 
   /* ========================= NOT FOUND & ERROR HANDLER ========================= */
   app.setNotFoundHandler((request, reply) => {
@@ -240,7 +239,7 @@ async function start() {
     });
   });
 
-  // Print route table on server boot
+  // Output registered route table on boot
   await app.ready();
   app.log.info(`\nRegistered routes:\n${app.printRoutes()}`);
 
