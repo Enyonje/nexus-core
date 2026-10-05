@@ -1,3 +1,4 @@
+// supportops.js
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
@@ -24,16 +25,13 @@ export default async function supportOpsRoutesPlugin(fastify, options) {
         }
     };
 
-    // 3. Register route modules
+    // 3. Register route modules cleanly without collisions
     await registerModule('auth.js', '/auth');
     await registerModule('ai.js', '/ai');
     await registerModule('aiRoutes.js', '/ai-agent');
     await registerModule('aiReviewRoutes.js', '/ai-review');
-    await registerModule('tickets.js', '/tickets');
-
-    // Mount under /tickets/channels so app.get("/") in channelsRoutes becomes /tickets/channels
-    await registerModule('channelsRoutes.js', '/tickets/channels');
-
+    await registerModule('tickets.js', '/tickets');               // GET /api/v1/supportops/tickets
+    await registerModule('channelsRoutes.js', '/channels');       // GET /api/v1/supportops/channels
     await registerModule('incidents.js', '/incidents');
     await registerModule('orgAnalyticsRoutes.js', '/analytics');
     await registerModule('users.js', '/users');

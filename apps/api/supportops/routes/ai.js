@@ -1,15 +1,15 @@
-import express from "express";
-import aiGuard from "../middleware/aiGuard.js";
-import tenantContext from "../middleware/tenantContext.js";
-import auth from "../middleware/auth.js";
-import { runAIWorkflow } from "../controllers/aiController.js";
+import { guard } from "../security/entitlements.js";
 
-const router = express.Router();
+export default async function aiRoutes(app) {
+    const access = guard({ app: "supportops" });
 
-router.use(auth);
-router.use(tenantContext);
-router.use(aiGuard);
+    app.get("/", { preHandler: access }, async (req, reply) => {
+        // Your logic here
+        return reply.send({ ok: true, service: "supportops-ai" });
+    });
 
-router.post("/analyze", runAIWorkflow);
-
-export default router;
+    app.post("/generate", { preHandler: access }, async (req, reply) => {
+        // Your generation logic here
+        return reply.send({ status: "processing" });
+    });
+}

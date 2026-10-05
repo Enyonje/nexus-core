@@ -1,21 +1,54 @@
 /**
- * AI Review Routes
+ * Human-in-the-Loop AI Review Routes
  * Path: supportops/routes/aiReviewRoutes.js
  */
 
-import express from "express";
-import {
-  listPending,
-  reviewProposal
-} from "../controllers/aiReviewController.js";
+import { listPending, reviewProposal } from "../controllers/aiReviewController.js";
+import { guard } from "../security/entitlements.js";
 
-const router = express.Router();
+export default async function aiReviewRoutes(app) {
+  // Requires "supportops" app permissions with admin or management roles
+  const access = guard({ app: "supportops", roles: ["admin", "management"] });
 
-router.get("/ai/pending", listPending);
-router.post("/ai/review/:id", reviewProposal);
+  // GET /api/v1/supportops/ai-review/pending
+  app.get(
+    "/pending",
+    {
+      preHandler: access,
+    },
+    async (req, reply) => {
+      return listPending(req, reply);
+    }
+  );
 
-// Named export to satisfy: import { aiReviewRoutes } from "../supportops/routes/aiReviewRoutes.js"
-export const aiReviewRoutes = router;
+  // POST /api/v1/supportops/ai-review/proposals/:id/review
+  app.post(
+    "/proposals/:id/review",
+    {
+      preHandler: access,
+      schema: {
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: {
+            id: { type: "string" },
+          },
+        },
+        body: {
+          type: "object",
+          required: ["decision"],
+          properties: {
+            decision: { type: "string", enum: ["approved", "rejected", "edited"] },
+            finalReply: { type: "string" },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      return reviewProposal(req, reply);
+    }
+  );
+}
 
-// Default export to satisfy: import aiReviewRoutes from "../supportops/routes/aiReviewRoutes.js"
-export default router;
+// Named export for backward compatibility across module loaders
+export { aiReviewRoutes };

@@ -8,18 +8,36 @@ import { Ticket } from "../models/Ticket.js";
 import { AIUsage } from "../models/AIUsage.js";
 
 /**
+ * Extracts normalized user ID and org ID from Fastify entitlement context or legacy request props
+ */
+function getAuthContext(request) {
+  const userId =
+    request.access?.user?.id ||
+    request.currentUser?.id ||
+    request.user?.sub ||
+    request.user?.id;
+
+  const orgId =
+    request.access?.org?.id ||
+    request.currentUser?.org_id ||
+    request.user?.org_id ||
+    null;
+
+  return { userId, orgId };
+}
+
+/**
  * Triggers AI analysis/resolution workflow on a target ticket
  * Named export required by routes/aiRoutes.js
  */
 export async function runAIOnTicket(request, reply) {
   const { ticketId } = request.params;
   const { prompt, model = "gpt-4o-mini" } = request.body || {};
-  const userId = request.currentUser?.id || request.user?.sub || request.user?.id;
-  const orgId = request.currentUser?.org_id || null;
-  const pg = request.server.pg;
+  const { userId, orgId } = getAuthContext(request);
+  const db = request.server.pg || request.server.prisma;
 
   try {
-    const ticket = await Ticket.findById(pg, ticketId);
+    const ticket = await Ticket.findById(db, ticketId);
     if (!ticket) {
       return reply.code(404).send({
         error: "NOT_FOUND",
@@ -27,7 +45,7 @@ export async function runAIOnTicket(request, reply) {
       });
     }
 
-    const budgetStatus = await AICostGovernor.checkBudget(pg, userId, orgId);
+    const budgetStatus = await AICostGovernor.checkBudget(db, userId, orgId);
     if (!budgetStatus.allowed) {
       return reply.code(429).send({
         error: "BUDGET_EXCEEDED",
@@ -37,10 +55,10 @@ export async function runAIOnTicket(request, reply) {
     }
 
     const promptTokens = Math.ceil((prompt?.length || 50) / 4);
-    const completionText = `AI suggested resolution for Ticket #${ticketId}: ${ticket.subject}`;
+    const completionText = `AI suggested resolution for Ticket #${ticketId}: ${ticket.subject ?? "No Subject"}`;
     const completionTokens = Math.ceil(completionText.length / 4);
 
-    const usageRecord = await recordAIUsage(pg, {
+    const usageRecord = await recordAIUsage(db, {
       userId,
       orgId,
       ticketId,
@@ -75,13 +93,12 @@ export async function runAIOnTicket(request, reply) {
  * Retrieves AI token consumption and monthly budget stats for current user
  */
 export async function getUsageSummary(request, reply) {
-  const userId = request.currentUser?.id || request.user?.sub || request.user?.id;
-  const orgId = request.currentUser?.org_id || null;
-  const pg = request.server.pg;
+  const { userId, orgId } = getAuthContext(request);
+  const db = request.server.pg || request.server.prisma;
 
   try {
-    const budgetStatus = await AICostGovernor.checkBudget(pg, userId, orgId);
-    const recentLogs = await AIUsage.findByUser(pg, userId, { limit: 10 });
+    const budgetStatus = await AICostGovernor.checkBudget(db, userId, orgId);
+    const recentLogs = await AIUsage.findByUser(db, userId, { limit: 10 });
 
     return reply.code(200).send({
       budget: budgetStatus,
@@ -98,20 +115,19 @@ export async function getUsageSummary(request, reply) {
 
 /**
  * Generic workflow runner — wrapper around enforceAIBudget
- * This is the missing export your routes/ai.js expects.
+ * Executed by routes/ai.js
  */
 export async function runAIWorkflow(request, reply) {
   const { model = "gpt-4o-mini", prompt = "" } = request.body || {};
-  const userId = request.currentUser?.id || request.user?.sub || request.user?.id;
-  const orgId = request.currentUser?.org_id || null;
-  const pg = request.server.pg;
+  const { userId, orgId } = getAuthContext(request);
+  const db = request.server.pg || request.server.prisma;
 
   try {
     const promptTokens = Math.ceil((prompt?.length || 50) / 4);
     const completionText = `AI workflow result: processed prompt "${prompt}"`;
     const completionTokens = Math.ceil(completionText.length / 4);
 
-    const usageRecord = await enforceAIBudget(pg, {
+    const usageRecord = await enforceAIBudget(db, {
       userId,
       orgId,
       model,
