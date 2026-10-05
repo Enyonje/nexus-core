@@ -32,6 +32,7 @@ export const decrypt = (s) => {
 };
 const rand = (n) => crypto.randomBytes(n).toString("hex");
 
+// Updated to reflect the plugin prefix /tickets/channels set in supportops.js
 const urlFor = (row) =>
     `${process.env.PUBLIC_API_URL}/api/v1/supportops/tickets/channels/webhook/${row.key}/${row.webhook_token}`;
 

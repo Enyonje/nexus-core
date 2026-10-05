@@ -30,7 +30,10 @@ export default async function supportOpsRoutesPlugin(fastify, options) {
     await registerModule('aiRoutes.js', '/ai-agent');
     await registerModule('aiReviewRoutes.js', '/ai-review');
     await registerModule('tickets.js', '/tickets');
-    await registerModule('channelsRoutes.js', '/tickets'); // Handles /tickets/channels
+
+    // Mount under /tickets/channels so app.get("/") in channelsRoutes becomes /tickets/channels
+    await registerModule('channelsRoutes.js', '/tickets/channels');
+
     await registerModule('incidents.js', '/incidents');
     await registerModule('orgAnalyticsRoutes.js', '/analytics');
     await registerModule('users.js', '/users');
