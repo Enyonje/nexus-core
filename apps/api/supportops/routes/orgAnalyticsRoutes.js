@@ -3,20 +3,19 @@
  * Path: supportops/routes/orgAnalyticsRoutes.js
  */
 
-import express from "express";
 import { getOrgAnalytics } from "../controllers/orgAnalyticsController.js";
 import requireAuth from "../middleware/requireAuth.js";
 
-const router = express.Router();
+export default async function orgAnalyticsRoutes(app) {
+  // GET /api/v1/supportops/analytics/org
+  app.get(
+    "/org",
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      return getOrgAnalytics(req, reply);
+    }
+  );
+}
 
-router.get(
-  "/org/analytics",
-  requireAuth,
-  getOrgAnalytics
-);
-
-// Named export to satisfy: import { orgAnalyticsRoutes } from "../supportops/routes/orgAnalyticsRoutes.js"
-export const orgAnalyticsRoutes = router;
-
-// Default export to satisfy: import orgAnalyticsRoutes from "../supportops/routes/orgAnalyticsRoutes.js"
-export default router;
+// Named export for backward compatibility
+export { orgAnalyticsRoutes };

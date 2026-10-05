@@ -3,7 +3,6 @@
  * Path: supportops/routes/incidents.js
  */
 
-import express from "express";
 import auth from "../middleware/auth.js";
 import tenantContext from "../middleware/tenantContext.js";
 import {
@@ -12,17 +11,37 @@ import {
   updateIncident
 } from "../controllers/incidentController.js";
 
-const router = express.Router();
+export default async function incidentsRoutes(app) {
+  // Apply middleware equivalents as Fastify preHandlers
+  const preHandlers = [auth, tenantContext];
 
-router.use(auth);
-router.use(tenantContext);
+  // GET /api/v1/supportops/incidents
+  app.get(
+    "/",
+    { preHandler: preHandlers },
+    async (req, reply) => {
+      return listIncidents(req, reply);
+    }
+  );
 
-router.get("/", listIncidents);
-router.post("/", createIncident);
-router.patch("/:id", updateIncident);
+  // POST /api/v1/supportops/incidents
+  app.post(
+    "/",
+    { preHandler: preHandlers },
+    async (req, reply) => {
+      return createIncident(req, reply);
+    }
+  );
 
-// Named export to satisfy: import { incidentsRoutes } from "../supportops/routes/incidents.js"
-export const incidentsRoutes = router;
+  // PATCH /api/v1/supportops/incidents/:id
+  app.patch(
+    "/:id",
+    { preHandler: preHandlers },
+    async (req, reply) => {
+      return updateIncident(req, reply);
+    }
+  );
+}
 
-// Default export to satisfy: import incidentsRoutes from "../supportops/routes/incidents.js"
-export default router;
+// Named export for backward compatibility
+export { incidentsRoutes };

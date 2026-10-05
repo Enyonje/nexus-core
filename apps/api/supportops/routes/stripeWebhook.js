@@ -3,45 +3,45 @@
  * Path: supportops/routes/stripeWebhookRoutes.js
  */
 
-import express from "express";
 import stripe from "../lib/stripe.js";
 
-const router = express.Router();
+export default async function stripeWebhookRoutes(app) {
+  // Stripe requires raw body for signature verification
+  app.addContentTypeParser("application/json", { parseAs: "buffer" }, (req, body, done) => {
+    done(null, body);
+  });
 
-router.post(
-  "/",
-  express.raw({ type: "application/json" }),
-  (req, res) => {
+  app.post("/", async (req, reply) => {
     const sig = req.headers["stripe-signature"];
-
     let event;
+
     try {
       event = stripe.webhooks.constructEvent(
-        req.body,
+        req.body, // raw buffer
         sig,
         process.env.STRIPE_WEBHOOK_SECRET
       );
     } catch (err) {
-      return res.status(400).send(`Webhook Error: ${err.message}`);
+      req.log.error("Webhook signature verification failed:", err.message);
+      return reply.code(400).send(`Webhook Error: ${err.message}`);
     }
 
-    if (event.type === "invoice.payment_failed") {
-      console.log("❌ Payment failed:", event.data.object.customer);
+    // Handle events
+    switch (event.type) {
+      case "invoice.payment_failed":
+        console.log("❌ Payment failed:", event.data.object.customer);
+        break;
+      case "invoice.paid":
+        console.log("✅ Invoice paid:", event.data.object.customer);
+        break;
+      default:
+        console.log(`Unhandled event type ${event.type}`);
     }
 
-    if (event.type === "invoice.paid") {
-      console.log("✅ Invoice paid");
-    }
+    return reply.send({ received: true });
+  });
+}
 
-    res.json({ received: true });
-  }
-);
-
-// Named exports to satisfy named imports like:
-// import { stripeWebhookRoutes } from "..."
-// import { webhookRoutes } from "..."
-export const stripeWebhookRoutes = router;
-export const webhookRoutes = router;
-
-// Default export to satisfy default imports
-export default router;
+// Named exports for backward compatibility
+export { stripeWebhookRoutes };
+export const webhookRoutes = stripeWebhookRoutes;
