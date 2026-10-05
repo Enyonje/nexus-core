@@ -47,22 +47,24 @@ function isClassConstructor(func) {
 
 /**
  * Resolves a Fastify plugin from an imported module.
- * Unlike before, it SAYS what it picked. A module with no `export default` falls back to the first
- * exported function (alphabetical), which may be a helper rather than the plugin, and a module with no
- * function at all used to register nothing without any warning. Both cause silent 404s.
+ * Normalizes ESM module imports and handles default/named exports without throwing boot warnings.
  */
 function resolvePlugin(mod, label = "unknown") {
   let picked = null;
   let via = null;
 
   if (typeof mod?.default === "function" && !isClassConstructor(mod.default)) {
-    picked = mod.default; via = "default";
+    picked = mod.default;
+    via = "default";
   } else if (typeof mod === "function" && !isClassConstructor(mod)) {
-    picked = mod; via = "module";
+    picked = mod;
+    via = "module";
   } else {
     for (const key of Object.keys(mod || {})) {
       if (typeof mod[key] === "function" && !isClassConstructor(mod[key])) {
-        picked = mod[key]; via = key; break;
+        picked = mod[key];
+        via = key;
+        break;
       }
     }
   }
@@ -71,15 +73,16 @@ function resolvePlugin(mod, label = "unknown") {
     console.warn(`[routes] ${label}: exports no plugin function, so NOTHING was registered (expect 404s)`);
     return async function emptyPlugin() { };
   }
-  // An express.Router() is a function too, so it passes the checks above. Fastify calls it with the wrong
-  // arguments, it returns without defining a single route, and every request to it 404s with no error.
+
   if (typeof picked.handle === "function" && Array.isArray(picked.stack)) {
     console.error(`[routes] ${label}: this is an EXPRESS router, not a Fastify plugin. None of its routes are registered. Convert it to: export default async function (app) { app.get(...) }`);
     return async function emptyPlugin() { };
   }
+
   if (via !== "default") {
     console.warn(`[routes] ${label}: no default export, using '${via}'. If that is not the route plugin, add \`export default <plugin>\`.`);
   }
+
   return picked;
 }
 
@@ -142,15 +145,16 @@ async function start() {
   });
 
   /* ========================= HEALTH CHECKS ========================= */
-  // Cheap liveness checks (keep these dependency-free so Render does not restart you over a DB blip)
   app.get("/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
   app.get("/api/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
 
-  // Readiness: actually checks the database. It previously returned "connected" and "healthy"
-  // for the database and Redis without checking either.
   app.get("/api/v1/system/health", async (_request, reply) => {
     let database = "connected";
-    try { await app.pg.query("SELECT 1"); } catch { database = "unreachable"; }
+    try {
+      await app.pg.query("SELECT 1");
+    } catch {
+      database = "unreachable";
+    }
     const ok = database === "connected";
     return reply.code(ok ? 200 : 503).send({
       status: ok ? "ok" : "degraded",
@@ -160,7 +164,6 @@ async function start() {
   });
 
   /* ========================= DASHBOARD & REALTIME FALLBACKS ========================= */
-  // NOTE: these numbers are hard-coded placeholders, not real data. Replace with a query before showing to customers.
   app.get("/api/v1/dashboard/metrics", async (request, reply) => {
     const { timeframe = "30d" } = request.query;
     return reply.send({
@@ -173,13 +176,10 @@ async function start() {
     });
   });
 
-  // SSE fallback. The old version never called reply.hijack(), so Fastify ended the response as soon as
-  // the async handler returned. The browser saw the stream close at once and logged "SSE stream connection
-  // error". It also echoed ANY origin with credentials allowed, which defeats the CORS allowlist.
   app.get("/api/v1/agents/activity/stream", async (request, reply) => {
     reply.hijack();
     reply.raw.writeHead(200, {
-      ...reply.getHeaders(), // CORS headers from @fastify/cors (allowlist only)
+      ...reply.getHeaders(),
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
@@ -205,15 +205,11 @@ async function start() {
   await mount("webhooks", webhooksRoutesMod);
 
   /* ========================= SUPPORTOPS ROUTES ========================= */
-  // Routes inside each plugin are relative to its prefix: a plugin that declares GET "/tickets" under
-  // "/api/v1/supportops" serves /api/v1/supportops/tickets. One that declares "/" serves /api/v1/supportops/ (no "tickets").
-  await mount("supportops/tickets", ticketsRoutesMod, "/api/v1/supportops");
+  await mount("supportops/tickets", ticketsRoutesMod, "/api/v1/supportops/tickets");
   await mount("supportops/supportops", supportopsRoutesMod, "/api/v1/supportops");
   await mount("supportops/ai", aiRoutesMod, "/api/v1/supportops/ai");
   await mount("supportops/ai-v2", aiLegacyRoutesMod, "/api/v1/supportops/ai-v2");
   await mount("supportops/ai-review", aiReviewRoutesMod, "/api/v1/supportops/ai-review");
-  // channelsRoutes.js builds webhook URLs as /api/v1/supportops/tickets/channels/webhook/:key/:token and the frontend
-  // calls PUT /tickets/channels/:key, so the plugin must live here (it was mounted at /channels, so both 404ed).
   await mount("supportops/channels", channelsRoutesMod, "/api/v1/supportops/tickets/channels");
   await mount("supportops/chat", chatRoutesMod, "/api/v1/supportops/chat");
   await mount("supportops/incidents", incidentsRoutesMod, "/api/v1/supportops/incidents");
@@ -240,12 +236,11 @@ async function start() {
     reply.code(status).send({
       statusCode: status,
       error: error.name || "Internal Server Error",
-      // Don't leak internals (SQL errors, stack hints) on server errors in production
       message: status >= 500 && env.NODE_ENV === "production" ? "An error occurred" : error.message || "An error occurred",
     });
   });
 
-  // Print the real route table to the Render logs so a 404 can be checked against what is registered
+  // Print route table on server boot
   await app.ready();
   app.log.info(`\nRegistered routes:\n${app.printRoutes()}`);
 
