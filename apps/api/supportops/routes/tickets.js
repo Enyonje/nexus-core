@@ -7,8 +7,9 @@ export default async function ticketsRoutes(app) {
     const access = guard({ app: "supportops" });
 
     // GET /api/v1/supportops/tickets
+    // Route path is "/" because this plugin is mounted under "/tickets" prefix in supportops.js
     app.get(
-        "/tickets",
+        "/",
         {
             preHandler: access,
             schema: {
