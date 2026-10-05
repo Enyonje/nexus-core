@@ -14,6 +14,7 @@ export default function Layout({ theme }) {
     { name: "Goals", path: "/goals", allowed: ["free", "pro", "enterprise", "admin"] },
     { name: "Executions", path: "/executions", allowed: ["pro", "enterprise", "admin"] },
     { name: "Admin Panel", path: "/admin", allowed: ["admin"] },
+    { name: "Special Agents", path: "/agents", allowed: ["special agent"] },
   ];
 
   const currentTier = subscription || "free";

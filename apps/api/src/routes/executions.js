@@ -397,3 +397,6 @@ export async function executionsRoutes(app) {
     }
   });
 }
+
+// Explicit default so route registration never depends on export order
+export default executionsRoutes;
