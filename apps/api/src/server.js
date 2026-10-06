@@ -21,7 +21,7 @@ import * as paymentsRoutesMod from "./routes/payments.js";
 import * as streamRoutesMod from "./routes/stream.js";
 import * as stripeRoutesMod from "./routes/stripe.js";
 
-// SupportOps Route Plugins
+// SupportOps Route Plugins (ONLY files that export a Fastify plugin belong here)
 import * as aiRoutesMod from "../supportops/routes/ai.js";
 import * as aiLegacyRoutesMod from "../supportops/routes/aiRoutes.js";
 import * as aiReviewRoutesMod from "../supportops/routes/aiReviewRoutes.js";
@@ -29,15 +29,14 @@ import * as channelsRoutesMod from "../supportops/routes/channelsRoutes.js";
 import * as chatRoutesMod from "../supportops/routes/chatRoutes.js";
 import * as incidentsRoutesMod from "../supportops/routes/incidents.js";
 import * as orgAnalyticsRoutesMod from "../supportops/routes/orgAnalyticsRoutes.js";
-import * as outboundRoutesMod from "../supportops/routes/outbound.js";
-import * as replyServiceRoutesMod from "../supportops/routes/replyService.js";
 import * as stripeWebhookRoutesMod from "../supportops/routes/stripeWebhook.js";
 import * as supportopsRoutesMod from "../supportops/routes/supportops.js";
-import * as ticketRulesRoutesMod from "../supportops/routes/ticketRules.js";
-import * as ticketServiceRoutesMod from "../supportops/routes/ticketService.js";
-import * as ticketsRoutesMod from "../supportops/routes/tickets.js";
-import * as billingRoutes from "../supportops/routes/billingRoutes.js";
-import * as ticketsLegacyRoutesMod from "../supportops/routes/ticketsRoutes.js";
+import * as ticketsRoutesMod from "../supportops/routes/ticketsRoutes.js"; // the NEW ticket API
+import * as oldTicketsRoutesMod from "../supportops/routes/tickets.js"; // your previous tickets plugin
+import * as billingV1Mod from "../supportops/routes/billingRoutes.js"; // plans, trial, checkout, Stripe webhook
+
+// NOT plugins, so NOT mounted: outbound.js, replyService.js, ticketRules.js, ticketService.js,
+// inbound.js, templates.js, templateService.js, realtime.js. They are helpers used by the plugins above.
 
 dotenv.config();
 
@@ -103,25 +102,30 @@ async function start() {
     "http://localhost:5173",
   ];
 
-  await app.register(cors, {
-    origin: (origin, cb) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        cb(null, true);
-        return;
-      }
-      cb(new Error("Not allowed by CORS"), false);
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "Accept",
-      "Cache-Control",
-      "Last-Event-ID",
-    ],
-    exposedHeaders: ["Content-Type", "Cache-Control", "Connection"],
+  // Decided per request:
+  //  - the in-app chat widget runs on CUSTOMERS' websites, so those routes accept any origin
+  //    (the chat routes then check the domain the admin configured);
+  //  - everything else only accepts your own frontends.
+  await app.register(cors, () => (req, cb) => {
+    const origin = req.headers.origin;
+    const isWidget = req.url.startsWith("/api/v1/supportops/chat/widget/");
+    const allowed = !origin || isWidget || allowedOrigins.includes(origin);
+
+    cb(null, {
+      origin: allowed,
+      credentials: !isWidget,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "X-Org-Id", // active workspace, sent by the SupportOps frontend
+        "Accept",
+        "Cache-Control",
+        "Last-Event-ID",
+      ],
+      exposedHeaders: ["Content-Type", "Cache-Control", "Connection"],
+    });
   });
 
   /* ========================= OTHER PLUGINS ========================= */
@@ -193,35 +197,33 @@ async function start() {
   });
 
   /* ========================= CORE ROUTES ========================= */
-  await mount("auth", authRoutesMod, "/api/auth");
+  await mount("auth", authRoutesMod, "/api/auth"); // login, register, /me  (frontend: VITE_AUTH_PREFIX=/api/auth)
   await mount("goals", goalsRoutesMod, "/api/goals");
   await mount("admin", adminRoutesMod, "/api/admin");
   await mount("executions", executionsRoutesMod, "/api/executions");
   await mount("audit", auditRoutesMod, "/api/audit");
-  await mount("billing", billingRoutesMod, "/api/billing");
-  await mount("billing-v1", billingRoutesMod, "/api/v1/billing"); // Added to satisfy /api/v1/billing/plans calls
+  await mount("billing", billingRoutesMod, "/api/billing"); // your existing core billing
   await mount("payments", paymentsRoutesMod, "/api/payments");
   await mount("stream", streamRoutesMod, "/api/stream");
   await mount("stripe", stripeRoutesMod, "/api/stripe");
   await mount("webhooks", webhooksRoutesMod);
 
+  /* ========================= CENTRAL BILLING (plans, trial, checkout, Stripe webhook) ========================= */
+  await mount("billing-v1", billingV1Mod, "/api/v1/billing");
+  await mount("billing-v1-webhook", { default: billingV1Mod.stripeWebhookPlugin }, "/api/v1/billing/webhooks");
+
   /* ========================= SUPPORTOPS ROUTES ========================= */
-  // Isolated prefixes for feature plugins prevent FST_ERR_DUPLICATED_ROUTE errors
+  // Each plugin has its own prefix, which prevents FST_ERR_DUPLICATED_ROUTE
   await mount("supportops/tickets", ticketsRoutesMod, "/api/v1/supportops/tickets");
+  await mount("supportops/channels", channelsRoutesMod, "/api/v1/supportops/tickets/channels");
+  await mount("supportops/chat", chatRoutesMod, "/api/v1/supportops/chat");
+  await mount("supportops/tickets-legacy", oldTicketsRoutesMod, "/api/v1/supportops/tickets-legacy");
   await mount("supportops/ai", aiRoutesMod, "/api/v1/supportops/ai");
   await mount("supportops/ai-v2", aiLegacyRoutesMod, "/api/v1/supportops/ai-v2");
   await mount("supportops/ai-review", aiReviewRoutesMod, "/api/v1/supportops/ai-review");
-  await mount("supportops/channels", channelsRoutesMod, "/api/v1/supportops/tickets/channels");
-  await mount("supportops/chat", chatRoutesMod, "/api/v1/supportops/chat");
   await mount("supportops/incidents", incidentsRoutesMod, "/api/v1/supportops/incidents");
   await mount("supportops/analytics", orgAnalyticsRoutesMod, "/api/v1/supportops/analytics");
-  await mount("supportops/outbound", outboundRoutesMod, "/api/v1/supportops/outbound");
-  await mount("supportops/replies", replyServiceRoutesMod, "/api/v1/supportops/replies");
   await mount("supportops/webhooks-stripe", stripeWebhookRoutesMod, "/api/v1/supportops/webhooks/stripe");
-  await mount("supportops/ticket-rules", ticketRulesRoutesMod, "/api/v1/supportops/ticket-rules");
-  await mount("supportops/ticket-service", ticketServiceRoutesMod, "/api/v1/supportops/ticket-service");
-  await mount("supportops/tickets-v2", ticketsLegacyRoutesMod, "/api/v1/supportops/tickets-v2");
-  await mount("supportops/billing", billingRoutes, "/api/v1/supportops/billing");
 
   // Core base supportops aggregator plugin registered without nested ticket overrides
   await mount("supportops/supportops", supportopsRoutesMod, "/api/v1/supportops");
