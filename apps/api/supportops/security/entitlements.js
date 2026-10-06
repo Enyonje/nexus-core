@@ -1,26 +1,33 @@
 // apps/api/supportops/security/entitlements.js
 import { prisma, requireAuth } from "../lib/deps.js";
 
-/**
- * Entitlement guard for SupportOps routes.
- * Usage: guard({ app: "supportops", roles: ["agent", "admin"] })
- */
-export function guard({ app: appName, roles } = {}) {
+export class AccessError extends Error {
+    constructor(status, code, message, extra = {}) {
+        super(message);
+        this.status = status;
+        this.code = code;
+        this.extra = extra;
+    }
+}
+
+export const invalidateSubscription = (orgId, appId) => {
+    // implement cache invalidation or subscription reset logic here
+    console.log(`Invalidating subscription for org ${orgId}, app ${appId}`);
+};
+
+function guard({ app: appName, roles } = {}) {
     return async (req, reply) => {
-        // 1. Run base JWT authentication check
         await requireAuth(req, reply);
         if (reply.sent) return;
 
-        // 2. Safely extract user ID from JWT payload
         const userId = req.user?.id || req.user?.userId || req.user?.sub;
         if (!userId) {
             return reply.code(401).send({
                 error: "AUTH_INVALID_TOKEN",
-                message: "User identity could not be verified from token"
+                message: "User identity could not be verified from token",
             });
         }
 
-        // 3. Query DB for organization membership & system role
         const user = await prisma.user.findFirst({
             where: { id: userId, deleted_at: null },
             select: { id: true, role: true, org_id: true },
@@ -29,24 +36,25 @@ export function guard({ app: appName, roles } = {}) {
         if (!user || !user.org_id) {
             return reply.code(403).send({
                 error: "NO_ORGANIZATION",
-                message: "Your account is not part of an organization yet"
+                message: "Your account is not part of an organization yet",
             });
         }
 
-        // 4. Map role and evaluate allowed roles list
         const appRole = user.role === "admin" ? "admin" : "agent";
         if (roles && Array.isArray(roles) && !roles.includes(appRole)) {
             return reply.code(403).send({
                 error: "ROLE_FORBIDDEN",
-                message: "Your role does not allow access to this resource"
+                message: "Your role does not allow access to this resource",
             });
         }
 
-        // 5. Populate req.access for downstream ticket controllers
         req.access = {
             org: { id: user.org_id },
             appRole,
-            app: appName || "supportops"
+            app: appName || "supportops",
         };
     };
 }
+
+export default guard;
+export { guard };
