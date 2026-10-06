@@ -7,7 +7,7 @@ import RequireRole from "../components/RequireRole";
 // Public pages
 import LandingPage from "../pages/LandingPage";
 import PricingPage from "../pages/PricingPage";
-import { RequireApp } from "../components/Access";
+import { RequireApp, RequireSignIn } from "../components/Access";
 import FeaturesPage from "../pages/FeaturesPage";
 import CancelPage from "../pages/CancelPage";
 import SuccessPage from "../pages/SuccessPage";
@@ -52,43 +52,45 @@ export default function SupportOpsRoutes() {
             <Route path="pricing" element={<PricingPage />} />
 
             {/* Everything below needs an active SupportOps subscription or trial */}
-            <Route element={<RequireApp />}>
-                {/* Agent: /supportops/agent/* */}
-                <Route element={<RequireRole roles={["agent", "user", "admin"]} />}>
-                    <Route path="agent" element={<AgentLayout />}>
-                        <Route index element={<Navigate to="dashboard" replace />} />
-                        <Route path="dashboard" element={<Dashboard />} />
-                        <Route path="analytics" element={<AnalyticsPage />} />
-                        <Route path="revenue" element={<RevenueForecast />} />
-                        <Route path="brain" element={<AutonomousBrain />} />
-                        <Route path="inbox" element={<AIReviewInbox />} />
-                        <Route path="tickets" element={<TicketInboxPage />} />
-                        <Route path="chats" element={<LiveChatPage />} />
-                        <Route path="billing" element={<Billing />} />
-                        <Route path="playbooks" element={<Playbooks />} />
-                    </Route>
-                </Route>
-
-                {/* Admin: /supportops/admin/* */}
-                <Route element={<RequireRole roles={["admin", "management"]} />}>
-                    <Route path="admin" element={<AdminLayout />}>
-                        <Route index element={<Navigate to="executive" replace />} />
-                        <Route path="executive" element={<ExecutiveDashboard />} />
-                        <Route path="analytics" element={<AdminAnalytics />} />
-                        <Route path="incidents" element={<IncidentCommandCenter />} />
-                        <Route element={<RequireRole roles={["admin"]} />}>
-                            <Route path="channels" element={<ChannelsPage />} />
+            <Route element={<RequireSignIn />}>
+                <Route element={<RequireApp />}>
+                    {/* Agent: /supportops/agent/* */}
+                    <Route element={<RequireRole roles={["agent", "user", "admin"]} />}>
+                        <Route path="agent" element={<AgentLayout />}>
+                            <Route index element={<Navigate to="dashboard" replace />} />
+                            <Route path="dashboard" element={<Dashboard />} />
+                            <Route path="analytics" element={<AnalyticsPage />} />
+                            <Route path="revenue" element={<RevenueForecast />} />
+                            <Route path="brain" element={<AutonomousBrain />} />
+                            <Route path="inbox" element={<AIReviewInbox />} />
+                            <Route path="tickets" element={<TicketInboxPage />} />
+                            <Route path="chats" element={<LiveChatPage />} />
+                            <Route path="billing" element={<Billing />} />
+                            <Route path="playbooks" element={<Playbooks />} />
                         </Route>
                     </Route>
-                </Route>
 
-                {/* Investor: /supportops/investor */}
-                <Route element={<RequireRole roles={["investor", "admin"]} />}>
-                    <Route path="investor" element={<InvestorLayout />}>
-                        <Route index element={<InvestorMode />} />
+                    {/* Admin: /supportops/admin/* */}
+                    <Route element={<RequireRole roles={["admin", "management"]} />}>
+                        <Route path="admin" element={<AdminLayout />}>
+                            <Route index element={<Navigate to="executive" replace />} />
+                            <Route path="executive" element={<ExecutiveDashboard />} />
+                            <Route path="analytics" element={<AdminAnalytics />} />
+                            <Route path="incidents" element={<IncidentCommandCenter />} />
+                            <Route element={<RequireRole roles={["admin"]} />}>
+                                <Route path="channels" element={<ChannelsPage />} />
+                            </Route>
+                        </Route>
                     </Route>
-                </Route>
 
+                    {/* Investor: /supportops/investor */}
+                    <Route element={<RequireRole roles={["investor", "admin"]} />}>
+                        <Route path="investor" element={<InvestorLayout />}>
+                            <Route index element={<InvestorMode />} />
+                        </Route>
+                    </Route>
+
+                </Route>
             </Route>
 
             {/* Anything else stays inside SupportOps */}

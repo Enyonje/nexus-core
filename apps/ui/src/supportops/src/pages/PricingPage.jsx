@@ -3,8 +3,10 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Check } from "lucide-react";
-import { API_ENDPOINTS, homeForRole } from "../config/paths";
+import { API_ENDPOINTS, ROUTES, homeForRole } from "../config/paths";
 import { useApp } from "../../../context/AccessProvider";
+import { useAuth } from "../context/AuthContext";
+import { rememberReturn } from "../components/Access";
 
 const LABELS = {
     triage_basic: "Basic triage", channel_email: "Email", channel_web: "In-app chat", helpdesk_sync: "Intercom / Zendesk sync",
@@ -31,6 +33,8 @@ async function call(method, url, body) {
 export default function PricingPage() {
     const navigate = useNavigate();
     const me = useApp("supportops");
+    const { isAuth } = useAuth();
+    const goAuth = (to) => { rememberReturn(ROUTES.pricing); navigate(to); };
     const [app, setApp] = useState(null);
     const [picked, setPicked] = useState([]);
     const [busy, setBusy] = useState(null);
@@ -42,6 +46,7 @@ export default function PricingPage() {
     }, []);
 
     async function startTrial() {
+        if (!isAuth) return goAuth(ROUTES.signup);
         setBusy("trial");
         try {
             await call("POST", API_ENDPOINTS.billing.trial, { app: "supportops" });
@@ -52,6 +57,7 @@ export default function PricingPage() {
     }
 
     async function checkout(plan) {
+        if (!isAuth) return goAuth(ROUTES.signup);
         setBusy(plan);
         try {
             const { url } = await call("POST", API_ENDPOINTS.billing.checkout, { app: "supportops", plan, addons: picked });
@@ -66,6 +72,13 @@ export default function PricingPage() {
             <div className="max-w-6xl mx-auto">
                 <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-center">Pick the plan that fits your team</h1>
                 <p className="text-center text-slate-400 mt-2 mb-10">Start with a 14-day free trial (up to 100 AI resolutions). No card needed.</p>
+
+                {!isAuth && (
+                    <p className="text-center text-sm text-slate-500 -mt-6 mb-8">
+                        Already have an account?{" "}
+                        <button type="button" onClick={() => goAuth(ROUTES.login)} className="text-blue-400 hover:underline">Log in</button>
+                    </p>
+                )}
 
                 {!app ? <p className="text-center text-slate-500">Loading plans…</p> : (
                     <>
@@ -95,11 +108,11 @@ export default function PricingPage() {
                                                 <>
                                                     {featured && !me.subscribed && (
                                                         <button onClick={startTrial} disabled={busy} className="w-full px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-semibold disabled:opacity-50">
-                                                            {busy === "trial" ? "Starting…" : "Start 14-day free trial"}
+                                                            {busy === "trial" ? "Starting…" : isAuth ? "Start 14-day free trial" : "Sign up for a free trial"}
                                                         </button>
                                                     )}
                                                     <button onClick={() => checkout(p.key)} disabled={busy} className="w-full px-4 py-2.5 rounded-lg border border-slate-600 hover:bg-white/5 text-sm font-semibold disabled:opacity-50">
-                                                        {busy === p.key ? "Redirecting…" : "Subscribe now"}
+                                                        {busy === p.key ? "Redirecting…" : isAuth ? "Subscribe now" : "Sign up to subscribe"}
                                                     </button>
                                                 </>
                                             )}

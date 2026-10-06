@@ -1,7 +1,6 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
-import { AnimatePresence, motion } from "framer-motion";
-import { ROUTES } from "../config/paths";
+import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Zap,
   LayoutDashboard,
@@ -9,111 +8,138 @@ import {
   ArrowRight,
   CheckCircle2,
   TrendingUp,
+  ShieldCheck,
+  Bot,
+  MessageSquare,
+  Users,
+  BarChart3,
+  Globe,
 } from "lucide-react";
-
-const TABS = [
-  {
-    id: "inbox",
-    label: "Real-Time Inbox",
-    icon: Zap,
-    iconColor: "text-blue-400",
-    title: "Real-Time AI Stream",
-    badge: "Connected",
-    badgeClass: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-    text: "Incoming customer inquiry auto-routed to support agent. Sub-second WebSocket stream active.",
-  },
-  {
-    id: "analytics",
-    label: "Predictive Analytics",
-    icon: TrendingUp,
-    iconColor: "text-purple-400",
-    title: "Predictive Resolution Velocity",
-    badge: "+42% Efficiency",
-    badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/30",
-    text: "AI forecasting suggests peak ticket volume at 14:00 UTC. Auto-scaling rules applied.",
-  },
-  {
-    id: "roles",
-    label: "Role Dashboards",
-    icon: LayoutDashboard,
-    iconColor: "text-indigo-400",
-    title: "Executive & Investor Views",
-    badge: "Role-Gated",
-    badgeClass: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
-    text: "Custom RBAC dashboards isolating agent operational queues from high-level investor ROI metrics.",
-  },
-];
-
-const FEATURES = [
-  {
-    title: "Role-Based Dashboards",
-    desc: "Tailored views for agents, executives, and investors.",
-    icon: LayoutDashboard,
-    badge: "Personalized UI",
-  },
-  {
-    title: "Real-Time AI Inbox",
-    desc: "Resolve tickets instantly with WebSocket-powered sync.",
-    icon: Zap,
-    badge: "Sub-second Sync",
-  },
-  {
-    title: "Predictive Analytics",
-    desc: "Forecast resolution trends and track team velocity.",
-    icon: TrendingUp,
-    badge: "AI Forecasting",
-  },
-];
+import { useAuth } from "../context/AuthContext";
+import { useApp } from "../../../context/AccessProvider";
+import { rememberReturn } from "../components/Access";
+import { ROUTES, homeForRole } from "../config/paths";
 
 export default function LandingPage() {
   const [activeTab, setActiveTab] = useState("inbox");
+  const { isAuth, loading, role } = useAuth();
+  const plan = useApp("supportops");
+  const navigate = useNavigate();
 
-  // Default target route when no authentication layer is present
-  const targetDashboard = ROUTES.agent?.dashboard || "/supportops/agent/dashboard";
+  const busy = loading || plan.loading;
 
-  const active = TABS.find((t) => t.id === activeTab) ?? TABS[0];
-  const ActiveIcon = active.icon;
-
+  // Smooth scroll handler for anchor links
   const scrollToSection = (id) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth" });
+    }
   };
+
+  // Where each kind of visitor should go:
+  //  - signed out            -> sign up, then (via rememberReturn) back into SupportOps
+  //  - signed in, no plan    -> pricing (the 14-day trial lives there)
+  //  - signed in, has a plan -> the dashboard for their role
+  const handleLaunchClick = (e) => {
+    if (e) e.preventDefault();
+    if (busy) return;
+
+    if (!isAuth) {
+      rememberReturn(ROUTES.agent.dashboard); // the app then sends them to pricing or their own dashboard
+      navigate(ROUTES.signup);
+      return;
+    }
+    navigate(plan.subscribed ? homeForRole(role) : ROUTES.pricing);
+  };
+
+  const goLogin = () => {
+    rememberReturn(ROUTES.agent.dashboard);
+    navigate(ROUTES.login);
+  };
+
+  const ctaLabel = busy
+    ? "Checking Session…"
+    : !isAuth
+      ? "Start Free Trial"
+      : plan.subscribed
+        ? "Open Dashboard"
+        : "Choose a Plan";
+
+  const featureTabs = [
+    {
+      id: "inbox",
+      label: "Unified Agent Inbox",
+      icon: MessageSquare,
+      title: "Omnichannel Customer Support Hub",
+      description:
+        "Manage tickets, live chat, and automated conversations across channels in one real-time workspace.",
+      highlights: [
+        "Real-time WebSocket event updates",
+        "Contextual AI auto-responses",
+        "Role-based agent assignment",
+      ],
+    },
+    {
+      id: "automation",
+      label: "AI Automation Workflows",
+      icon: Bot,
+      title: "Agentic Task Orchestration",
+      description:
+        "Automate repetitive support tasks, triage incoming leads, and trigger background workflows seamlessly.",
+      highlights: [
+        "Temporal-backed workflow orchestration",
+        "Custom triage & escalation rules",
+        "Zero-latency automated routing",
+      ],
+    },
+    {
+      id: "analytics",
+      label: "Performance Analytics",
+      icon: BarChart3,
+      title: "Actionable Operational Metrics",
+      description:
+        "Track resolution times, CSAT scores, and agent workload distribution through intuitive dashboard charts.",
+      highlights: [
+        "Live response latency tracking",
+        "Volume trend analysis",
+        "Custom CSV data exports",
+      ],
+    },
+  ];
 
   return (
     <div className="bg-[#030712] text-slate-100 min-h-screen flex flex-col font-sans overflow-x-hidden relative selection:bg-blue-500 selection:text-white">
-      {/* Background glows */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[400px] bg-gradient-to-tr from-blue-600/20 via-indigo-500/20 to-purple-600/10 blur-[130px] pointer-events-none rounded-full" />
-      <div className="absolute top-[40%] right-[-10%] w-[500px] h-[500px] bg-cyan-500/10 blur-[150px] pointer-events-none rounded-full" />
+      {/* BACKGROUND DECORATIVE GRADIENTS */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[500px] bg-gradient-to-b from-blue-600/10 via-indigo-500/5 to-transparent blur-3xl pointer-events-none" />
 
-      {/* HERO */}
-      <section className="relative pt-24 pb-20 md:pt-36 md:pb-28 px-4 sm:px-6 max-w-7xl mx-auto text-center flex flex-col items-center">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs sm:text-sm font-medium mb-8 backdrop-blur-md">
-          <Sparkles className="w-4 h-4 text-blue-400 animate-pulse" />
-          <span>SupportOps Pro v2.5 is now Live</span>
-          <span className="bg-blue-500/20 text-blue-300 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-semibold">
-            New
-          </span>
+      {/* HERO SECTION */}
+      <section className="relative pt-24 pb-16 px-4 sm:px-6 max-w-7xl mx-auto text-center z-10 flex flex-col items-center">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 text-blue-400 text-xs font-semibold uppercase tracking-wider mb-6">
+          <Sparkles className="w-3.5 h-3.5" /> SupportOps Intelligence Platform
         </div>
 
-        <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.1] max-w-5xl">
-          Automate, Scale, &amp; Transform <br className="hidden sm:inline" />
-          <span className="bg-gradient-to-r from-blue-400 via-indigo-300 to-purple-400 bg-clip-text text-transparent">
-            Your Customer Support
+        <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white max-w-4xl leading-[1.15]">
+          Supercharge Customer Operations with{" "}
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-sky-400">
+            Agentic AI
           </span>
         </h1>
 
-        <p className="mt-6 text-slate-300 text-base sm:text-xl max-w-3xl leading-relaxed font-normal">
-          Deliver instant AI ticket resolutions, real-time WebSocket syncing, and predictive
-          analytics. Empower agents, executives, and investors with role-tailored dashboards.
+        <p className="mt-6 text-lg sm:text-xl text-slate-400 max-w-2xl leading-relaxed">
+          Unify inbox queues, automate complex ticket workflows, and empower your
+          support team with real-time agent context.
         </p>
 
-        {/* Hero CTAs */}
+        {/* HERO CTA BUTTONS */}
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 w-full sm:w-auto">
-          <Link
-            to={targetDashboard}
-            className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all inline-flex items-center justify-center gap-2"
+          <button
+            type="button"
+            onClick={handleLaunchClick}
+            disabled={busy}
+            className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all inline-flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            Launch Dashboard <ArrowRight className="w-4 h-4" />
-          </Link>
+            {ctaLabel} <ArrowRight className="w-4 h-4" />
+          </button>
 
           <button
             type="button"
@@ -124,97 +150,156 @@ export default function LandingPage() {
           </button>
         </div>
 
-        {/* Trust chips */}
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400">
-          {["No credit card required", "5-minute setup", "SOC2 Compliant"].map((t) => (
-            <span key={t} className="flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" /> {t}
-            </span>
-          ))}
+        {/* SECONDARY LINKS */}
+        {!busy && (
+          <p className="mt-4 text-sm text-slate-500">
+            {!isAuth && (
+              <>
+                Already have an account?{" "}
+                <button type="button" onClick={goLogin} className="text-blue-400 hover:underline">
+                  Log in
+                </button>
+                <span className="mx-2">·</span>
+              </>
+            )}
+            <button type="button" onClick={() => navigate(ROUTES.pricing)} className="text-blue-400 hover:underline">
+              View pricing
+            </button>
+          </p>
+        )}
+
+        {/* STATS HIGHLIGHT */}
+        <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-4xl pt-8 border-t border-slate-800/80">
+          <div>
+            <div className="text-2xl sm:text-3xl font-bold text-white">99.9%</div>
+            <div className="text-xs text-slate-400 mt-1">Uptime SLA</div>
+          </div>
+          <div>
+            <div className="text-2xl sm:text-3xl font-bold text-white">&lt; 50ms</div>
+            <div className="text-xs text-slate-400 mt-1">Event Latency</div>
+          </div>
+          <div>
+            <div className="text-2xl sm:text-3xl font-bold text-white">10x</div>
+            <div className="text-xs text-slate-400 mt-1">Faster Resolution</div>
+          </div>
+          <div>
+            <div className="text-2xl sm:text-3xl font-bold text-white">24/7</div>
+            <div className="text-xs text-slate-400 mt-1">AI Execution</div>
+          </div>
+        </div>
+      </section>
+
+      {/* INTERACTIVE FEATURES SECTION */}
+      <section id="features" className="py-20 px-4 sm:px-6 max-w-7xl mx-auto w-full z-10">
+        <div className="text-center max-w-3xl mx-auto mb-12">
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-white">
+            Built for High-Scale Operations
+          </h2>
+          <p className="mt-4 text-slate-400 text-base sm:text-lg">
+            Everything you need to deliver instant, high-touch support at scale.
+          </p>
         </div>
 
-        {/* Interactive tab preview */}
-        <div className="mt-16 w-full max-w-3xl">
-          <div className="flex justify-center gap-2 p-1.5 bg-slate-900/80 border border-slate-800 rounded-xl mb-4">
-            {TABS.map((tab) => (
+        {/* TAB HEADERS */}
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-8 border-b border-slate-800 pb-4">
+          {featureTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
               <button
                 key={tab.id}
-                type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all ${activeTab === tab.id
-                  ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium transition-all text-sm ${isActive
+                  ? "bg-blue-600/20 border border-blue-500/40 text-blue-400 shadow-md"
+                  : "bg-slate-900/40 border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
                   }`}
               >
+                <Icon className="w-4 h-4" />
                 {tab.label}
               </button>
-            ))}
-          </div>
+            );
+          })}
+        </div>
 
+        {/* TAB CONTENT PANELS */}
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 sm:p-10 backdrop-blur-sm">
           <AnimatePresence mode="wait">
-            <motion.div
-              key={active.id}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
-              className="p-6 rounded-2xl bg-slate-900/80 border border-slate-800 text-left space-y-4"
-            >
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <span className="font-semibold text-white flex items-center gap-2">
-                  <ActiveIcon className={`w-4 h-4 ${active.iconColor}`} /> {active.title}
-                </span>
-                <span className={`text-xs border px-2 py-0.5 rounded-full ${active.badgeClass}`}>
-                  {active.badge}
-                </span>
-              </div>
-              <p className="text-sm text-slate-300">{active.text}</p>
-            </motion.div>
+            {featureTabs
+              .filter((tab) => tab.id === activeTab)
+              .map((tab) => (
+                <motion.div
+                  key={tab.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center"
+                >
+                  <div className="space-y-6">
+                    <h3 className="text-2xl sm:text-3xl font-bold text-white">
+                      {tab.title}
+                    </h3>
+                    <p className="text-slate-300 text-base leading-relaxed">
+                      {tab.description}
+                    </p>
+                    <ul className="space-y-3">
+                      {tab.highlights.map((item, idx) => (
+                        <li key={idx} className="flex items-center gap-3 text-slate-200">
+                          <CheckCircle2 className="w-5 h-5 text-blue-400 shrink-0" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-6 shadow-inner space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-red-500/80" />
+                        <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
+                        <div className="w-3 h-3 rounded-full bg-green-500/80" />
+                      </div>
+                      <span className="text-xs text-slate-500 font-mono">live_ops_view.json</span>
+                    </div>
+                    <div className="space-y-2 font-mono text-xs text-slate-300">
+                      <p className="text-blue-400">// Status: Active SupportOps Session</p>
+                      <p>{"{"}</p>
+                      <p className="pl-4 text-emerald-400">"agent_status": "ONLINE",</p>
+                      <p className="pl-4 text-amber-300">"unassigned_tickets": 0,</p>
+                      <p className="pl-4 text-indigo-300">"auto_resolution_rate": "88.4%"</p>
+                      <p>{"}"}</p>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
           </AnimatePresence>
         </div>
       </section>
 
-      {/* FEATURES */}
-      <section id="features" className="max-w-7xl mx-auto px-6 py-24 sm:py-32 scroll-mt-20">
-        <div className="text-center max-w-3xl mx-auto mb-16">
-          <h2 className="text-xs sm:text-sm text-blue-400 font-bold uppercase tracking-widest mb-2">
-            Built for Modern Teams
-          </h2>
-          <p className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
-            Everything you need to scale customer operations
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-8">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="rounded-2xl bg-slate-900/50 border border-slate-800 p-8">
-              <div className="flex items-center justify-between mb-6">
-                <f.icon className="w-6 h-6 text-blue-400" />
-                <span className="text-[11px] text-slate-400 bg-slate-800 px-2.5 py-1 rounded-full">
-                  {f.badge}
-                </span>
-              </div>
-              <h3 className="font-bold text-xl text-white">{f.title}</h3>
-              <p className="mt-3 text-slate-400 text-sm">{f.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* FINAL CTA */}
+      {/* FINAL CALL TO ACTION */}
       <section className="relative my-12 mx-4 sm:mx-6 max-w-7xl md:mx-auto rounded-3xl border border-blue-500/30 bg-gradient-to-br from-blue-900/40 via-slate-900 to-indigo-950/60 p-10 sm:p-16 text-center shadow-2xl">
         <div className="relative z-10 max-w-3xl mx-auto space-y-6">
           <h2 className="text-3xl sm:text-5xl font-extrabold text-white">
             Ready to transform your support operations?
           </h2>
-          <Link
-            to={targetDashboard}
-            className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-lg font-bold shadow-xl shadow-blue-600/30 transition-all"
+          <p className="text-slate-300 text-base sm:text-lg max-w-xl mx-auto">
+            Experience real-time ticket automation and intelligent agent routing today.
+          </p>
+          <button
+            type="button"
+            onClick={handleLaunchClick}
+            disabled={busy}
+            className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-lg font-bold shadow-xl shadow-blue-600/30 transition-all disabled:opacity-50"
           >
-            Launch Dashboard
-          </Link>
+            {ctaLabel}
+          </button>
         </div>
       </section>
+
+      {/* FOOTER */}
+      <footer className="mt-auto border-t border-slate-800/80 py-8 px-4 text-center text-xs text-slate-500">
+        &copy; {new Date().getFullYear()} SupportOps. All rights reserved.
+      </footer>
     </div>
   );
 }

@@ -1,41 +1,16 @@
+// supportops/src/pages/CancelPage.jsx  Stripe returns here if the customer backs out of checkout.
 import React from "react";
-import { useNavigate } from "react-router-dom";
-import { XCircle, ArrowLeft } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ROUTES } from "../config/paths";
 
-const CancelPage = () => {
-  const navigate = useNavigate();
-
+export default function CancelPage() {
   return (
-    <div className="min-h-screen bg-[#020617] text-white flex items-center justify-center p-6">
-      <div className="max-w-md w-full text-center space-y-8 bg-white/5 border border-white/10 p-10 rounded-3xl backdrop-blur-xl shadow-lg">
-        {/* Icon */}
-        <div className="flex justify-center">
-          <div className="p-4 bg-red-500/10 rounded-full">
-            <XCircle size={56} className="text-red-500" />
-          </div>
-        </div>
-
-        {/* Title */}
-        <h1 className="text-2xl md:text-3xl font-bold uppercase tracking-tight text-white">
-          Checkout Canceled
-        </h1>
-
-        {/* Message */}
-        <p className="text-slate-400 leading-relaxed">
-          No worries! Your account hasn&apos;t been charged. You can continue
-          using the dashboard in demo mode or try upgrading again later.
-        </p>
-
-        {/* Action button */}
-        <button
-          onClick={() => navigate("/")}
-          className="w-full flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 py-3 rounded-xl font-semibold text-white transition"
-        >
-          <ArrowLeft size={18} /> Back to Dashboard
-        </button>
+    <div className="min-h-screen flex items-center justify-center bg-[#020617] px-6 text-center">
+      <div className="max-w-md">
+        <h1 className="text-2xl font-bold text-white">Checkout cancelled</h1>
+        <p className="mt-2 text-sm text-slate-400">No payment was taken. You can pick a plan whenever you're ready, and the 14-day free trial is still available.</p>
+        <Link to={ROUTES.pricing} className="inline-block mt-5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white">Back to plans</Link>
       </div>
     </div>
   );
-};
-
-export default CancelPage;
+}
