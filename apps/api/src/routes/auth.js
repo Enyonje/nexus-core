@@ -1,7 +1,7 @@
 // apps/api/supportops/security/entitlements.js  The one guard for every app: plan + add-ons + role + usage.
 // Replaces entitlements-compat.js. Needs entitlementRules.js in the same folder.
 import { prisma, requireAuth } from "../lib/deps.js";
-import { effectiveFeatures, effectiveLimit, isTrial, usageDecision } from "./entitlementRules.js";
+
 
 const GRACE_MS = 3 * 24 * 60 * 60 * 1000;
 const TTL_MS = 30_000;

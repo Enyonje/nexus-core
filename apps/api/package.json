@@ -8,6 +8,7 @@
     "worker": "node src/worker.js",
     "migrate": "node src/db/migrate.js",
     "start": "node src/server.js",
+    "build": "tsc",
     "prisma:generate": "prisma generate",
     "postinstall": "prisma generate",
     "postbuild": "node scripts/generate-sitemap.js",
