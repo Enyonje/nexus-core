@@ -25,6 +25,7 @@ import RevenueForecast from "../pages/RevenueForecast";
 import AutonomousBrain from "../pages/AutonomousBrain";
 import AIReviewInbox from "../pages/AIReviewInbox";
 import Billing from "../pages/Billing";
+import AuthPage from "../pages/AuthPage";
 import Playbooks from "../pages/Playbooks";
 
 
@@ -53,6 +54,7 @@ export default function SupportOpsRoutes() {
             <Route path="cancel" element={<CancelPage />} />
             <Route path="success" element={<SuccessPage />} />
             <Route path="login" element={<LoginPage />} />
+            <Route path="auth" element={<AuthPage />} />
             <Route path="pricing" element={<PricingPage />} />
 
             {/* Everything below needs an active SupportOps subscription or trial */}
