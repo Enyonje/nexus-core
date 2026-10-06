@@ -1,21 +1,32 @@
 // supportops/routes/auth.js
-// SupportOps authentication routes (relative paths only)
 
 export default async function supportOpsAuthRoutes(fastify) {
   // POST /api/v1/supportops/auth/login
   fastify.post("/login", async (request, reply) => {
-    const { email, password } = request.body;
+    const { email, password } = request.body || {};
 
-    // Example authentication logic (replace with your real implementation)
     if (!email || !password) {
-      return reply.code(400).send({ error: "MISSING_CREDENTIALS" });
+      return reply.code(400).send({ error: "MISSING_CREDENTIALS", message: "Email and password are required" });
     }
 
-    // TODO: validate user against database
-    const user = { id: "123", email, role: "agent" };
+    // TODO: Validate user against database
+    const user = {
+      id: "usr_123",
+      email,
+      role: "agent",
+      plan: "growth",
+      status: "active",
+      subscribed: true,
+    };
 
-    // Issue JWT
-    const token = fastify.jwt.sign({ id: user.id, role: user.role });
+    const token = fastify.jwt.sign({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      plan: user.plan,
+      status: user.status,
+      subscribed: user.subscribed,
+    });
 
     return reply.send({
       success: true,
@@ -26,7 +37,6 @@ export default async function supportOpsAuthRoutes(fastify) {
 
   // POST /api/v1/supportops/auth/logout
   fastify.post("/logout", async (request, reply) => {
-    // Invalidate token logic (if using a blacklist or session store)
     return reply.send({ success: true, message: "Logged out successfully" });
   });
 
@@ -34,9 +44,19 @@ export default async function supportOpsAuthRoutes(fastify) {
   fastify.get("/me", async (request, reply) => {
     try {
       const decoded = await request.jwtVerify();
-      return reply.send({ success: true, user: decoded });
+      return reply.send({
+        success: true,
+        user: {
+          id: decoded.id,
+          email: decoded.email,
+          role: decoded.role || "agent",
+          plan: decoded.plan || "growth",
+          status: decoded.status || "active",
+          subscribed: decoded.subscribed ?? true,
+        },
+      });
     } catch (err) {
-      return reply.code(401).send({ error: "UNAUTHORIZED" });
+      return reply.code(401).send({ error: "UNAUTHORIZED", message: "Invalid or expired token" });
     }
   });
 }
