@@ -36,6 +36,7 @@ import * as supportopsRoutesMod from "../supportops/routes/supportops.js";
 import * as ticketRulesRoutesMod from "../supportops/routes/ticketRules.js";
 import * as ticketServiceRoutesMod from "../supportops/routes/ticketService.js";
 import * as ticketsRoutesMod from "../supportops/routes/tickets.js";
+import * as billingRoutes from "../supportops/routes/billingRoutes.js";
 import * as ticketsLegacyRoutesMod from "../supportops/routes/ticketsRoutes.js";
 
 dotenv.config();
@@ -219,6 +220,7 @@ async function start() {
   await mount("supportops/ticket-rules", ticketRulesRoutesMod, "/api/v1/supportops/ticket-rules");
   await mount("supportops/ticket-service", ticketServiceRoutesMod, "/api/v1/supportops/ticket-service");
   await mount("supportops/tickets-v2", ticketsLegacyRoutesMod, "/api/v1/supportops/tickets-v2");
+  await mount("supportops/billing", billingRoutes, "/api/v1/supportops/billing");
 
   // Core base supportops aggregator plugin registered without nested ticket overrides
   await mount("supportops/supportops", supportopsRoutesMod, "/api/v1/supportops");
