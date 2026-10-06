@@ -13,9 +13,14 @@ export function AuthProvider({ children = null } = {}) {
   const [initializing, setInitializing] = useState(true);
   const navigate = useNavigate();
 
+  // Helper to resolve token across key naming conventions
+  const getStoredToken = () =>
+    localStorage.getItem("authToken") || localStorage.getItem("token");
+
   const logout = useCallback(
     (redirect = true) => {
       localStorage.removeItem("authToken");
+      localStorage.removeItem("token");
       localStorage.removeItem("user");
       setUser(null);
       setSubscription("free");
@@ -32,9 +37,9 @@ export function AuthProvider({ children = null } = {}) {
 
   const refreshSession = useCallback(
     async (explicitToken = null) => {
-      const token = explicitToken || localStorage.getItem("authToken");
+      const token = explicitToken || getStoredToken();
 
-      // Early exit if no token exists — avoids sending unauthenticated network requests
+      // Early exit for unauthenticated guests — prevents unnecessary blocking calls
       if (!token) {
         setUser(null);
         setSubscription("free");
@@ -47,7 +52,6 @@ export function AuthProvider({ children = null } = {}) {
       try {
         setLoading(true);
 
-        // Verify token against backend /me endpoint
         const response = await fetch(`${BASE_URL}/api/v1/auth/me`, {
           headers: {
             "Content-Type": "application/json",
@@ -56,7 +60,6 @@ export function AuthProvider({ children = null } = {}) {
         });
 
         if (response.status === 401) {
-          // Token is expired or invalid — clear state without forcing harsh redirects on public pages
           logout(false);
           return { tier: "free", role: "user" };
         }
@@ -74,21 +77,27 @@ export function AuthProvider({ children = null } = {}) {
         setUser(userPayload);
         setSubscription(activeTier);
         setRole(activeRole);
+
+        // Keep both storage formats synchronized
+        localStorage.setItem("authToken", token);
+        localStorage.setItem("token", token);
         localStorage.setItem("user", JSON.stringify(userPayload));
 
         return { tier: activeTier, role: activeRole };
       } catch (err) {
         console.warn("[Auth] Session verification fallback:", err.message);
 
-        // Fallback to local storage cache if network fails (offline tolerance)
         const storedUser = localStorage.getItem("user");
         if (storedUser) {
           try {
             const parsed = JSON.parse(storedUser);
             setUser({ ...parsed, token });
-            setSubscription(parsed.subscription || "free");
+            setSubscription(parsed.subscription || parsed.tier || "free");
             setRole(parsed.role || "user");
-            return { tier: parsed.subscription || "free", role: parsed.role || "user" };
+            return {
+              tier: parsed.subscription || parsed.tier || "free",
+              role: parsed.role || "user",
+            };
           } catch (e) {
             logout(false);
           }
@@ -105,10 +114,9 @@ export function AuthProvider({ children = null } = {}) {
   );
 
   useEffect(() => {
-    // Wake up backend non-blockingly
     fetch(`${BASE_URL}/api/health`).catch(() => console.log("Backend waking up..."));
 
-    const token = localStorage.getItem("authToken");
+    const token = getStoredToken();
     if (token) {
       refreshSession(token);
     } else {
@@ -137,6 +145,7 @@ export function AuthProvider({ children = null } = {}) {
   async function login({ user: userData, token, targetLocation }) {
     if (token) {
       localStorage.setItem("authToken", token);
+      localStorage.setItem("token", token);
     }
     if (userData) {
       localStorage.setItem("user", JSON.stringify(userData));
@@ -146,13 +155,10 @@ export function AuthProvider({ children = null } = {}) {
     redirectByTier(tier, userRole, targetLocation);
   }
 
-  /**
-   * Universal fetch wrapper with optional 401 auto-logout configuration.
-   */
   const authFetch = useCallback(
     async (endpoint, options = {}) => {
       const { skipLogoutOn401 = false, ...fetchOptions } = options;
-      const token = user?.token || localStorage.getItem("authToken");
+      const token = user?.token || getStoredToken();
 
       const headers = {
         "Content-Type": "application/json",

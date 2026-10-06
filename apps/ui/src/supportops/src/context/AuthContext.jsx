@@ -1,6 +1,6 @@
 // supportops/src/context/AuthContext.jsx
 // SupportOps has NO login of its own. It reads the signed-in user from the main app's AuthProvider.
-// Kept at this path so existing `import { useAuth } from "../context/AuthContext"` lines still work.
+// Unauthenticated users are allowed guest access so they can view the Pricing page and subscribe.
 import { useContext, useMemo } from "react";
 import { AuthContext as MainAuthContext } from "../../../context/AuthProvider"; // apps/ui/src/context/AuthProvider.jsx
 import { AccessContext } from "../../../context/AccessProvider";
@@ -9,9 +9,11 @@ import { AccessContext } from "../../../context/AccessProvider";
  * Determines the user's role inside SupportOps.
  * Priority:
  * 1. App-specific role: `access.apps.supportops.role`
- * 2. Main platform role fallback: "admin" if user/main role is "admin", else "agent"
+ * 2. Main platform role fallback: "admin" if user/main role is "admin", "agent" if logged in, else "guest"
  */
 function supportOpsRole(user, mainRole, access) {
+  if (!user) return "guest";
+
   const appRole = access?.apps?.supportops?.role;
   if (appRole) return appRole;
 
@@ -29,15 +31,21 @@ export function useAuth() {
   const { user, loading, initializing, logout, authFetch, role: mainRole } = main;
 
   const role = supportOpsRole(user, mainRole, access);
-  const isAccessLoading = Boolean(access?.loading);
-  const isAuthLoading = Boolean(loading || initializing || isAccessLoading);
+
+  // If no token/user exists, don't hold guest users in an auth loading state
+  const isAccessLoading = Boolean(user && access?.loading);
+  const isAuthLoading = Boolean((loading || initializing) && user) || isAccessLoading;
 
   return useMemo(
     () => ({
-      user: user ? { ...user, role } : null,
+      // Provide a baseline guest profile when no token is present so Pricing/Subscription components don't crash on user property reads
+      user: user
+        ? { ...user, role }
+        : { id: null, email: null, role: "guest", isGuest: true },
       role,
       loading: isAuthLoading,
       isAuth: Boolean(user),
+      isGuest: !user,
       logout,
       authFetch,
     }),

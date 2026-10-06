@@ -5,6 +5,7 @@ import { useToast } from "./ToastContext.jsx";
 import { useAuth } from "../hooks/useAuth";
 
 export default function Register() {
+  const [intent, setIntent] = useState("launch_swarm"); // "launch_swarm" | "explore_agents"
   const [email, setEmail] = useState("");
   const [organization, setOrganization] = useState("");
   const [password, setPassword] = useState("");
@@ -16,9 +17,6 @@ export default function Register() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Retrieve origin route or fallback to main application root
-  const from = location.state?.from || "/";
-
   async function handleRegister(e) {
     e.preventDefault();
     setLoading(true);
@@ -26,7 +24,12 @@ export default function Register() {
     try {
       const res = await apiFetch("/auth/register", {
         method: "POST",
-        body: JSON.stringify({ email, accessKey: password, organization }),
+        body: JSON.stringify({
+          email,
+          accessKey: password,
+          organization,
+          intent, // Passes selection to backend if required
+        }),
       });
 
       if (!res?.token || !res?.user) {
@@ -41,8 +44,19 @@ export default function Register() {
         token: res.token,
       });
 
-      addToast("Welcome to the Swarm! 🎉", "success");
-      navigate(from, { replace: true });
+      addToast("Welcome to the Workforce! 🎉", "success");
+
+      // Dynamic target route based on intent selection
+      let targetPath = intent === "explore_agents" ? "/agents" : "/swarm";
+
+      // Respect explicit redirect state if present
+      if (location.state?.from && location.state.from !== "/") {
+        targetPath = location.state.from;
+      } else if (res.redirectTo && res.redirectTo !== "/") {
+        targetPath = res.redirectTo;
+      }
+
+      navigate(targetPath, { replace: true });
     } catch (err) {
       console.error("Register error:", err);
       addToast(err.message || "Registration failed", "error");
@@ -52,8 +66,8 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#020617] relative overflow-hidden px-4">
-      {/* Dynamic Background Glows for "Borderless" look */}
+    <div className="min-h-screen flex items-center justify-center bg-[#020617] relative overflow-hidden px-4 py-8">
+      {/* Background Glows */}
       <div className="absolute top-1/4 -left-10 w-72 h-72 bg-blue-600/20 blur-[100px] rounded-full pointer-events-none" />
       <div className="absolute bottom-1/4 -right-10 w-72 h-72 bg-purple-600/20 blur-[100px] rounded-full pointer-events-none" />
 
@@ -66,14 +80,46 @@ export default function Register() {
           <div className="h-1 w-12 bg-blue-500 mx-auto mt-2 rounded-full shadow-[0_0_10px_#3b82f6]" />
         </div>
 
-        {/* The Form - No Border, High Colour Depth */}
+        {/* The Form */}
         <form
           onSubmit={handleRegister}
-          className="bg-slate-900/60 backdrop-blur-2xl rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-8 space-y-5"
+          className="bg-slate-900/60 backdrop-blur-2xl rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-8 space-y-5 border border-slate-800/50"
         >
           <div className="space-y-1">
             <h2 className="text-2xl font-bold text-white tracking-tight">Join the Workforce</h2>
-            <p className="text-sm text-slate-400">Scale your operations with agentic swarms.</p>
+            <p className="text-sm text-slate-400">Select your entry goal to configure your workspace.</p>
+          </div>
+
+          {/* Intent Switcher: Launch Swarm vs Explore Agents */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
+              Primary Objective
+            </label>
+            <div className="grid grid-cols-2 gap-2 bg-slate-950/70 p-1.5 rounded-2xl border border-slate-800/60">
+              <button
+                type="button"
+                onClick={() => setIntent("launch_swarm")}
+                className={`py-2.5 px-3 rounded-xl text-xs font-semibold transition-all flex flex-col items-center justify-center gap-1 ${intent === "launch_swarm"
+                  ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/40"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50"
+                  }`}
+              >
+                <span>Launch Swarm</span>
+                <span className="text-[9px] opacity-75 font-normal">Orchestrate Fleet</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIntent("explore_agents")}
+                className={`py-2.5 px-3 rounded-xl text-xs font-semibold transition-all flex flex-col items-center justify-center gap-1 ${intent === "explore_agents"
+                  ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-900/40"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50"
+                  }`}
+              >
+                <span>Explore Agents</span>
+                <span className="text-[9px] opacity-75 font-normal">Browse Directory</span>
+              </button>
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -87,7 +133,7 @@ export default function Register() {
                 placeholder="e.g. Nexus Industries"
                 value={organization}
                 onChange={(e) => setOrganization(e.target.value)}
-                className="w-full bg-slate-950/50 border-none text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-slate-700"
+                className="w-full bg-slate-950/50 border border-slate-800/80 text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all placeholder:text-slate-700"
                 required
               />
             </div>
@@ -102,7 +148,7 @@ export default function Register() {
                 placeholder="evans@nexus.ai"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-slate-950/50 border-none text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all placeholder:text-slate-700"
+                className="w-full bg-slate-950/50 border border-slate-800/80 text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all placeholder:text-slate-700"
                 required
               />
             </div>
@@ -118,10 +164,9 @@ export default function Register() {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-950/50 border-none text-white px-4 py-3 pr-12 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all placeholder:text-slate-700"
+                  className="w-full bg-slate-950/50 border border-slate-800/80 text-white px-4 py-3 pr-12 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-transparent transition-all placeholder:text-slate-700"
                   required
                 />
-                {/* High Visibility Icon inside the form */}
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
@@ -144,10 +189,14 @@ export default function Register() {
             </div>
           </div>
 
+          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full relative overflow-hidden group bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white py-3.5 rounded-xl font-bold transition-all shadow-lg shadow-blue-900/20 active:scale-95 disabled:opacity-70"
+            className={`w-full relative overflow-hidden group py-3.5 rounded-xl font-bold transition-all shadow-lg active:scale-95 disabled:opacity-70 text-white ${intent === "explore_agents"
+              ? "bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-purple-900/30"
+              : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-900/30"
+              }`}
           >
             <span className="relative z-10 flex items-center justify-center gap-2">
               {loading ? (
@@ -156,10 +205,12 @@ export default function Register() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Initializing...
+                  Initializing Workspace...
                 </>
+              ) : intent === "explore_agents" ? (
+                "Continue to Agent Directory"
               ) : (
-                "Create Nexus Account"
+                "Launch Swarm Environment"
               )}
             </span>
           </button>
@@ -167,7 +218,7 @@ export default function Register() {
           <div className="text-center">
             <Link
               to="/login"
-              state={{ from }}
+              state={{ from: location.state?.from }}
               className="text-xs font-semibold text-slate-500 hover:text-blue-400 transition-colors uppercase tracking-widest"
             >
               Already Registered? <span className="text-blue-500">Sign In</span>

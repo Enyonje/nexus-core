@@ -37,20 +37,16 @@ export default function LandingPage() {
     }
   };
 
-  // Where each kind of visitor should go:
-  //  - signed out            -> sign up, then (via rememberReturn) back into SupportOps
-  //  - signed in, no plan    -> pricing (the 14-day trial lives there)
-  //  - signed in, has a plan -> the dashboard for their role
+  // Direct visitors to pricing packages; active subscribers open their dashboard
   const handleLaunchClick = (e) => {
     if (e) e.preventDefault();
     if (busy) return;
 
-    if (!isAuth) {
-      rememberReturn(ROUTES.agent.dashboard);
-      navigate(ROUTES.signup);
-      return;
+    if (isAuth && plan.subscribed) {
+      navigate(homeForRole(role));
+    } else {
+      navigate(ROUTES.pricing);
     }
-    navigate(plan.subscribed ? homeForRole(role) : ROUTES.pricing);
   };
 
   const goLogin = () => {
@@ -60,11 +56,9 @@ export default function LandingPage() {
 
   const ctaLabel = busy
     ? "Checking Session…"
-    : !isAuth
-      ? "Start Free Trial"
-      : plan.subscribed
-        ? "Open Dashboard"
-        : "Choose a Plan";
+    : isAuth && plan.subscribed
+      ? "Open Dashboard"
+      : "View Plans & Pricing";
 
   const featureTabs = [
     {
@@ -132,25 +126,15 @@ export default function LandingPage() {
         </nav>
 
         <div className="flex items-center gap-3">
-          {!isAuth ? (
-            <>
-              <button
-                type="button"
-                onClick={goLogin}
-                className="px-4 py-2 rounded-xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800 hover:border-slate-700 text-slate-200 text-sm font-semibold transition-all inline-flex items-center gap-2"
-              >
-                <LogIn className="w-4 h-4 text-indigo-400" /> Log In
-              </button>
-              <button
-                type="button"
-                onClick={handleLaunchClick}
-                disabled={busy}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/20 transition-all disabled:opacity-50"
-              >
-                Sign Up
-              </button>
-            </>
-          ) : (
+          <button
+            type="button"
+            onClick={() => navigate(ROUTES.pricing)}
+            className="px-4 py-2 rounded-xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800 hover:border-slate-700 text-slate-200 text-sm font-semibold transition-all inline-flex items-center gap-2"
+          >
+            Pricing
+          </button>
+
+          {isAuth && plan.subscribed ? (
             <button
               type="button"
               onClick={handleLaunchClick}
@@ -158,6 +142,15 @@ export default function LandingPage() {
               className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/20 transition-all disabled:opacity-50 inline-flex items-center gap-2"
             >
               <LayoutDashboard className="w-4 h-4" /> Open Dashboard
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleLaunchClick}
+              disabled={busy}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/20 transition-all disabled:opacity-50"
+            >
+              Get Started
             </button>
           )}
         </div>
@@ -200,24 +193,6 @@ export default function LandingPage() {
             Explore Features
           </button>
         </div>
-
-        {/* SECONDARY LINKS */}
-        {!busy && (
-          <p className="mt-4 text-sm text-slate-500">
-            {!isAuth && (
-              <>
-                Already have an account?{" "}
-                <button type="button" onClick={goLogin} className="text-indigo-400 hover:underline font-medium">
-                  Log in
-                </button>
-                <span className="mx-2">·</span>
-              </>
-            )}
-            <button type="button" onClick={() => navigate(ROUTES.pricing)} className="text-indigo-400 hover:underline font-medium">
-              View pricing
-            </button>
-          </p>
-        )}
 
         {/* STATS HIGHLIGHT */}
         <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-4xl pt-8 border-t border-slate-800/80">
@@ -345,15 +320,6 @@ export default function LandingPage() {
             >
               {ctaLabel}
             </button>
-            {!isAuth && (
-              <button
-                type="button"
-                onClick={goLogin}
-                className="w-full sm:w-auto px-8 py-4 rounded-xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800 text-slate-200 text-lg font-semibold transition-all"
-              >
-                Sign In
-              </button>
-            )}
           </div>
         </div>
       </section>
