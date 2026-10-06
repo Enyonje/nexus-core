@@ -4,6 +4,7 @@ import websocket from "@fastify/websocket";
 import fastifyPostgres from "@fastify/postgres";
 import fastifyJwt from "@fastify/jwt";
 import cookie from "@fastify/cookie";
+import fp from "fastify-plugin";
 import dotenv from "dotenv";
 
 // Import validated env first
@@ -50,8 +51,8 @@ function resolvePlugin(mod, label = "unknown") {
     picked = mod.default;
   } else if (typeof mod === "function" && !isClassConstructor(mod)) {
     picked = mod;
-  } else {
-    for (const key of Object.keys(mod || {})) {
+  } else if (mod && typeof mod === "object") {
+    for (const key of Object.keys(mod)) {
       if (typeof mod[key] === "function" && !isClassConstructor(mod[key])) {
         picked = mod[key];
         break;
@@ -61,10 +62,13 @@ function resolvePlugin(mod, label = "unknown") {
 
   if (!picked) {
     console.warn(`[routes] ${label}: exports no plugin function, registering empty plugin`);
-    return async function emptyPlugin() { };
+    return fp(async function emptyPlugin() {});
   }
 
-  return picked;
+  // Wrap with fastify-plugin to break encapsulation where necessary
+  return typeof picked[Symbol.for("skip-override")] !== "undefined"
+    ? picked
+    : fp(picked, { name: label });
 }
 
 const app = Fastify({
@@ -73,7 +77,8 @@ const app = Fastify({
 });
 
 async function start() {
-  const mount = (label, mod, prefix) => app.register(resolvePlugin(mod, label), prefix ? { prefix } : undefined);
+  const mount = (label, mod, prefix) =>
+    app.register(resolvePlugin(mod, label), prefix ? { prefix } : undefined);
 
   /* ========================= CORS ========================= */
   const allowedOrigins = [
@@ -83,26 +88,25 @@ async function start() {
     "http://localhost:5173",
   ];
 
-  await app.register(cors, () => (req, cb) => {
-    const origin = req.headers.origin;
-    const isWidget = req.url.startsWith("/api/v1/supportops/chat/widget/");
-    const allowed = !origin || isWidget || allowedOrigins.includes(origin);
-
-    cb(null, {
-      origin: allowed,
-      credentials: !isWidget,
-      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowedHeaders: [
-        "Content-Type",
-        "Authorization",
-        "X-Requested-With",
-        "X-Org-Id",
-        "Accept",
-        "Cache-Control",
-        "Last-Event-ID",
-      ],
-      exposedHeaders: ["Content-Type", "Cache-Control", "Connection"],
-    });
+  await app.register(cors, {
+    origin: (origin, cb) => {
+      // Allow requests with no origin (mobile apps, curl, etc.)
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(null, false);
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "X-Org-Id",
+      "Accept",
+      "Cache-Control",
+      "Last-Event-ID",
+    ],
+    exposedHeaders: ["Content-Type", "Cache-Control", "Connection"],
   });
 
   /* ========================= PLUGINS ========================= */
@@ -145,24 +149,28 @@ async function start() {
   });
 
   app.get("/api/v1/agents/activity/stream", async (request, reply) => {
-    reply.hijack();
     reply.raw.writeHead(200, {
-      ...reply.getHeaders(),
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
+      "Access-Control-Allow-Origin": request.headers.origin || "*",
     });
     reply.raw.write("retry: 3000\n\n");
-    reply.raw.write(`data: ${JSON.stringify({ status: "connected", timestamp: new Date() })}\n\n`);
+    reply.raw.write(`data: ${JSON.stringify({ status: "connected", timestamp: new Date().toISOString() })}\n\n`);
 
-    const keepAliveInterval = setInterval(() => reply.raw.write(`: keepalive\n\n`), 15000);
-    request.raw.on("close", () => clearInterval(keepAliveInterval));
+    const keepAliveInterval = setInterval(() => {
+      reply.raw.write(`: keepalive\n\n`);
+    }, 15000);
+
+    request.raw.on("close", () => {
+      clearInterval(keepAliveInterval);
+    });
   });
 
   /* ========================= CORE ROUTES ========================= */
   await mount("auth", authRoutesMod, "/api/auth");
-  await mount("auth-v1", authRoutesMod, "/api/v1/auth"); // Serves GET /api/v1/auth/me seamlessly
+  await mount("auth-v1", authRoutesMod, "/api/v1/auth");
   await mount("goals", goalsRoutesMod, "/api/goals");
   await mount("admin", adminRoutesMod, "/api/admin");
   await mount("executions", executionsRoutesMod, "/api/executions");
@@ -208,7 +216,10 @@ async function start() {
     reply.code(status).send({
       statusCode: status,
       error: error.name || "Internal Server Error",
-      message: status >= 500 && env.NODE_ENV === "production" ? "An error occurred" : error.message || "An error occurred",
+      message:
+        status >= 500 && env.NODE_ENV === "production"
+          ? "An error occurred"
+          : error.message || "An error occurred",
     });
   });
 
