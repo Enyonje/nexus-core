@@ -22,8 +22,9 @@ async function call(method, url, body) {
         headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(org ? { "X-Org-Id": org } : {}) },
         body: body ? JSON.stringify(body) : undefined,
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.message || `Request failed (${res.status})`);
+    if (data === null) throw new Error("The server did not answer with JSON. Check that VITE_API_URL points at your API.");
     return data;
 }
 
@@ -36,7 +37,7 @@ export default function PricingPage() {
 
     useEffect(() => {
         call("GET", API_ENDPOINTS.billing.plans("supportops"))
-            .then((list) => setApp(list.find((a) => a.app === "supportops") ?? null))
+            .then((list) => setApp((Array.isArray(list) ? list : []).find((a) => a.app === "supportops") ?? null))
             .catch((e) => toast.error(e.message));
     }, []);
 

@@ -15,8 +15,13 @@ async function call(method, url, body) {
         headers: { ...authHeaders(), ...(body ? { "Content-Type": "application/json" } : {}) },
         body: body ? JSON.stringify(body) : undefined,
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+        const err = new Error(data?.message || `Request failed (${res.status})`);
+        err.code = data?.error;
+        throw err;
+    }
+    if (data === null) throw new Error("The server did not answer with JSON. Check that VITE_API_URL points at your API.");
     return data;
 }
 
@@ -59,12 +64,16 @@ export default function TicketInboxPage() {
     const [mode, setMode] = useState("reply"); // reply | note
     const [draft, setDraft] = useState("");
     const [busy, setBusy] = useState(false);
+    const [tplOpen, setTplOpen] = useState(false);
+    const [templates, setTemplates] = useState(null);
+    const [tpl, setTpl] = useState(null);
+    const [params, setParams] = useState([]);
     const bottom = useRef(null);
     const ref = useRef({});
     ref.current = { filter, activeNo };
 
     const loadList = useCallback(async () => {
-        try { setTickets(await call("GET", SUPPORTOPS_API.tickets("", { status: ref.current.filter, limit: 50 }))); }
+        try { const r = await call("GET", SUPPORTOPS_API.tickets("", { status: ref.current.filter, limit: 50 })); setTickets(Array.isArray(r) ? r : []); }
         catch (e) { toast.error(e.message); }
     }, []);
     const loadDetail = useCallback(async (no) => {
@@ -85,6 +94,30 @@ export default function TicketInboxPage() {
         return () => c.abort();
     }, [loadList, loadDetail]);
 
+    async function openTemplates() {
+        setTplOpen(true);
+        if (templates !== null) return;
+        try { const r = await call("GET", SUPPORTOPS_API.tickets("/whatsapp/templates")); setTemplates(Array.isArray(r) ? r : []); }
+        catch (err) { toast.error(err.message); setTemplates([]); }
+    }
+
+    function pickTemplate(key) {
+        const t = (templates ?? []).find((x) => `${x.name}|${x.language}` === key) ?? null;
+        setTpl(t);
+        setParams(t ? Array(t.paramCount).fill("") : []);
+    }
+
+    async function sendTemplate() {
+        setBusy(true);
+        try {
+            await call("POST", SUPPORTOPS_API.tickets(`/${activeNo}/reply`), { template: { name: tpl.name, language: tpl.language, params } });
+            setTplOpen(false); setTpl(null); setParams([]);
+            await loadDetail(activeNo);
+            loadList();
+        } catch (err) { toast.error(err.message); } finally { setBusy(false); }
+    }
+
+    const preview = tpl ? tpl.body.replace(/\{\{(\d+)\}\}/g, (_, n) => params[n - 1] || `{{${n}}}`) : "";
     const canReply = Boolean(detail) && detail.channel !== "voice" && detail.status !== "closed";
 
     async function submit(e) {
@@ -97,7 +130,10 @@ export default function TicketInboxPage() {
             setDraft("");
             await loadDetail(activeNo);
             loadList();
-        } catch (err) { toast.error(err.message); } // includes "24 hours" and "not connected" explanations
+        } catch (err) {
+            toast.error(err.message); // includes "24 hours" and "not connected" explanations
+            if (err.code === "WINDOW_CLOSED" && detail?.channel === "whatsapp") openTemplates();
+        }
         finally { setBusy(false); }
     }
 
@@ -145,7 +181,7 @@ export default function TicketInboxPage() {
                             </header>
 
                             <div className="flex-1 overflow-y-auto p-5 space-y-2">
-                                {detail.messages.map((m) => (
+                                {(detail.messages ?? []).map((m) => (
                                     <div key={m.id} className={`flex ${m.direction === "in" ? "justify-start" : "justify-end"}`}>
                                         <div className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap break-words ${m.direction === "in" ? "bg-slate-800" : m.direction === "note" ? "bg-amber-500/10 border border-amber-500/30 text-amber-100" : "bg-blue-600 text-white"}`}>
                                             {m.direction === "note" && <span className="block text-[10px] uppercase opacity-70 mb-0.5">Internal note</span>}{m.body}
@@ -158,8 +194,40 @@ export default function TicketInboxPage() {
                             {detail.channel === "voice" ? (
                                 <p className="px-5 py-3 text-xs text-amber-200 border-t border-slate-800/80">Phone tickets can't be answered in writing. Call the customer back, then add a note and resolve.</p>
                             ) : null}
+                            {tplOpen && detail.channel === "whatsapp" && (
+                                <div className="p-3 border-t border-slate-800/80 space-y-2 bg-slate-950/40">
+                                    <div className="flex items-center justify-between text-xs">
+                                        <span className="font-semibold">WhatsApp template <span className="font-normal text-slate-500">(works after the 24-hour window)</span></span>
+                                        <button type="button" onClick={() => setTplOpen(false)} className="text-slate-400 hover:text-white">Close</button>
+                                    </div>
+                                    {templates === null ? <p className="text-xs text-slate-500">Loading templates…</p>
+                                        : templates.length === 0 ? <p className="text-xs text-slate-500">No approved templates found. Create one in WhatsApp Manager and wait for Meta's approval.</p>
+                                            : (
+                                                <>
+                                                    <select value={tpl ? `${tpl.name}|${tpl.language}` : ""} onChange={(e) => pickTemplate(e.target.value)}
+                                                        className="w-full px-3 py-2 rounded-lg border border-white/10 bg-slate-950 text-sm">
+                                                        <option value="">Choose a template…</option>
+                                                        {templates.filter((t) => t.supported).map((t) => <option key={`${t.name}|${t.language}`} value={`${t.name}|${t.language}`}>{t.name} ({t.language})</option>)}
+                                                    </select>
+                                                    {tpl && (
+                                                        <>
+                                                            <p className="text-xs text-slate-300 whitespace-pre-wrap rounded-lg bg-slate-900 p-2">{preview}</p>
+                                                            {params.map((v, i) => (
+                                                                <input key={i} value={v} onChange={(e) => setParams(params.map((p, j) => (j === i ? e.target.value : p)))}
+                                                                    placeholder={`Value for {{${i + 1}}}`} maxLength={200}
+                                                                    className="w-full px-3 py-2 rounded-lg border border-white/10 bg-slate-950 text-sm" />
+                                                            ))}
+                                                            <button type="button" onClick={sendTemplate} disabled={busy || params.some((p) => !p.trim())}
+                                                                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold disabled:opacity-50">Send template</button>
+                                                        </>
+                                                    )}
+                                                </>
+                                            )}
+                                </div>
+                            )}
                             <form onSubmit={submit} className="p-3 border-t border-slate-800/80 space-y-2">
                                 <div className="flex gap-2 text-xs">
+                                    {detail.channel === "whatsapp" && canReply && <button type="button" onClick={openTemplates} className="px-2.5 py-1 rounded-md bg-emerald-700/70 text-white">Use template</button>}
                                     {canReply && <button type="button" onClick={() => setMode("reply")} className={`px-2.5 py-1 rounded-md ${mode === "reply" ? "bg-blue-600" : "bg-slate-800 text-slate-400"}`}>Reply to customer</button>}
                                     <button type="button" onClick={() => setMode("note")} className={`flex items-center gap-1 px-2.5 py-1 rounded-md ${mode === "note" || !canReply ? "bg-amber-600/80" : "bg-slate-800 text-slate-400"}`}><StickyNote className="h-3 w-3" />Internal note</button>
                                 </div>

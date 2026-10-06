@@ -15,8 +15,9 @@ async function call(method, url, body) {
         headers: { ...headers(), ...(body ? { "Content-Type": "application/json" } : {}) },
         body: body ? JSON.stringify(body) : undefined,
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.message || `Request failed (${res.status})`);
+    if (data === null) throw new Error("The server did not answer with JSON. Check that VITE_API_URL points at your API.");
     return data;
 }
 
@@ -54,7 +55,7 @@ export default function LiveChatPage() {
     activeRef.current = activeId;
 
     const loadList = useCallback(async () => {
-        try { setConvs(await call("GET", SUPPORTOPS_API.chat("/conversations", { status: "open" }))); }
+        try { const r = await call("GET", SUPPORTOPS_API.chat("/conversations", { status: "open" })); setConvs(Array.isArray(r) ? r : []); }
         catch (err) { toast.error(err.message); }
         finally { setLoading(false); }
     }, []);
@@ -77,7 +78,7 @@ export default function LiveChatPage() {
 
     useEffect(() => {
         if (!activeId) return;
-        call("GET", SUPPORTOPS_API.chat(`/conversations/${activeId}/messages`)).then(setMessages).catch((e) => toast.error(e.message));
+        call("GET", SUPPORTOPS_API.chat(`/conversations/${activeId}/messages`)).then((m) => setMessages(Array.isArray(m) ? m : [])).catch((e) => toast.error(e.message));
     }, [activeId]);
 
     useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);

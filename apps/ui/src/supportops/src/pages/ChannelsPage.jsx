@@ -34,7 +34,10 @@ const CATALOG = {
     },
     email: {
         label: "Email", icon: Mail, blurb: "Forward your support inbox",
-        fields: [{ name: "supportAddress", label: "Support address", placeholder: "support@yourcompany.com" }],
+        fields: [
+            { name: "supportAddress", label: "Support address (verified sender)", placeholder: "support@yourcompany.com" },
+            { name: "postmarkToken", label: "Postmark server token (for replies)", secret: true },
+        ],
         setup: "Forward your support mailbox, or your email provider's inbound webhook, to the URL below.",
     },
     web: {
@@ -65,8 +68,9 @@ async function call(method, url, body) {
         },
         body: body ? JSON.stringify(body) : undefined,
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.message || `Request failed (${res.status})`);
+    if (data === null) throw new Error("The server did not answer with JSON. Check that VITE_API_URL points at your API.");
     return data;
 }
 
