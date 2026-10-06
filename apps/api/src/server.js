@@ -199,6 +199,7 @@ async function start() {
   await mount("executions", executionsRoutesMod, "/api/executions");
   await mount("audit", auditRoutesMod, "/api/audit");
   await mount("billing", billingRoutesMod, "/api/billing");
+  await mount("billing-v1", billingRoutesMod, "/api/v1/billing"); // Added to satisfy /api/v1/billing/plans calls
   await mount("payments", paymentsRoutesMod, "/api/payments");
   await mount("stream", streamRoutesMod, "/api/stream");
   await mount("stripe", stripeRoutesMod, "/api/stripe");
