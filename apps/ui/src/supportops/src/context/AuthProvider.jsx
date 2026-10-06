@@ -1,4 +1,4 @@
-import { createContext, useEffect, useState, useCallback } from "react";
+import { createContext, useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
 export const AuthContext = createContext(null);
@@ -31,35 +31,70 @@ export function AuthProvider({ children = null } = {}) {
   );
 
   const refreshSession = useCallback(
-    async (token) => {
-      try {
-        const storedUser = localStorage.getItem("user");
-        let parsedUser = storedUser ? JSON.parse(storedUser) : null;
+    async (explicitToken = null) => {
+      const token = explicitToken || localStorage.getItem("authToken");
 
-        if (!parsedUser) {
-          parsedUser = {
-            id: "beta-user",
-            email: "beta@nexus.com",
-            organization: "Nexus Core",
-          };
+      // Early exit if no token exists — avoids sending unauthenticated network requests
+      if (!token) {
+        setUser(null);
+        setSubscription("free");
+        setRole("user");
+        setLoading(false);
+        setInitializing(false);
+        return { tier: "free", role: "user" };
+      }
+
+      try {
+        setLoading(true);
+
+        // Verify token against backend /me endpoint
+        const response = await fetch(`${BASE_URL}/api/v1/auth/me`, {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.status === 401) {
+          // Token is expired or invalid — clear state without forcing harsh redirects on public pages
+          logout(false);
+          return { tier: "free", role: "user" };
         }
 
-        const activeUser = {
-          ...parsedUser,
-          token,
-        };
+        if (!response.ok) {
+          throw new Error(`Auth verification failed with status ${response.status}`);
+        }
 
-        const activeTier = parsedUser?.subscription || "free";
-        const activeRole = parsedUser?.role || "user";
+        const data = await response.json();
+        const activeUser = data.user || data;
+        const activeTier = activeUser?.subscription || activeUser?.tier || "free";
+        const activeRole = activeUser?.role || "user";
 
-        setUser(activeUser);
+        const userPayload = { ...activeUser, token };
+        setUser(userPayload);
         setSubscription(activeTier);
         setRole(activeRole);
+        localStorage.setItem("user", JSON.stringify(userPayload));
 
         return { tier: activeTier, role: activeRole };
       } catch (err) {
-        console.warn("Session refresh failed:", err.message);
-        logout(false);
+        console.warn("[Auth] Session verification fallback:", err.message);
+
+        // Fallback to local storage cache if network fails (offline tolerance)
+        const storedUser = localStorage.getItem("user");
+        if (storedUser) {
+          try {
+            const parsed = JSON.parse(storedUser);
+            setUser({ ...parsed, token });
+            setSubscription(parsed.subscription || "free");
+            setRole(parsed.role || "user");
+            return { tier: parsed.subscription || "free", role: parsed.role || "user" };
+          } catch (e) {
+            logout(false);
+          }
+        } else {
+          logout(false);
+        }
         return { tier: "free", role: "user" };
       } finally {
         setLoading(false);
@@ -70,6 +105,7 @@ export function AuthProvider({ children = null } = {}) {
   );
 
   useEffect(() => {
+    // Wake up backend non-blockingly
     fetch(`${BASE_URL}/api/health`).catch(() => console.log("Backend waking up..."));
 
     const token = localStorage.getItem("authToken");
@@ -81,13 +117,13 @@ export function AuthProvider({ children = null } = {}) {
     }
   }, [refreshSession]);
 
-  function redirectByTier(tier, role, targetLocation = null) {
+  function redirectByTier(tier, userRole, targetLocation = null) {
     if (targetLocation && targetLocation !== "/login" && targetLocation !== "/register") {
       navigate(targetLocation, { replace: true });
       return;
     }
 
-    if (role === "admin") {
+    if (userRole === "admin") {
       navigate("/admin", { replace: true });
     } else if (tier === "enterprise") {
       navigate("/streams", { replace: true });
@@ -106,53 +142,62 @@ export function AuthProvider({ children = null } = {}) {
       localStorage.setItem("user", JSON.stringify(userData));
     }
 
-    const { tier, role: userRole } = await refreshSession(token || localStorage.getItem("authToken"));
+    const { tier, role: userRole } = await refreshSession(token);
     redirectByTier(tier, userRole, targetLocation);
   }
 
-  async function authFetch(endpoint, options = {}) {
-    const token = user?.token || localStorage.getItem("authToken");
-    const headers = {
-      ...(options.headers || {}),
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
+  /**
+   * Universal fetch wrapper with optional 401 auto-logout configuration.
+   */
+  const authFetch = useCallback(
+    async (endpoint, options = {}) => {
+      const { skipLogoutOn401 = false, ...fetchOptions } = options;
+      const token = user?.token || localStorage.getItem("authToken");
 
-    const formattedEndpoint = endpoint.startsWith("/api")
-      ? endpoint
-      : `/api${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+      const headers = {
+        "Content-Type": "application/json",
+        ...(fetchOptions.headers || {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
 
-    const res = await fetch(`${BASE_URL}${formattedEndpoint}`, {
-      ...options,
-      headers,
-    });
+      const formattedEndpoint = endpoint.startsWith("/api")
+        ? endpoint
+        : `/api${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
 
-    if (res.status === 401) {
-      logout();
-      throw new Error("Unauthorized");
-    }
+      const res = await fetch(`${BASE_URL}${formattedEndpoint}`, {
+        ...fetchOptions,
+        headers,
+      });
 
-    return res;
-  }
+      if (res.status === 401) {
+        if (!skipLogoutOn401) {
+          logout(true);
+        }
+        throw new Error("Unauthorized");
+      }
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        subscription,
-        role,
-        setSubscription,
-        loading,
-        initializing,
-        login,
-        logout,
-        authFetch,
-        refreshSession,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+      return res;
+    },
+    [user, logout]
   );
+
+  const contextValue = useMemo(
+    () => ({
+      user,
+      subscription,
+      role,
+      setSubscription,
+      loading,
+      initializing,
+      login,
+      logout,
+      authFetch,
+      refreshSession,
+    }),
+    [user, subscription, role, loading, initializing, logout, authFetch, refreshSession]
+  );
+
+  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 }
 
 export default AuthProvider;

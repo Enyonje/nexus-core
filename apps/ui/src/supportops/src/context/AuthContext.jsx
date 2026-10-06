@@ -5,11 +5,18 @@ import { useContext, useMemo } from "react";
 import { AuthContext as MainAuthContext } from "../../../context/AuthProvider"; // apps/ui/src/context/AuthProvider.jsx
 import { AccessContext } from "../../../context/AccessProvider";
 
-// The user's role inside SupportOps.
-// Once the central /me returns `apps.supportops.role`, that is used automatically.
-// Until then: platform admins are admins, everyone else is an agent.
-function supportOpsRole(main, access) {
-  return access?.apps?.supportops?.role ?? (main.role === "admin" ? "admin" : "agent");
+/**
+ * Determines the user's role inside SupportOps.
+ * Priority:
+ * 1. App-specific role: `access.apps.supportops.role`
+ * 2. Main platform role fallback: "admin" if user/main role is "admin", else "agent"
+ */
+function supportOpsRole(user, mainRole, access) {
+  const appRole = access?.apps?.supportops?.role;
+  if (appRole) return appRole;
+
+  const resolvedMainRole = user?.role ?? mainRole;
+  return resolvedMainRole === "admin" ? "admin" : "agent";
 }
 
 export function useAuth() {
@@ -19,19 +26,22 @@ export function useAuth() {
   }
 
   const access = useContext(AccessContext);
-  const { user, loading, initializing, logout, authFetch } = main;
-  const role = supportOpsRole(main, access);
+  const { user, loading, initializing, logout, authFetch, role: mainRole } = main;
+
+  const role = supportOpsRole(user, mainRole, access);
+  const isAccessLoading = Boolean(access?.loading);
+  const isAuthLoading = Boolean(loading || initializing || isAccessLoading);
 
   return useMemo(
     () => ({
       user: user ? { ...user, role } : null,
       role,
-      loading: Boolean(loading || initializing || access?.loading),
+      loading: isAuthLoading,
       isAuth: Boolean(user),
       logout,
       authFetch,
     }),
-    [user, role, loading, initializing, logout, authFetch]
+    [user, role, isAuthLoading, logout, authFetch]
   );
 }
 
