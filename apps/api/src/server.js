@@ -4,6 +4,7 @@ import websocket from "@fastify/websocket";
 import fastifyPostgres from "@fastify/postgres";
 import fastifyJwt from "@fastify/jwt";
 import cookie from "@fastify/cookie";
+import dotenv from "dotenv";
 
 // Import validated env first
 import { env } from "./config/env.js";
@@ -36,6 +37,8 @@ import * as ticketRulesRoutesMod from "../supportops/routes/ticketRules.js";
 import * as ticketServiceRoutesMod from "../supportops/routes/ticketService.js";
 import * as ticketsRoutesMod from "../supportops/routes/tickets.js";
 import * as ticketsLegacyRoutesMod from "../supportops/routes/ticketsRoutes.js";
+
+dotenv.config();
 
 /**
  * Checks if a function is an ES6/class constructor
