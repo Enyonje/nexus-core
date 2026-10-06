@@ -14,6 +14,7 @@ import {
   Users,
   BarChart3,
   Globe,
+  LogIn,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useApp } from "../../../context/AccessProvider";
@@ -45,7 +46,7 @@ export default function LandingPage() {
     if (busy) return;
 
     if (!isAuth) {
-      rememberReturn(ROUTES.agent.dashboard); // the app then sends them to pricing or their own dashboard
+      rememberReturn(ROUTES.agent.dashboard);
       navigate(ROUTES.signup);
       return;
     }
@@ -108,19 +109,69 @@ export default function LandingPage() {
   ];
 
   return (
-    <div className="bg-[#030712] text-slate-100 min-h-screen flex flex-col font-sans overflow-x-hidden relative selection:bg-blue-500 selection:text-white">
+    <div className="bg-[#030712] text-slate-100 min-h-screen flex flex-col font-sans overflow-x-hidden relative selection:bg-indigo-500 selection:text-white">
       {/* BACKGROUND DECORATIVE GRADIENTS */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[500px] bg-gradient-to-b from-blue-600/10 via-indigo-500/5 to-transparent blur-3xl pointer-events-none" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[500px] bg-gradient-to-b from-indigo-600/10 via-blue-500/5 to-transparent blur-3xl pointer-events-none" />
+
+      {/* TOP NAVIGATION BAR */}
+      <header className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between z-20 relative">
+        <div className="flex items-center gap-2 text-indigo-400 font-bold text-xl tracking-tight cursor-pointer" onClick={() => navigate("/")}>
+          <div className="p-2 bg-indigo-500/10 rounded-xl border border-indigo-500/20">
+            <Bot className="w-6 h-6 text-indigo-400" />
+          </div>
+          <span>SupportOps<span className="text-indigo-500">.ai</span></span>
+        </div>
+
+        <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-400">
+          <button onClick={() => scrollToSection("features")} className="hover:text-white transition-colors">
+            Features
+          </button>
+          <button onClick={() => navigate(ROUTES.pricing)} className="hover:text-white transition-colors">
+            Pricing
+          </button>
+        </nav>
+
+        <div className="flex items-center gap-3">
+          {!isAuth ? (
+            <>
+              <button
+                type="button"
+                onClick={goLogin}
+                className="px-4 py-2 rounded-xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800 hover:border-slate-700 text-slate-200 text-sm font-semibold transition-all inline-flex items-center gap-2"
+              >
+                <LogIn className="w-4 h-4 text-indigo-400" /> Log In
+              </button>
+              <button
+                type="button"
+                onClick={handleLaunchClick}
+                disabled={busy}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/20 transition-all disabled:opacity-50"
+              >
+                Sign Up
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={handleLaunchClick}
+              disabled={busy}
+              className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/20 transition-all disabled:opacity-50 inline-flex items-center gap-2"
+            >
+              <LayoutDashboard className="w-4 h-4" /> Open Dashboard
+            </button>
+          )}
+        </div>
+      </header>
 
       {/* HERO SECTION */}
-      <section className="relative pt-24 pb-16 px-4 sm:px-6 max-w-7xl mx-auto text-center z-10 flex flex-col items-center">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 text-blue-400 text-xs font-semibold uppercase tracking-wider mb-6">
+      <section className="relative pt-16 pb-16 px-4 sm:px-6 max-w-7xl mx-auto text-center z-10 flex flex-col items-center">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 text-xs font-semibold uppercase tracking-wider mb-6">
           <Sparkles className="w-3.5 h-3.5" /> SupportOps Intelligence Platform
         </div>
 
         <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white max-w-4xl leading-[1.15]">
           Supercharge Customer Operations with{" "}
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-sky-400">
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400">
             Agentic AI
           </span>
         </h1>
@@ -136,7 +187,7 @@ export default function LandingPage() {
             type="button"
             onClick={handleLaunchClick}
             disabled={busy}
-            className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all inline-flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-lg shadow-indigo-600/25 hover:shadow-indigo-600/40 transition-all inline-flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {ctaLabel} <ArrowRight className="w-4 h-4" />
           </button>
@@ -144,7 +195,7 @@ export default function LandingPage() {
           <button
             type="button"
             onClick={() => scrollToSection("features")}
-            className="w-full sm:w-auto px-8 py-3.5 rounded-xl border border-slate-700 bg-slate-900/60 text-slate-200 hover:bg-slate-800 hover:border-slate-600 transition-all backdrop-blur-md text-center font-medium"
+            className="w-full sm:w-auto px-8 py-3.5 rounded-xl border border-slate-800 bg-slate-900/60 text-slate-200 hover:bg-slate-800 hover:border-slate-700 transition-all backdrop-blur-md text-center font-medium"
           >
             Explore Features
           </button>
@@ -156,13 +207,13 @@ export default function LandingPage() {
             {!isAuth && (
               <>
                 Already have an account?{" "}
-                <button type="button" onClick={goLogin} className="text-blue-400 hover:underline">
+                <button type="button" onClick={goLogin} className="text-indigo-400 hover:underline font-medium">
                   Log in
                 </button>
                 <span className="mx-2">·</span>
               </>
             )}
-            <button type="button" onClick={() => navigate(ROUTES.pricing)} className="text-blue-400 hover:underline">
+            <button type="button" onClick={() => navigate(ROUTES.pricing)} className="text-indigo-400 hover:underline font-medium">
               View pricing
             </button>
           </p>
@@ -210,7 +261,7 @@ export default function LandingPage() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium transition-all text-sm ${isActive
-                  ? "bg-blue-600/20 border border-blue-500/40 text-blue-400 shadow-md"
+                  ? "bg-indigo-600/20 border border-indigo-500/40 text-indigo-400 shadow-md"
                   : "bg-slate-900/40 border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
                   }`}
               >
@@ -245,7 +296,7 @@ export default function LandingPage() {
                     <ul className="space-y-3">
                       {tab.highlights.map((item, idx) => (
                         <li key={idx} className="flex items-center gap-3 text-slate-200">
-                          <CheckCircle2 className="w-5 h-5 text-blue-400 shrink-0" />
+                          <CheckCircle2 className="w-5 h-5 text-indigo-400 shrink-0" />
                           <span>{item}</span>
                         </li>
                       ))}
@@ -262,7 +313,7 @@ export default function LandingPage() {
                       <span className="text-xs text-slate-500 font-mono">live_ops_view.json</span>
                     </div>
                     <div className="space-y-2 font-mono text-xs text-slate-300">
-                      <p className="text-blue-400">// Status: Active SupportOps Session</p>
+                      <p className="text-indigo-400">// Status: Active SupportOps Session</p>
                       <p>{"{"}</p>
                       <p className="pl-4 text-emerald-400">"agent_status": "ONLINE",</p>
                       <p className="pl-4 text-amber-300">"unassigned_tickets": 0,</p>
@@ -277,7 +328,7 @@ export default function LandingPage() {
       </section>
 
       {/* FINAL CALL TO ACTION */}
-      <section className="relative my-12 mx-4 sm:mx-6 max-w-7xl md:mx-auto rounded-3xl border border-blue-500/30 bg-gradient-to-br from-blue-900/40 via-slate-900 to-indigo-950/60 p-10 sm:p-16 text-center shadow-2xl">
+      <section className="relative my-12 mx-4 sm:mx-6 max-w-7xl md:mx-auto rounded-3xl border border-indigo-500/30 bg-gradient-to-br from-indigo-950/50 via-slate-900 to-slate-950 p-10 sm:p-16 text-center shadow-2xl">
         <div className="relative z-10 max-w-3xl mx-auto space-y-6">
           <h2 className="text-3xl sm:text-5xl font-extrabold text-white">
             Ready to transform your support operations?
@@ -285,20 +336,31 @@ export default function LandingPage() {
           <p className="text-slate-300 text-base sm:text-lg max-w-xl mx-auto">
             Experience real-time ticket automation and intelligent agent routing today.
           </p>
-          <button
-            type="button"
-            onClick={handleLaunchClick}
-            disabled={busy}
-            className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-lg font-bold shadow-xl shadow-blue-600/30 transition-all disabled:opacity-50"
-          >
-            {ctaLabel}
-          </button>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <button
+              type="button"
+              onClick={handleLaunchClick}
+              disabled={busy}
+              className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-lg font-bold shadow-xl shadow-indigo-600/30 transition-all disabled:opacity-50"
+            >
+              {ctaLabel}
+            </button>
+            {!isAuth && (
+              <button
+                type="button"
+                onClick={goLogin}
+                className="w-full sm:w-auto px-8 py-4 rounded-xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800 text-slate-200 text-lg font-semibold transition-all"
+              >
+                Sign In
+              </button>
+            )}
+          </div>
         </div>
       </section>
 
       {/* FOOTER */}
       <footer className="mt-auto border-t border-slate-800/80 py-8 px-4 text-center text-xs text-slate-500">
-        &copy; {new Date().getFullYear()} SupportOps. All rights reserved.
+        &copy; {new Date().getFullYear()} SupportOps Inc. All rights reserved.
       </footer>
     </div>
   );

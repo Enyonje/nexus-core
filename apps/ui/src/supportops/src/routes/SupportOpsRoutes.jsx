@@ -6,6 +6,7 @@ import RequireRole from "../components/RequireRole";
 
 // Public pages
 import LandingPage from "../pages/LandingPage";
+import LoginPage from "../pages/LoginPage";
 import PricingPage from "../pages/PricingPage";
 import { RequireApp, RequireSignIn } from "../components/Access";
 import FeaturesPage from "../pages/FeaturesPage";
@@ -51,6 +52,7 @@ export default function SupportOpsRoutes() {
             <Route path="features" element={<FeaturesPage />} />
             <Route path="cancel" element={<CancelPage />} />
             <Route path="success" element={<SuccessPage />} />
+            <Route path="login" element={<LoginPage />} />
             <Route path="pricing" element={<PricingPage />} />
 
             {/* Everything below needs an active SupportOps subscription or trial */}

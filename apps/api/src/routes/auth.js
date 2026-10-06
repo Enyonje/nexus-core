@@ -26,16 +26,51 @@ function setRefreshCookie(reply, token) {
   });
 }
 
+/**
+ * Resolves the appropriate redirect destination based on user context,
+ * product tier, or explicitly assigned platform metadata.
+ */
+function resolveRedirectPath(user, defaultPath = "/nexus") {
+  if (!user) return defaultPath;
+
+  const product = user.product?.toLowerCase();
+  const organization = user.organization?.toLowerCase();
+  const tier = user.subscription?.tier?.toLowerCase();
+
+  if (
+    product === "supportops" ||
+    organization?.includes("supportops") ||
+    tier?.includes("supportops")
+  ) {
+    return "/supportops";
+  }
+
+  if (
+    product === "nexus" ||
+    product === "nexuscore" ||
+    organization?.includes("nexus") ||
+    tier?.includes("nexus")
+  ) {
+    return "/nexus";
+  }
+
+  return defaultPath;
+}
+
 export async function authRoutes(server) {
   // REGISTER
   server.post("/register", async (req, reply) => {
     try {
       const result = await registerUser(req.body);
       setRefreshCookie(reply, result.rawRefreshToken);
+
+      const redirectTo =
+        result.redirectTo || resolveRedirectPath(result.user, "/nexus");
+
       return reply.send({
         token: result.token,
         user: result.user,
-        redirectTo: result.redirectTo || "/",
+        redirectTo,
       });
     } catch (err) {
       if (err.code || err.status) {
@@ -54,10 +89,14 @@ export async function authRoutes(server) {
     try {
       const result = await loginUser(req.body);
       setRefreshCookie(reply, result.rawRefreshToken);
+
+      const redirectTo =
+        result.redirectTo || resolveRedirectPath(result.user, "/nexus");
+
       return reply.send({
         token: result.token,
         user: result.user,
-        redirectTo: result.redirectTo || "/",
+        redirectTo,
       });
     } catch (err) {
       if (err.code || err.status) {
@@ -90,7 +129,9 @@ export async function authRoutes(server) {
         return reply.code(404).send({ error: "USER_NOT_FOUND", message: "User account no longer exists" });
       }
 
-      return reply.send({ user });
+      const redirectTo = resolveRedirectPath(user, "/nexus");
+
+      return reply.send({ user, redirectTo });
     } catch (err) {
       console.error("Fetch user error:", err);
       return reply.code(500).send({ error: "AUTH_ME_ERROR", message: "Failed to fetch user session" });
@@ -105,10 +146,13 @@ export async function authRoutes(server) {
     try {
       const result = await registerUser(req.body);
       setRefreshCookie(reply, result.rawRefreshToken);
+
+      const redirectTo = resolveRedirectPath(result.user, "/nexus");
+
       return reply.send({
         token: result.token,
         user: result.user,
-        redirectTo: result.redirectTo || "/",
+        redirectTo,
       });
     } catch (err) {
       if (err.code || err.status) {
@@ -128,10 +172,13 @@ export async function authRoutes(server) {
     try {
       const result = await loginUser(req.body);
       setRefreshCookie(reply, result.rawRefreshToken);
+
+      const redirectTo = resolveRedirectPath(result.user, "/nexus");
+
       return reply.send({
         token: result.token,
         user: result.user,
-        redirectTo: result.redirectTo || "/",
+        redirectTo,
       });
     } catch (err) {
       if (err.code || err.status) {
@@ -235,16 +282,31 @@ export async function authRoutes(server) {
     }
   });
 
-  // SUBSCRIPTION STATUS (Beta mode)
-  server.get("/subscription", async (req, reply) => {
+  // SUBSCRIPTION STATUS (Protected user lookup)
+  server.get("/subscription", { preHandler: requireAuth }, async (req, reply) => {
     try {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          subscription: true,
+          createdAt: true,
+        },
+      });
+
+      if (!user) {
+        return reply.code(404).send({ error: "USER_NOT_FOUND", message: "User account not found" });
+      }
+
       return reply.send({
-        id: "beta-user",
-        email: "beta@nexus.com",
-        tier: "free",
-        active: false,
-        role: "user",
-        created_at: new Date().toISOString(),
+        id: user.id,
+        email: user.email,
+        tier: user.subscription?.tier || "free",
+        active: user.subscription?.status === "active",
+        role: user.role,
+        created_at: user.createdAt,
       });
     } catch (err) {
       req.log.error("Subscription error:", err);
