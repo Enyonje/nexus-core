@@ -3,7 +3,7 @@
 // Env: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, APP_URL (frontend), optional STRIPE_METER_EVENT_NAME
 import { prisma, requireAuth } from "../lib/deps.js";
 import { AccessError, invalidateSubscription } from "../security/entitlements.js";
-import { mapStripeStatus, trialEnd } from "./entitlementRules.js";
+import { mapStripeStatus, trialEnd } from "../security/entitlementRules.js";
 
 const stripe = async () => {
     const { default: Stripe } = await import("stripe");

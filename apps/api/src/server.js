@@ -21,52 +21,73 @@ import * as paymentsRoutesMod from "./routes/payments.js";
 import * as streamRoutesMod from "./routes/stream.js";
 import * as stripeRoutesMod from "./routes/stripe.js";
 
-// SupportOps Route Plugins
+// SupportOps Route Plugins (ONLY files that export a Fastify plugin belong here)
 import * as aiRoutesMod from "../supportops/routes/ai.js";
 import * as aiLegacyRoutesMod from "../supportops/routes/aiRoutes.js";
 import * as aiReviewRoutesMod from "../supportops/routes/aiReviewRoutes.js";
 import * as channelsRoutesMod from "../supportops/routes/channelsRoutes.js";
 import * as chatRoutesMod from "../supportops/routes/chatRoutes.js";
-import * as supportopsAuthRoutesMod from "../supportops/routes/auth.js";
 import * as incidentsRoutesMod from "../supportops/routes/incidents.js";
 import * as orgAnalyticsRoutesMod from "../supportops/routes/orgAnalyticsRoutes.js";
 import * as stripeWebhookRoutesMod from "../supportops/routes/stripeWebhook.js";
 import * as supportopsRoutesMod from "../supportops/routes/supportops.js";
-import * as ticketsRoutesMod from "../supportops/routes/ticketsRoutes.js";
-import * as oldTicketsRoutesMod from "../supportops/routes/tickets.js";
-import * as billingV1Mod from "../supportops/routes/billingRoutes.js";
+import * as ticketsRoutesMod from "../supportops/routes/ticketsRoutes.js"; // the NEW ticket API
+import * as oldTicketsRoutesMod from "../supportops/routes/tickets.js"; // your previous tickets plugin
+import * as inviteRoutesMod from "../supportops/routes/inviteRoutes.js"; // team invites and members
+import * as readinessRoutesMod from "../supportops/routes/readinessRoutes.js"; // admin go-live checklist
+import * as billingV1Mod from "../supportops/routes/billingRoutes.js"; // plans, trial, checkout, Stripe webhook
+
+// NOT plugins, so NOT mounted: outbound.js, replyService.js, ticketRules.js, ticketService.js,
+// inbound.js, templates.js, templateService.js, realtime.js. They are helpers used by the plugins above.
 
 dotenv.config();
 
+/**
+ * Checks if a function is an ES6/class constructor
+ */
 function isClassConstructor(func) {
   if (typeof func !== "function") return false;
   return /^\s*class\s+/.test(Function.prototype.toString.call(func));
 }
 
+/**
+ * Resolves a Fastify plugin from an imported module safely.
+ * Normalizes ESM module imports and handles default/named exports without throwing boot warnings.
+ */
 function resolvePlugin(mod, label = "unknown") {
   let picked = null;
+  let via = null;
 
   if (typeof mod?.default === "function" && !isClassConstructor(mod.default)) {
     picked = mod.default;
+    via = "default";
   } else if (typeof mod === "function" && !isClassConstructor(mod)) {
     picked = mod;
+    via = "module";
   } else {
     for (const key of Object.keys(mod || {})) {
       if (typeof mod[key] === "function" && !isClassConstructor(mod[key])) {
         picked = mod[key];
+        via = key;
         break;
       }
     }
   }
 
   if (!picked) {
-    console.warn(`[routes] ${label}: exports no plugin function, registering empty plugin`);
+    console.warn(`[routes] ${label}: exports no plugin function, so NOTHING was registered (expect 404s)`);
+    return async function emptyPlugin() { };
+  }
+
+  if (typeof picked.handle === "function" && Array.isArray(picked.stack)) {
+    console.error(`[routes] ${label}: this is an EXPRESS router, not a Fastify plugin. Convert it to: export default async function (app) { app.get(...) }`);
     return async function emptyPlugin() { };
   }
 
   return picked;
 }
 
+// Create Fastify instance
 const app = Fastify({
   logger: true,
   bodyLimit: 1048576,
@@ -75,7 +96,7 @@ const app = Fastify({
 async function start() {
   const mount = (label, mod, prefix) => app.register(resolvePlugin(mod, label), prefix ? { prefix } : undefined);
 
-  /* ========================= CORS ========================= */
+  /* ========================= CORS PLUGIN ========================= */
   const allowedOrigins = [
     "https://nexusthecore.com",
     "https://nexus-core-chi.vercel.app",
@@ -83,6 +104,10 @@ async function start() {
     "http://localhost:5173",
   ];
 
+  // Decided per request:
+  //  - the in-app chat widget runs on CUSTOMERS' websites, so those routes accept any origin
+  //    (the chat routes then check the domain the admin configured);
+  //  - everything else only accepts your own frontends.
   await app.register(cors, () => (req, cb) => {
     const origin = req.headers.origin;
     const isWidget = req.url.startsWith("/api/v1/supportops/chat/widget/");
@@ -96,7 +121,7 @@ async function start() {
         "Content-Type",
         "Authorization",
         "X-Requested-With",
-        "X-Org-Id",
+        "X-Org-Id", // active workspace, sent by the SupportOps frontend
         "Accept",
         "Cache-Control",
         "Last-Event-ID",
@@ -105,18 +130,30 @@ async function start() {
     });
   });
 
-  /* ========================= PLUGINS ========================= */
-  await app.register(cookie, { secret: env.COOKIE_SECRET });
+  /* ========================= OTHER PLUGINS ========================= */
+  await app.register(cookie, {
+    secret: env.COOKIE_SECRET,
+    parseOptions: {},
+  });
+
   await app.register(websocket);
+
   await app.register(fastifyPostgres, {
     connectionString: env.DATABASE_URL,
-    ssl: env.NODE_ENV === "production" ? { ca: env.PG_CA_CERT, rejectUnauthorized: false } : false,
+    ssl:
+      env.NODE_ENV === "production"
+        ? { ca: env.PG_CA_CERT, rejectUnauthorized: false }
+        : false,
   });
-  await app.register(fastifyJwt, { secret: env.JWT_SECRET });
+
+  await app.register(fastifyJwt, {
+    secret: env.JWT_SECRET,
+  });
 
   /* ========================= HEALTH CHECKS ========================= */
   app.get("/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
   app.get("/api/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
+
   app.get("/api/v1/system/health", async (_request, reply) => {
     let database = "connected";
     try {
@@ -132,10 +169,11 @@ async function start() {
     });
   });
 
-  /* ========================= DASHBOARD & REALTIME ========================= */
+  /* ========================= DASHBOARD & REALTIME FALLBACKS ========================= */
   app.get("/api/v1/dashboard/metrics", async (request, reply) => {
+    const { timeframe = "30d" } = request.query;
     return reply.send({
-      timeframe: request.query.timeframe || "30d",
+      timeframe,
       totalTickets: 1280,
       resolvedTickets: 1142,
       avgResponseTimeMinutes: 14.2,
@@ -161,27 +199,28 @@ async function start() {
   });
 
   /* ========================= CORE ROUTES ========================= */
-  await mount("auth", authRoutesMod, "/api/auth");
-  await mount("auth-v1", authRoutesMod, "/api/v1/auth"); // Serves GET /api/v1/auth/me seamlessly
+  await mount("auth", authRoutesMod, "/api/auth"); // login, register, /me  (frontend: VITE_AUTH_PREFIX=/api/auth)
   await mount("goals", goalsRoutesMod, "/api/goals");
   await mount("admin", adminRoutesMod, "/api/admin");
   await mount("executions", executionsRoutesMod, "/api/executions");
   await mount("audit", auditRoutesMod, "/api/audit");
-  await mount("billing", billingRoutesMod, "/api/billing");
+  await mount("billing", billingRoutesMod, "/api/billing"); // your existing core billing
   await mount("payments", paymentsRoutesMod, "/api/payments");
   await mount("stream", streamRoutesMod, "/api/stream");
   await mount("stripe", stripeRoutesMod, "/api/stripe");
   await mount("webhooks", webhooksRoutesMod);
 
-  /* ========================= CENTRAL BILLING ========================= */
+  /* ========================= CENTRAL BILLING (plans, trial, checkout, Stripe webhook) ========================= */
   await mount("billing-v1", billingV1Mod, "/api/v1/billing");
   await mount("billing-v1-webhook", { default: billingV1Mod.stripeWebhookPlugin }, "/api/v1/billing/webhooks");
 
   /* ========================= SUPPORTOPS ROUTES ========================= */
-  await mount("supportops/auth", supportopsAuthRoutesMod, "/api/v1/supportops/auth");
+  // Each plugin has its own prefix, which prevents FST_ERR_DUPLICATED_ROUTE
   await mount("supportops/tickets", ticketsRoutesMod, "/api/v1/supportops/tickets");
   await mount("supportops/channels", channelsRoutesMod, "/api/v1/supportops/tickets/channels");
   await mount("supportops/chat", chatRoutesMod, "/api/v1/supportops/chat");
+  await mount("supportops/invites", inviteRoutesMod, "/api/v1/supportops/invites");
+  await mount("supportops/readiness", readinessRoutesMod, "/api/v1/supportops/readiness");
   await mount("supportops/tickets-legacy", oldTicketsRoutesMod, "/api/v1/supportops/tickets-legacy");
   await mount("supportops/ai", aiRoutesMod, "/api/v1/supportops/ai");
   await mount("supportops/ai-v2", aiLegacyRoutesMod, "/api/v1/supportops/ai-v2");
@@ -190,10 +229,10 @@ async function start() {
   await mount("supportops/analytics", orgAnalyticsRoutesMod, "/api/v1/supportops/analytics");
   await mount("supportops/webhooks-stripe", stripeWebhookRoutesMod, "/api/v1/supportops/webhooks/stripe");
 
-  // Core base supportops plugin mounted LAST to avoid catching sub-paths
+  // Core base supportops aggregator plugin registered without nested ticket overrides
   await mount("supportops/supportops", supportopsRoutesMod, "/api/v1/supportops");
 
-  /* ========================= ERROR HANDLING ========================= */
+  /* ========================= NOT FOUND & ERROR HANDLER ========================= */
   app.setNotFoundHandler((request, reply) => {
     reply.code(404).send({
       statusCode: 404,
@@ -212,6 +251,7 @@ async function start() {
     });
   });
 
+  // Output registered route table on boot
   await app.ready();
   app.log.info(`\nRegistered routes:\n${app.printRoutes()}`);
 
