@@ -1,11 +1,20 @@
+// api.js
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:3001").replace(/\/$/, "");
 
 export async function apiFetch(path, options = {}) {
-  // Always use authToken
-  const token = localStorage.getItem("authToken");
+  // 1. Sanitize auth token (prevent sending literal "undefined" or "null" strings)
+  const rawToken = localStorage.getItem("authToken");
+  const token = rawToken && rawToken !== "undefined" && rawToken !== "null" ? rawToken : null;
 
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const fullPath = normalizedPath.startsWith("/api") ? normalizedPath : `/api${normalizedPath}`;
+  if (!token && rawToken) {
+    localStorage.removeItem("authToken");
+  }
+
+  // 2. Normalize pathing: resolve /v1/ or /api/v1/ mismatches to match Fastify route structure (/api/...)
+  let cleanPath = path.startsWith("/") ? path : `/${path}`;
+  cleanPath = cleanPath.replace(/^\/api\/v1\//, "/api/").replace(/^\/v1\//, "/");
+  const fullPath = cleanPath.startsWith("/api/") || cleanPath === "/api" ? cleanPath : `/api${cleanPath}`;
+
   const url = `${API_URL}${fullPath}`;
 
   const controller = new AbortController();
@@ -53,7 +62,9 @@ export async function apiFetch(path, options = {}) {
 
     if (res.status === 401) {
       localStorage.removeItem("authToken");
-      const err = new Error("Session expired. Please log in again.");
+      window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+
+      const err = new Error(data?.message || "Session expired. Please log in again.");
       err.status = 401;
       err.body = data;
       throw err;
@@ -77,7 +88,18 @@ export async function apiFetch(path, options = {}) {
     return data;
   } catch (err) {
     clearTimeout(timeout);
-    if (err && err.name === "AbortError") throw new Error("Request timed out");
+
+    // 3. Preserve custom HTTP status errors (so auth context providers can read err.status)
+    if (err && err.status) {
+      throw err;
+    }
+
+    if (err && err.name === "AbortError") {
+      const timeoutErr = new Error("Request timed out");
+      timeoutErr.status = 408;
+      throw timeoutErr;
+    }
+
     throw new Error(err?.message || "Network request failed");
   } finally {
     clearTimeout(timeout);

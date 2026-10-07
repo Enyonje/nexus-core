@@ -7,6 +7,7 @@ import { API_ENDPOINTS, ROUTES } from "../config/paths";
 import { AccessContext, useApp } from "../../../context/AccessProvider";
 import { useAuth } from "../context/AuthContext";
 import { rememberReturn } from "../components/Access";
+import { apiFetch } from "../lib/api"; // 1. Use central apiFetch with route normalization and token sanitation
 
 const LABELS = {
     triage_basic: "Basic triage", channel_email: "Email", channel_web: "In-app chat", helpdesk_sync: "Intercom / Zendesk sync",
@@ -15,7 +16,7 @@ const LABELS = {
     channel_whatsapp: "WhatsApp", channel_voice: "Phone", channel_social: "Social inbox", channel_sms: "SMS",
 };
 
-// Shown ONLY when the live plans can't be loaded. These are sample figures, so purchasing is disabled while they show.
+// Shown ONLY when the live plans can't be loaded.
 const FALLBACK_PLANS = {
     app: "supportops",
     plans: [
@@ -30,24 +31,6 @@ const FALLBACK_PLANS = {
 };
 
 const money = (cents) => (cents == null ? "Custom" : `$${(cents / 100).toLocaleString()}`);
-
-async function call(method, url, body) {
-    const token = localStorage.getItem("authToken");
-    const org = localStorage.getItem("activeOrgId");
-
-    const headers = {};
-    if (body) headers["Content-Type"] = "application/json";
-    if (token && token !== "undefined" && token !== "null") headers["Authorization"] = `Bearer ${token}`;
-    if (org && org !== "undefined" && org !== "null") headers["X-Org-Id"] = org;
-
-    const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
-
-    const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(data?.message || `Request failed (${res.status})`);
-    if (data === null) throw new Error("The server did not respond with JSON.");
-    return data;
-}
-
 const needsBillingRole = (msg = "") => /owner|admin|billing contact/i.test(msg);
 
 export default function PricingPage() {
@@ -64,17 +47,25 @@ export default function PricingPage() {
     const [loading, setLoading] = useState(true);
     const [showAdminModal, setShowAdminModal] = useState(false);
 
-    // Invited members work inside their admin's workspace. To buy a plan of their own they use their personal workspace.
     const personal = access?.orgs?.find((o) => o.type === "PERSONAL");
-    const inSomeoneElsesWorkspace = Boolean(personal && access.activeOrgId && access.activeOrgId !== personal.id);
+    const inSomeoneElsesWorkspace = Boolean(personal && access?.activeOrgId && access?.activeOrgId !== personal.id);
 
     const fetchPlans = async () => {
         setLoading(true);
         try {
-            const result = await call("GET", API_ENDPOINTS.billing.plans("supportops"));
+            const endpoint = typeof API_ENDPOINTS.billing.plans === "function"
+                ? API_ENDPOINTS.billing.plans("supportops")
+                : API_ENDPOINTS.billing.plans;
+
+            const result = await apiFetch(endpoint);
+
             let target = null;
-            if (Array.isArray(result)) target = result.find((a) => a.app === "supportops" || a.key === "supportops") ?? result[0] ?? null;
-            else if (result && typeof result === "object") target = result.plans ? result : (result.data ?? null);
+            if (Array.isArray(result)) {
+                target = result.find((a) => a.app === "supportops" || a.key === "supportops") ?? result[0] ?? null;
+            } else if (result && typeof result === "object") {
+                target = result.plans ? result : (result.data ?? null);
+            }
+
             setApp(target || FALLBACK_PLANS);
             setUsingFallback(!target);
         } catch (e) {
@@ -92,30 +83,51 @@ export default function PricingPage() {
         if (!isAuth) return goAuth(ROUTES.signup);
         setBusy("trial");
         try {
-            await call("POST", API_ENDPOINTS.billing.trial, { app: "supportops" });
-            // The person who starts the trial owns the workspace and is its SupportOps admin.
-            // Drop any old "come back to" address (it would override this redirect) and do a full page load,
-            // so the session, plan and role are all fresh before the admin dashboard renders.
+            const res = await apiFetch(API_ENDPOINTS.billing.trial, {
+                method: "POST",
+                body: { app: "supportops" },
+            });
+
+            // 2. Store updated token if issued by Fastify
+            if (res?.token) {
+                localStorage.setItem("authToken", res.token);
+            }
+
+            // 3. Refresh workspace & role claims in AccessContext
+            if (access?.refresh) {
+                await access.refresh();
+            }
+
             sessionStorage.removeItem("postAuthRedirect");
             toast.success("Your 14-day trial has started");
-            window.location.assign(ROUTES.admin.executive);
+
+            // 4. Navigate to executive admin dashboard route
+            const adminTarget = ROUTES?.admin?.executive || ROUTES?.adminDashboard || "/admin";
+            window.location.assign(adminTarget);
             return;
         } catch (e) {
             if (needsBillingRole(e.message)) setShowAdminModal(true);
             else toast.error(e.message);
+        } finally {
+            setBusy(null);
         }
-        setBusy(null);
     }
 
     async function checkout(plan) {
         if (!isAuth) return goAuth(ROUTES.signup);
         setBusy(plan);
         try {
-            const { url } = await call("POST", API_ENDPOINTS.billing.checkout, { app: "supportops", plan, addons: picked });
-            window.location.href = url;
+            const res = await apiFetch(API_ENDPOINTS.billing.checkout, {
+                method: "POST",
+                body: { app: "supportops", plan, addons: picked },
+            });
+            if (res?.url) {
+                window.location.href = res.url;
+            }
         } catch (e) {
             if (needsBillingRole(e.message)) setShowAdminModal(true);
             else toast.error(e.message);
+        } finally {
             setBusy(null);
         }
     }
@@ -223,7 +235,6 @@ export default function PricingPage() {
                 )}
             </div>
 
-            {/* Shown when the signed-in person isn't an owner, admin or billing contact of the active workspace */}
             {showAdminModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
                     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl relative">

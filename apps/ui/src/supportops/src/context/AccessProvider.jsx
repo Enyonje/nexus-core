@@ -1,80 +1,80 @@
-// apps/ui/src/context/AccessProvider.jsx
-// Loads "what may this person do?" from the backend /me and shares it with every app.
-// Mount it INSIDE your existing AuthProvider (see main.jsx snippet).
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { AuthContext } from "./AuthProvider";
-
-const BASE = (import.meta.env.VITE_SUPPORTOPS_API_URL || import.meta.env.VITE_API_URL || "http://localhost:3001").replace(/\/$/, "");
-const ME_URL = `${BASE}${import.meta.env.VITE_AUTH_PREFIX || "/api/v1/auth"}/me`;
+// src/context/AccessProvider.jsx
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import api from "../lib/api";
 
 export const AccessContext = createContext(null);
 
 export function AccessProvider({ children }) {
-    const main = useContext(AuthContext);
-    const token = main?.user?.token;
-    const navigate = useNavigate();
-    const [session, setSession] = useState(null);
+    const [activeOrgId, setActiveOrgId] = useState(null);
+    const [orgs, setOrgs] = useState([]);
+    const [apps, setApps] = useState({});
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [orgId, setOrgId] = useState(() => localStorage.getItem("activeOrgId"));
 
-    const load = useCallback(async (signal) => {
-        if (!token) { setSession(null); setLoading(false); return; }
-        try {
-            const res = await fetch(ME_URL, { signal, headers: { Authorization: `Bearer ${token}`, ...(orgId ? { "X-Org-Id": orgId } : {}) } });
-            if (res.status === 401) { main?.logout?.(false); setSession(null); setError(null); return; } // expired session: sign out quietly
-            if (res.status === 403 && orgId) { localStorage.removeItem("activeOrgId"); setOrgId(null); return; } // stale workspace: fall back
-            if (!res.ok) throw new Error(String(res.status));
-            const data = await res.json();
-            setSession(data);
-            setError(null);
-            if (data.activeOrgId) localStorage.setItem("activeOrgId", data.activeOrgId);
-        } catch (err) {
-            if (err.name !== "AbortError") {
-                setSession(null);
-                setError(`Could not load your plan (${err.message}).`); // visible, so a server problem is never mistaken for "no subscription"
-            }
-        } finally {
-            if (!signal?.aborted) setLoading(false);
+    const refresh = useCallback(async (signal) => {
+        const token = localStorage.getItem("access_token") || localStorage.getItem("authToken");
+
+        if (!token || token === "undefined" || token === "null") {
+            setOrgs([]);
+            setActiveOrgId(null);
+            setApps({});
+            setLoading(false);
+            return;
         }
-    }, [token, orgId]);
+
+        try {
+            // Corrected endpoint route: /auth/me instead of /v1/auth/me
+            const res = await api.get("/auth/me", { signal });
+            const data = res.data;
+
+            if (data) {
+                setOrgs(data.orgs || []);
+                setActiveOrgId(data.activeOrgId || data.orgs?.[0]?.id || null);
+                setApps(data.apps || {});
+            }
+        } catch (err) {
+            if (err.name === "CanceledError" || err.code === "ERR_CANCELED") {
+                return;
+            }
+            console.warn("Could not load workspace context:", err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
-        const c = new AbortController();
-        setLoading(true);
-        load(c.signal);
-        return () => c.abort();
-    }, [load]);
+        const controller = new AbortController();
+        refresh(controller.signal);
 
-    // After login/signup the main app sends people to its own dashboard. If they started in SupportOps,
-    // take them back to where they were headed.
-    useEffect(() => {
-        if (!session) return;
-        const next = sessionStorage.getItem("postAuthRedirect");
-        if (!next) return;
-        sessionStorage.removeItem("postAuthRedirect");
-        if (next.startsWith("/") && !next.startsWith("//")) navigate(next, { replace: true });
-    }, [session?.user?.id, navigate]); // re-run only when a different person signs in, never on a plan refresh
+        return () => {
+            controller.abort();
+        };
+    }, [refresh]);
 
-    const switchOrg = useCallback((id) => { localStorage.setItem("activeOrgId", id); window.location.reload(); }, []);
+    const switchOrg = (orgId) => {
+        setActiveOrgId(orgId);
+    };
 
-    const value = useMemo(() => ({
-        loading, error, apps: session?.apps ?? {}, orgs: session?.orgs ?? [], activeOrgId: session?.activeOrgId ?? null,
-        refresh: () => load(), switchOrg,
-    }), [loading, error, session, load, switchOrg]);
-
-    return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
+    return (
+        <AccessContext.Provider
+            value={{
+                activeOrgId,
+                setActiveOrgId,
+                orgs,
+                apps,
+                loading,
+                refresh,
+                switchOrg,
+            }}
+        >
+            {children}
+        </AccessContext.Provider>
+    );
 }
 
-/** const { subscribed, plan, status, role, can, usage, limits, trialEndsAt } = useApp("supportops"); */
-export function useApp(slug) {
-    const ctx = useContext(AccessContext);
-    if (!ctx) throw new Error("Wrap the app in <AccessProvider> (main.jsx), inside <AuthProvider>");
-    const app = ctx.apps[slug] ?? null;
-    return useMemo(() => ({
-        loading: ctx.loading, error: ctx.error, subscribed: Boolean(app), plan: app?.plan, status: app?.status, role: app?.role,
-        features: app?.features ?? [], limits: app?.limits ?? {}, usage: app?.usage ?? {}, trialEndsAt: app?.trialEndsAt,
-        can: (feature) => Boolean(app?.features?.includes(feature)), refresh: ctx.refresh,
-    }), [ctx, app]);
+export function useApp(appName) {
+    const context = useContext(AccessContext);
+    if (!context) {
+        return { plan: "free", status: "inactive", subscribed: false };
+    }
+    return context.apps?.[appName] || { plan: "free", status: "inactive", subscribed: false };
 }

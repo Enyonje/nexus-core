@@ -37,9 +37,6 @@ import * as inviteRoutesMod from "../supportops/routes/inviteRoutes.js"; // team
 import * as readinessRoutesMod from "../supportops/routes/readinessRoutes.js"; // admin go-live checklist
 import * as billingV1Mod from "../supportops/routes/billingRoutes.js"; // plans, trial, checkout, Stripe webhook
 
-// NOT plugins, so NOT mounted: outbound.js, replyService.js, ticketRules.js, ticketService.js,
-// inbound.js, templates.js, templateService.js, realtime.js. They are helpers used by the plugins above.
-
 dotenv.config();
 
 /**
@@ -104,24 +101,27 @@ async function start() {
     "http://localhost:5173",
   ];
 
-  // Decided per request:
-  //  - the in-app chat widget runs on CUSTOMERS' websites, so those routes accept any origin
-  //    (the chat routes then check the domain the admin configured);
-  //  - everything else only accepts your own frontends.
   await app.register(cors, () => (req, cb) => {
     const origin = req.headers.origin;
     const isWidget = req.url.startsWith("/api/v1/supportops/chat/widget/");
-    const allowed = !origin || isWidget || allowedOrigins.includes(origin);
+
+    // Allow exact origins, Vercel/Render subdomains, or server-to-server calls without an origin header
+    const isAllowedOrigin =
+      !origin ||
+      isWidget ||
+      allowedOrigins.includes(origin) ||
+      /\.vercel\.app$/.test(origin) ||
+      /\.onrender\.com$/.test(origin);
 
     cb(null, {
-      origin: allowed,
+      origin: isAllowedOrigin,
       credentials: !isWidget,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowedHeaders: [
         "Content-Type",
         "Authorization",
         "X-Requested-With",
-        "X-Org-Id", // active workspace, sent by the SupportOps frontend
+        "X-Org-Id",
         "Accept",
         "Cache-Control",
         "Last-Event-ID",
@@ -152,7 +152,10 @@ async function start() {
 
   /* ========================= HEALTH CHECKS ========================= */
   app.get("/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
+  app.get("/ping", async () => ({ status: "pong", timestamp: new Date().toISOString() }));
   app.get("/api/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
+  app.get("/api/v1/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
+  app.get("/api/v1/ping", async () => ({ status: "pong", timestamp: new Date().toISOString() }));
 
   app.get("/api/v1/system/health", async (_request, reply) => {
     let database = "connected";
@@ -199,23 +202,25 @@ async function start() {
   });
 
   /* ========================= CORE ROUTES ========================= */
-  await mount("auth", authRoutesMod, "/api/auth"); // login, register, /me  (frontend: VITE_AUTH_PREFIX=/api/auth)
+  // Mounted auth routes under both prefixes to resolve /api/v1/auth/me 404
+  await mount("auth", authRoutesMod, "/api/auth");
+  await mount("auth-v1", authRoutesMod, "/api/v1/auth");
+
   await mount("goals", goalsRoutesMod, "/api/goals");
   await mount("admin", adminRoutesMod, "/api/admin");
   await mount("executions", executionsRoutesMod, "/api/executions");
   await mount("audit", auditRoutesMod, "/api/audit");
-  await mount("billing", billingRoutesMod, "/api/billing"); // your existing core billing
+  await mount("billing", billingRoutesMod, "/api/billing");
   await mount("payments", paymentsRoutesMod, "/api/payments");
   await mount("stream", streamRoutesMod, "/api/stream");
   await mount("stripe", stripeRoutesMod, "/api/stripe");
   await mount("webhooks", webhooksRoutesMod);
 
-  /* ========================= CENTRAL BILLING (plans, trial, checkout, Stripe webhook) ========================= */
+  /* ========================= CENTRAL BILLING ========================= */
   await mount("billing-v1", billingV1Mod, "/api/v1/billing");
   await mount("billing-v1-webhook", { default: billingV1Mod.stripeWebhookPlugin }, "/api/v1/billing/webhooks");
 
   /* ========================= SUPPORTOPS ROUTES ========================= */
-  // Each plugin has its own prefix, which prevents FST_ERR_DUPLICATED_ROUTE
   await mount("supportops/tickets", ticketsRoutesMod, "/api/v1/supportops/tickets");
   await mount("supportops/channels", channelsRoutesMod, "/api/v1/supportops/tickets/channels");
   await mount("supportops/chat", chatRoutesMod, "/api/v1/supportops/chat");
@@ -229,7 +234,7 @@ async function start() {
   await mount("supportops/analytics", orgAnalyticsRoutesMod, "/api/v1/supportops/analytics");
   await mount("supportops/webhooks-stripe", stripeWebhookRoutesMod, "/api/v1/supportops/webhooks/stripe");
 
-  // Core base supportops aggregator plugin registered without nested ticket overrides
+  // Core base supportops aggregator plugin
   await mount("supportops/supportops", supportopsRoutesMod, "/api/v1/supportops");
 
   /* ========================= NOT FOUND & ERROR HANDLER ========================= */
