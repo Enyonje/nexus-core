@@ -1,4 +1,4 @@
-examine and update   import Fastify from "fastify";
+import Fastify from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import fastifyPostgres from "@fastify/postgres";
