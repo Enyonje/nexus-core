@@ -50,7 +50,9 @@ export const SUPPORTOPS_API = {
     analytics: group("/analytics"),   // prefix: /api/v1/supportops/analytics
     tickets: group("/tickets"),       // prefix: /api/v1/supportops/tickets
     users: group("/users"),
-    chat: group("/chat"),           // prefix: /api/v1/supportops/chat           // prefix: /api/v1/supportops/users
+    chat: group("/chat"),           // prefix: /api/v1/supportops/chat
+    invites: group("/invites"),     // prefix: /api/v1/supportops/invites
+    readiness: group("/readiness"), // prefix: /api/v1/supportops/readiness           // prefix: /api/v1/supportops/users
     // webhooks/stripe is server-to-server only (Stripe calls it), so the frontend never uses it
 };
 
@@ -97,6 +99,7 @@ export const ROUTES = {
     cancel: p("/cancel"),
     success: p("/success"),
     pricing: p("/pricing"),
+    join: p("/join"),
 
     agent: {
         root: p("/agent"),
@@ -117,6 +120,7 @@ export const ROUTES = {
         analytics: p("/admin/analytics"),
         incidents: p("/admin/incidents"),
         channels: p("/admin/channels"),
+        team: p("/admin/team"),
     },
 
     investor: p("/investor"),

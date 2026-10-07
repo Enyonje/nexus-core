@@ -26,6 +26,8 @@ import AutonomousBrain from "../pages/AutonomousBrain";
 import AIReviewInbox from "../pages/AIReviewInbox";
 import Billing from "../pages/Billing";
 import AuthPage from "../pages/AuthPage";
+import JoinPage from "../pages/JoinPage";
+import TeamPage from "../pages/TeamPage";
 import Playbooks from "../pages/Playbooks";
 
 
@@ -36,6 +38,7 @@ import AdminAnalytics from "../pages/AdminAnalytics";
 import IncidentCommandCenter from "../pages/IncidentCommandCenter";
 import ChannelsPage from "../pages/ChannelsPage";
 import LiveChatPage from "../pages/LiveChatPage";
+
 import TicketInboxPage from "../pages/TicketInboxPage";
 
 // Investor pages
@@ -72,6 +75,8 @@ export default function SupportOpsRoutes() {
                             <Route path="tickets" element={<TicketInboxPage />} />
                             <Route path="chats" element={<LiveChatPage />} />
                             <Route path="billing" element={<Billing />} />
+                            <Route path="join" element={<JoinPage />} />
+                            <Route path="team" element={<TeamPage />} />
                             <Route path="playbooks" element={<Playbooks />} />
                         </Route>
                     </Route>

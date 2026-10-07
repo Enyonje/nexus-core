@@ -16,7 +16,8 @@ import {
 import { ROUTES } from "./paths";
 
 // Must mirror the allowRoles on each ProtectedRoute in SupportOpsRoutes
-export const AGENT_ROLES = ["agent", "user", "admin"];
+// Access matrix: agent -> agent pages. management -> agent + admin pages. investor -> investor pages. admin -> everything.
+export const AGENT_ROLES = ["agent", "management", "admin"];
 export const ADMIN_ROLES = ["admin", "management"];
 export const INVESTOR_ROLES = ["investor", "admin"];
 
@@ -38,6 +39,7 @@ export const NAV_ITEMS = [
     { to: ROUTES.admin.analytics, label: "Admin Analytics", short: "Analytics", icon: LineChart, group: "admin", roles: ADMIN_ROLES, navbar: true },
     { to: ROUTES.admin.incidents, label: "Incidents", icon: Siren, group: "admin", roles: ADMIN_ROLES, navbar: true },
 
+    { to: ROUTES.admin.team, label: "Team", icon: Users, group: "admin", roles: ["admin"], navbar: true },
     { to: ROUTES.admin.channels, label: "Channels", icon: Plug, group: "admin", roles: ["admin"], navbar: true },
 
     // Investor
