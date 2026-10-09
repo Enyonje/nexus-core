@@ -1,11 +1,11 @@
 // supportops/src/pages/PricingPage.jsx - Plans, add-ons, free trial and checkout.
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Check, RefreshCw, ShieldAlert, Building2, X } from "lucide-react";
 import { API_ENDPOINTS, ROUTES } from "../config/paths";
-import { AccessContext, useApp } from "../../../context/AccessProvider";
-import { useAuth } from "../context/AuthContext";
+import { AccessContext, useAccess } from "../context/AccessProvider";
+import { useAuth } from "../context/AuthProvider";
 import { rememberReturn } from "../components/Access";
 import { apiFetch } from "../lib/api";
 
@@ -27,7 +27,7 @@ const LABELS = {
     channel_sms: "SMS",
 };
 
-// Fallback pricing configuration (Starter: $49/mo, Growth: $149/mo, Enterprise: Custom)
+// Fallback pricing configuration
 const FALLBACK_PLANS = {
     app: "supportops",
     plans: [
@@ -82,10 +82,16 @@ const needsBillingRole = (msg = "") => /owner|admin|billing contact/i.test(msg);
 
 export default function PricingPage() {
     const navigate = useNavigate();
-    const me = useApp("supportops") || {};
-    const access = useContext(AccessContext);
-    const { isAuth } = useAuth();
-    const goAuth = (to) => { rememberReturn(ROUTES.pricing); navigate(to); };
+    const access = useAccess();
+    const rawAccessContext = useContext(AccessContext);
+    const { user, isAuthenticated } = useAuth();
+
+    const isAuth = isAuthenticated || !!user;
+
+    const goAuth = (to) => {
+        rememberReturn(ROUTES?.pricing || "/pricing");
+        navigate(to);
+    };
 
     const [app, setApp] = useState(null);
     const [usingFallback, setUsingFallback] = useState(false);
@@ -94,21 +100,45 @@ export default function PricingPage() {
     const [loading, setLoading] = useState(true);
     const [showAdminModal, setShowAdminModal] = useState(false);
 
-    const personal = access?.orgs?.find((o) => o.type === "PERSONAL");
-    const inSomeoneElsesWorkspace = Boolean(personal && access?.activeOrgId && access?.activeOrgId !== personal.id);
+    const orgs = access?.orgs || rawAccessContext?.orgs || [];
+    const activeOrgId = access?.activeOrgId || rawAccessContext?.activeOrgId;
+    const personal = orgs.find((o) => o.type === "PERSONAL");
+    const inSomeoneElsesWorkspace = Boolean(personal && activeOrgId && activeOrgId !== personal.id);
 
-    const fetchPlans = async () => {
+    const fetchPlans = useCallback(async () => {
         setLoading(true);
-        try {
-            const billingPlansEndpoint = API_ENDPOINTS?.billing?.plans;
-            const endpoint = typeof billingPlansEndpoint === "function"
-                ? billingPlansEndpoint("supportops")
-                : billingPlansEndpoint || "/api/v1/billing/plans?app=supportops";
 
-            const rawResult = await apiFetch(endpoint);
+        // Candidate routes to query in order
+        const configuredEndpoint =
+            typeof API_ENDPOINTS?.billing?.plans === "function"
+                ? API_ENDPOINTS.billing.plans("supportops")
+                : API_ENDPOINTS?.billing?.plans;
 
-            // Unwrap nested wrappers like { success: true, data: ... }
-            let payload = rawResult;
+        const candidateEndpoints = [
+            configuredEndpoint,
+            "/api/billing/plans?app=supportops",
+            "/api/plans?app=supportops",
+            "/api/v1/billing/plans?app=supportops",
+        ].filter((ep, idx, arr) => ep && arr.indexOf(ep) === idx);
+
+        let fetchedData = null;
+
+        for (const endpoint of candidateEndpoints) {
+            try {
+                // Extended 45s timeout for Render backend cold-starts
+                const res = await apiFetch(endpoint, { timeout: 45000 });
+                if (res) {
+                    fetchedData = res;
+                    break;
+                }
+            } catch (err) {
+                console.warn(`[PricingPage] Endpoint failed (${endpoint}):`, err.message);
+            }
+        }
+
+        if (fetchedData) {
+            // Unwrap data containers: { data: ... } or { success: true, data: ... }
+            let payload = fetchedData;
             if (payload && typeof payload === "object" && !Array.isArray(payload) && payload.data) {
                 payload = payload.data;
             }
@@ -123,26 +153,27 @@ export default function PricingPage() {
             if (target && Array.isArray(target.plans)) {
                 setApp(target);
                 setUsingFallback(false);
-            } else {
-                setApp(FALLBACK_PLANS);
-                setUsingFallback(true);
+                setLoading(false);
+                return;
             }
-        } catch (e) {
-            console.warn("Could not load live pricing, showing sample plans:", e.message);
-            setApp(FALLBACK_PLANS);
-            setUsingFallback(true);
-        } finally {
-            setLoading(false);
         }
-    };
 
-    useEffect(() => { fetchPlans(); }, []);
+        // Fall back to sample plans if live endpoints are unreachable
+        setApp(FALLBACK_PLANS);
+        setUsingFallback(true);
+        setLoading(false);
+    }, []);
+
+    useEffect(() => {
+        fetchPlans();
+    }, [fetchPlans]);
 
     async function startTrial() {
-        if (!isAuth) return goAuth(ROUTES.signup);
+        if (!isAuth) return goAuth(ROUTES?.signup || "/signup");
         setBusy("trial");
         try {
-            const res = await apiFetch(API_ENDPOINTS.billing.trial, {
+            const trialEndpoint = API_ENDPOINTS?.billing?.trial || "/api/billing/trial";
+            const res = await apiFetch(trialEndpoint, {
                 method: "POST",
                 body: { app: "supportops" },
             });
@@ -160,54 +191,75 @@ export default function PricingPage() {
 
             const adminTarget = ROUTES?.admin?.executive || ROUTES?.adminDashboard || "/admin";
             window.location.assign(adminTarget);
-            return;
         } catch (e) {
             if (needsBillingRole(e.message)) setShowAdminModal(true);
-            else toast.error(e.message);
+            else toast.error(e.message || "Failed to start trial");
         } finally {
             setBusy(null);
         }
     }
 
-    async function checkout(plan) {
-        if (!isAuth) return goAuth(ROUTES.signup);
-        setBusy(plan);
+    async function checkout(planKey) {
+        if (!isAuth) return goAuth(ROUTES?.signup || "/signup");
+        setBusy(planKey);
         try {
-            const res = await apiFetch(API_ENDPOINTS.billing.checkout, {
+            const checkoutEndpoint = API_ENDPOINTS?.billing?.checkout || "/api/billing/checkout";
+            const res = await apiFetch(checkoutEndpoint, {
                 method: "POST",
-                body: { app: "supportops", plan, addons: picked },
+                body: { app: "supportops", plan: planKey, addons: picked },
             });
+
             if (res?.url) {
                 window.location.href = res.url;
+            } else {
+                toast.success(`Subscribed to ${planKey} plan`);
             }
         } catch (e) {
             if (needsBillingRole(e.message)) setShowAdminModal(true);
-            else toast.error(e.message);
+            else toast.error(e.message || "Checkout failed");
         } finally {
             setBusy(null);
         }
     }
 
-    const toggle = (key) => setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]));
-    const locked = Boolean(busy) || usingFallback;
+    const toggle = (key) =>
+        setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]));
+
+    const locked = Boolean(busy);
 
     return (
         <div className="min-h-screen bg-[#030712] text-slate-100 px-4 sm:px-6 lg:px-8 py-12 relative">
             <div className="max-w-6xl mx-auto">
-                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-center">Pick the plan that fits your team</h1>
-                <p className="text-center text-slate-400 mt-2 mb-10">Start with a 14-day free trial (up to 100 AI resolutions). No card needed.</p>
+                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-center">
+                    Pick the plan that fits your team
+                </h1>
+                <p className="text-center text-slate-400 mt-2 mb-10">
+                    Start with a 14-day free trial (up to 100 AI resolutions). No card needed.
+                </p>
 
                 {!isAuth && (
                     <p className="text-center text-sm text-slate-500 -mt-6 mb-8">
                         Already have an account?{" "}
-                        <button type="button" onClick={() => goAuth(ROUTES.login)} className="text-blue-400 hover:underline font-medium">Log in</button>
+                        <button
+                            type="button"
+                            onClick={() => goAuth(ROUTES?.login || "/login")}
+                            className="text-blue-400 hover:underline font-medium"
+                        >
+                            Log in
+                        </button>
                     </p>
                 )}
 
                 {usingFallback && !loading && (
                     <div className="mb-8 flex items-center justify-between gap-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                        <span>Live plans couldn't be loaded, so these are sample figures. Purchasing is paused until they load.</span>
-                        <button type="button" onClick={fetchPlans} className="shrink-0 font-semibold underline underline-offset-2 hover:text-white">Retry</button>
+                        <span>Showing estimated plans while live pricing connects to the server.</span>
+                        <button
+                            type="button"
+                            onClick={fetchPlans}
+                            className="shrink-0 font-semibold underline underline-offset-2 hover:text-white"
+                        >
+                            Retry live load
+                        </button>
                     </div>
                 )}
 
@@ -219,7 +271,10 @@ export default function PricingPage() {
                 ) : !app || !app.plans ? (
                     <div className="text-center py-12 bg-slate-900/40 rounded-2xl border border-slate-800">
                         <p className="text-slate-400 mb-4">Unable to load plans right now.</p>
-                        <button onClick={fetchPlans} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-all inline-flex items-center gap-2">
+                        <button
+                            onClick={fetchPlans}
+                            className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-all inline-flex items-center gap-2"
+                        >
                             <RefreshCw className="w-4 h-4" /> Retry
                         </button>
                     </div>
@@ -227,16 +282,23 @@ export default function PricingPage() {
                     <>
                         <div className="grid md:grid-cols-3 gap-6">
                             {app.plans.map((p) => {
-                                const priceCents = p.priceCents ?? p.price_cents ?? (p.price != null ? p.price * 100 : null);
+                                const priceCents =
+                                    p.priceCents ?? p.price_cents ?? (p.price != null ? p.price * 100 : null);
                                 const seatsLimit = p.limits?.seats;
                                 const aiResolutionsLimit = p.limits?.ai_resolutions ?? p.limits?.aiResolutions;
                                 const features = p.features || [];
 
-                                const current = me.plan === p.key && me.status === "active";
+                                const current = access?.plan === p.key && access?.subscriptionStatus === "active";
                                 const featured = p.key === "growth";
 
                                 return (
-                                    <div key={p.key} className={`rounded-2xl p-6 flex flex-col border ${featured ? "border-indigo-500 bg-indigo-600/5 shadow-lg shadow-indigo-500/10" : "border-slate-800 bg-slate-900/40"}`}>
+                                    <div
+                                        key={p.key}
+                                        className={`rounded-2xl p-6 flex flex-col border ${featured
+                                            ? "border-indigo-500 bg-indigo-600/5 shadow-lg shadow-indigo-500/10"
+                                            : "border-slate-800 bg-slate-900/40"
+                                            }`}
+                                    >
                                         <h2 className="text-lg font-bold">{p.name}</h2>
                                         <p className="mt-2">
                                             <span className="text-3xl font-extrabold">{money(priceCents)}</span>
@@ -249,14 +311,18 @@ export default function PricingPage() {
                                             </li>
                                             <li className="flex gap-2">
                                                 <Check className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
-                                                {aiResolutionsLimit == null ? "Custom AI resolution volume" : `${aiResolutionsLimit.toLocaleString()} AI resolutions / month`}
+                                                {aiResolutionsLimit == null
+                                                    ? "Custom AI resolution volume"
+                                                    : `${aiResolutionsLimit.toLocaleString()} AI resolutions / month`}
                                             </li>
-                                            {features.filter((f) => !f.startsWith("channel_") || features.length < 8).map((f) => (
-                                                <li key={f} className="flex gap-2">
-                                                    <Check className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
-                                                    {LABELS[f] ?? f}
-                                                </li>
-                                            ))}
+                                            {features
+                                                .filter((f) => !f.startsWith("channel_") || features.length < 8)
+                                                .map((f) => (
+                                                    <li key={f} className="flex gap-2">
+                                                        <Check className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+                                                        {LABELS[f] ?? f}
+                                                    </li>
+                                                ))}
                                             {features.filter((f) => f.startsWith("channel_")).length >= 6 && (
                                                 <li className="flex gap-2">
                                                     <Check className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
@@ -267,22 +333,44 @@ export default function PricingPage() {
 
                                         <div className="mt-6 space-y-2">
                                             {priceCents == null ? (
-                                                <a href="mailto:sales@nexuscore.app?subject=SupportOps%20Enterprise" className="block text-center px-4 py-2.5 rounded-lg border border-slate-700 hover:bg-white/5 text-sm font-semibold transition-all">
+                                                <a
+                                                    href="mailto:sales@nexuscore.app?subject=SupportOps%20Enterprise"
+                                                    className="block text-center px-4 py-2.5 rounded-lg border border-slate-700 hover:bg-white/5 text-sm font-semibold transition-all"
+                                                >
                                                     Contact sales
                                                 </a>
                                             ) : current ? (
-                                                <button disabled className="w-full px-4 py-2.5 rounded-lg bg-slate-800 text-slate-400 text-sm font-semibold">
+                                                <button
+                                                    disabled
+                                                    className="w-full px-4 py-2.5 rounded-lg bg-slate-800 text-slate-400 text-sm font-semibold"
+                                                >
                                                     Current plan
                                                 </button>
                                             ) : (
                                                 <>
-                                                    {featured && !me.subscribed && (
-                                                        <button onClick={startTrial} disabled={locked} className="w-full px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold shadow-md shadow-indigo-600/20 transition-all disabled:opacity-50">
-                                                            {busy === "trial" ? "Starting…" : isAuth ? "Start 14-day free trial" : "Sign up for a free trial"}
+                                                    {featured && !access?.isSubscribed && (
+                                                        <button
+                                                            onClick={startTrial}
+                                                            disabled={locked}
+                                                            className="w-full px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold shadow-md shadow-indigo-600/20 transition-all disabled:opacity-50"
+                                                        >
+                                                            {busy === "trial"
+                                                                ? "Starting…"
+                                                                : isAuth
+                                                                    ? "Start 14-day free trial"
+                                                                    : "Sign up for a free trial"}
                                                         </button>
                                                     )}
-                                                    <button onClick={() => checkout(p.key)} disabled={locked} className="w-full px-4 py-2.5 rounded-lg border border-slate-700 hover:bg-white/5 text-sm font-semibold transition-all disabled:opacity-50">
-                                                        {busy === p.key ? "Redirecting…" : isAuth ? "Subscribe now" : "Sign up to subscribe"}
+                                                    <button
+                                                        onClick={() => checkout(p.key)}
+                                                        disabled={locked}
+                                                        className="w-full px-4 py-2.5 rounded-lg border border-slate-700 hover:bg-white/5 text-sm font-semibold transition-all disabled:opacity-50"
+                                                    >
+                                                        {busy === p.key
+                                                            ? "Redirecting…"
+                                                            : isAuth
+                                                                ? "Subscribe now"
+                                                                : "Sign up to subscribe"}
                                                     </button>
                                                 </>
                                             )}
@@ -295,17 +383,29 @@ export default function PricingPage() {
                         {app.addons && app.addons.length > 0 && (
                             <section className="mt-10 rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
                                 <h2 className="font-semibold mb-1">Add-ons</h2>
-                                <p className="text-xs text-slate-500 mb-4">Added to the plan you subscribe to. Enterprise already includes them.</p>
+                                <p className="text-xs text-slate-500 mb-4">
+                                    Added to the plan you subscribe to. Enterprise already includes them.
+                                </p>
                                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                     {app.addons.map((a) => {
                                         const addonPrice = a.priceCents ?? a.price_cents;
                                         return (
-                                            <label key={a.key} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-800 cursor-pointer hover:bg-white/5 transition-colors">
+                                            <label
+                                                key={a.key}
+                                                className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-800 cursor-pointer hover:bg-white/5 transition-colors"
+                                            >
                                                 <span className="flex items-center gap-3 text-sm">
-                                                    <input type="checkbox" className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500" checked={picked.includes(a.key)} onChange={() => toggle(a.key)} />
+                                                    <input
+                                                        type="checkbox"
+                                                        className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+                                                        checked={picked.includes(a.key)}
+                                                        onChange={() => toggle(a.key)}
+                                                    />
                                                     {a.name}
                                                 </span>
-                                                <span className="text-xs text-slate-400 font-mono">{money(addonPrice)}/mo</span>
+                                                <span className="text-xs text-slate-400 font-mono">
+                                                    {money(addonPrice)}/mo
+                                                </span>
                                             </label>
                                         );
                                     })}
@@ -319,7 +419,11 @@ export default function PricingPage() {
             {showAdminModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
                     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl relative">
-                        <button onClick={() => setShowAdminModal(false)} aria-label="Close" className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition-colors">
+                        <button
+                            onClick={() => setShowAdminModal(false)}
+                            aria-label="Close"
+                            className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition-colors"
+                        >
                             <X className="w-5 h-5" />
                         </button>
 
@@ -331,17 +435,25 @@ export default function PricingPage() {
                         </div>
 
                         <p className="text-sm text-slate-300 leading-relaxed mb-5">
-                            You're a member of this workspace, so billing is managed by its <strong className="text-white">owner</strong> or an <strong className="text-white">admin</strong>. Ask them to change the plan.
+                            You're a member of this workspace, so billing is managed by its{" "}
+                            <strong className="text-white">owner</strong> or an{" "}
+                            <strong className="text-white">admin</strong>. Ask them to change the plan.
                             {inSomeoneElsesWorkspace && " Or start a separate plan for your own workspace."}
                         </p>
 
                         <div className="flex flex-col gap-2.5">
                             {inSomeoneElsesWorkspace && (
-                                <button onClick={() => access.switchOrg(personal.id)} className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-indigo-600/25 transition-all flex items-center justify-center gap-2">
+                                <button
+                                    onClick={() => access?.switchOrg?.(personal.id)}
+                                    className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-indigo-600/25 transition-all flex items-center justify-center gap-2"
+                                >
                                     <Building2 className="w-4 h-4" /> Use my own workspace
                                 </button>
                             )}
-                            <button onClick={() => setShowAdminModal(false)} className="w-full py-2 px-4 text-slate-400 hover:text-slate-200 font-medium text-sm rounded-xl transition-all">
+                            <button
+                                onClick={() => setShowAdminModal(false)}
+                                className="w-full py-2 px-4 text-slate-400 hover:text-slate-200 font-medium text-sm rounded-xl transition-all"
+                            >
                                 Close
                             </button>
                         </div>
