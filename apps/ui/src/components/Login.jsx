@@ -1,6 +1,6 @@
+// src/pages/Login.jsx (or src/components/Login.jsx)
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { apiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
 import { useAuth } from "../hooks/useAuth";
 
@@ -23,35 +23,24 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const res = await apiFetch("/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, accessKey: password }),
+      // Pass standard email & password keys expected by Fastify route schema
+      const res = await login({
+        email: email.trim(),
+        password: password,
       });
-
-      if (!res?.token || !res?.user) {
-        throw new Error(res?.message || "Invalid login response from server");
-      }
-
-      // Sync both keys for backward and forward compatibility
-      localStorage.setItem("authToken", res.token);
-      localStorage.setItem("token", res.token);
-      localStorage.setItem("user", JSON.stringify(res.user));
 
       addToast("Welcome back to the Core 👋", "success");
 
-      // Pass user payload and dynamic target route to AuthContext login helper
-      const targetPath = res.redirectTo && res.redirectTo !== "/" ? res.redirectTo : from;
-      await login(
-        {
-          user: res.user,
-          token: res.token,
-        },
-        targetPath
-      );
+      // Navigate to server directive or target location
+      const targetPath = res?.redirectTo && res?.redirectTo !== "/" ? res.redirectTo : from;
+      navigate(targetPath, { replace: true });
     } catch (err) {
       console.error("Login error:", err);
-      addToast(err.message || "Login failed", "error");
+      let errMsg = err.message || "Login failed";
+      if (errMsg === "AUTH_MISSING_FIELDS") {
+        errMsg = "Please enter both email and access key.";
+      }
+      addToast(errMsg, "error");
     } finally {
       setLoading(false);
     }
