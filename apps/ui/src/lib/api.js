@@ -1,25 +1,34 @@
 // src/lib/api.js
-const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:3001").replace(/\/$/, "");
+const API_URL = (
+  import.meta.env.VITE_BACKEND_API_URL ||
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:3001"
+).replace(/\/$/, "");
 
 export async function apiFetch(path, options = {}) {
-  const token = localStorage.getItem("token") || localStorage.getItem("authToken");
+  const token =
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken");
 
-  // normalize path and ensure /api prefix if not present
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const fullPath = normalizedPath.startsWith("/api") ? normalizedPath : `/api${normalizedPath}`;
+  let fullPath = path.startsWith("/") ? path : `/${path}`;
+  if (fullPath.startsWith("/api/v1/")) {
+    fullPath = fullPath.replace("/api/v1/", "/api/");
+  } else if (!fullPath.startsWith("/api/")) {
+    fullPath = `/api${fullPath}`;
+  }
+
   const url = `${API_URL}${fullPath}`;
 
   const controller = new AbortController();
   const timeoutMs = options.timeout ?? 15000;
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  // start with caller headers then add auth
   const headers = { ...(options.headers || {}) };
   if (token && !headers.Authorization && !headers.authorization) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // Prepare body safely
   let body = options.body;
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const isBlob = typeof Blob !== "undefined" && body instanceof Blob;
@@ -50,7 +59,7 @@ export async function apiFetch(path, options = {}) {
           JSON.parse(body);
           headers["Content-Type"] = "application/json";
         } catch {
-          // leave as plain text
+          // Leave as plain text
         }
       }
     }
@@ -77,7 +86,13 @@ export async function apiFetch(path, options = {}) {
     }
 
     if (res.status === 401) {
+      localStorage.removeItem("access_token");
       localStorage.removeItem("token");
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("user");
+
+      window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+
       const err = new Error("Session expired. Please log in again.");
       err.status = 401;
       err.body = data;
@@ -92,7 +107,10 @@ export async function apiFetch(path, options = {}) {
     }
 
     if (!res.ok) {
-      const msg = (data && (data.error || data.message)) || res.statusText || `Request failed (${res.status})`;
+      const msg =
+        (data && (data.error || data.message)) ||
+        res.statusText ||
+        `Request failed (${res.status})`;
       const err = new Error(msg);
       err.status = res.status;
       err.body = data;
@@ -103,6 +121,7 @@ export async function apiFetch(path, options = {}) {
   } catch (err) {
     clearTimeout(timeout);
     if (err && err.name === "AbortError") throw new Error("Request timed out");
+    if (err && (err.status || err.body)) throw err;
     throw new Error(err?.message || "Network request failed");
   } finally {
     clearTimeout(timeout);
@@ -110,7 +129,7 @@ export async function apiFetch(path, options = {}) {
 }
 
 /**
- * Safe wrapper around apiFetch that catches errors and optionally shows a toast.
+ * Safe wrapper around apiFetch that catches errors and optionally triggers a toast.
  */
 export async function safeApiFetch(path, options = {}, addToast) {
   try {
@@ -123,3 +142,5 @@ export async function safeApiFetch(path, options = {}, addToast) {
     return null;
   }
 }
+
+export default apiFetch;

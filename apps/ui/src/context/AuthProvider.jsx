@@ -1,96 +1,96 @@
-import { createContext, useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../lib/api";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 
-export const AuthContext = createContext({
-  user: null,
-  subscription: "free",
-  loading: true,
-  login: () => { },
-  logout: () => { },
-  refreshSession: () => { },
-});
+export const AuthContext = createContext(null);
 
-export default function AuthProvider({ children }) {
+export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [subscription, setSubscription] = useState("free");
+  const [subscription, setSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const navigate = useNavigate();
-
   const getStoredToken = () =>
-    localStorage.getItem("authToken") || localStorage.getItem("token");
+    localStorage.getItem("token") ||
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("authToken");
+
+  const clearAuthStorage = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("user");
+  };
 
   const logout = useCallback(() => {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearAuthStorage();
     setUser(null);
-    setSubscription("free");
-    navigate("/login", { replace: true });
-  }, [navigate]);
+    setSubscription(null);
+  }, []);
 
-  const refreshSession = useCallback(async () => {
+  const fetchAuthData = useCallback(async () => {
     const token = getStoredToken();
+
     if (!token) {
+      setUser(null);
+      setSubscription(null);
       setLoading(false);
       return;
     }
 
     try {
-      const [meRes, subRes] = await Promise.allSettled([
-        apiFetch("/auth/me"),
-        apiFetch("/auth/subscription"),
-      ]);
+      // Mock or replace with your actual API calls
+      const resUser = await fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-      let userData = null;
-      if (meRes.status === "fulfilled" && meRes.value?.user) {
-        userData = meRes.value.user;
+      if (resUser.ok) {
+        const userData = await resUser.json();
+        setUser(userData);
+
+        const resSub = await fetch("/api/auth/subscription", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (resSub.ok) {
+          const subData = await resSub.json();
+          setSubscription(subData);
+        }
       } else {
-        const cached = localStorage.getItem("user");
-        if (cached) userData = JSON.parse(cached);
+        logout();
       }
-
-      if (subRes.status === "fulfilled" && subRes.value?.tier) {
-        setSubscription(subRes.value.tier);
-      }
-
-      setUser(userData ? { ...userData, token } : { token });
     } catch (err) {
-      console.warn("Session revalidation failed:", err);
-      logout();
+      console.error("Auth verification error:", err);
     } finally {
       setLoading(false);
     }
   }, [logout]);
 
   useEffect(() => {
-    refreshSession();
-  }, [refreshSession]);
+    fetchAuthData();
+  }, [fetchAuthData]);
 
-  async function login(authData, customRedirectPath) {
-    const token = authData.token || authData.rawRefreshToken;
-    const userData = authData.user || authData;
+  const login = async (credentials) => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(credentials),
+      });
 
-    if (token) {
-      localStorage.setItem("authToken", token);
-      localStorage.setItem("token", token);
+      if (!response.ok) {
+        throw new Error("Login failed");
+      }
+
+      const data = await response.json();
+      const token = data?.token || data?.access_token;
+      if (token) {
+        localStorage.setItem("token", token);
+      }
+
+      await fetchAuthData();
+      return data;
+    } finally {
+      setLoading(false);
     }
-
-    if (userData) {
-      localStorage.setItem("user", JSON.stringify(userData));
-      setUser({ ...userData, token });
-    }
-
-    refreshSession();
-
-    const targetPath =
-      customRedirectPath || authData.redirectTo || "/swarm";
-
-    if (targetPath) {
-      navigate(targetPath, { replace: true });
-    }
-  }
+  };
 
   return (
     <AuthContext.Provider
@@ -98,12 +98,29 @@ export default function AuthProvider({ children }) {
         user,
         subscription,
         loading,
+        isAuthenticated: !!user,
         login,
         logout,
-        refreshSession,
+        refetchAuth: fetchAuthData,
+        setUser,
+        setSubscription,
       }}
     >
       {children}
     </AuthContext.Provider>
   );
-}
+};
+
+// Primary Hook Export
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+};
+
+// Legacy / Alias Exports
+export const useAuthContext = useAuth;
+
+export default AuthProvider;

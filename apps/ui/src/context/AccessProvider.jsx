@@ -1,129 +1,80 @@
-// apps/ui/src/context/AccessProvider.jsx
-// Loads "what may this person do?" from the backend /me and shares it with every app.
-// Mount it INSIDE your existing AuthProvider (see main.jsx snippet).
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { AuthContext } from "./AuthProvider";
-
-const BASE = (import.meta.env.VITE_SUPPORTOPS_API_URL || import.meta.env.VITE_API_URL || "http://localhost:3001").replace(/\/$/, "");
-const ME_URL = `${BASE}${import.meta.env.VITE_AUTH_PREFIX || "/api/v1/auth"}/me`;
+import React, { createContext, useContext, useMemo } from "react";
+import { useAuth } from "./AuthProvider";
 
 export const AccessContext = createContext(null);
 
-export function AccessProvider({ children }) {
-    const main = useContext(AuthContext);
-    const token = main?.user?.token;
-    const authLoading = main?.loading ?? false; // Wait for parent AuthProvider to finish checking storage/session
-    const navigate = useNavigate();
-    const [session, setSession] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [orgId, setOrgId] = useState(() => localStorage.getItem("activeOrgId"));
+export const AccessProvider = ({ children }) => {
+    const { user, subscription, loading: authLoading } = useAuth();
 
-    const load = useCallback(async (signal) => {
-        // Prevent fetching if main Auth is still resolving or token is missing/invalid
-        if (authLoading) return;
+    const accessControls = useMemo(() => {
+        const role = user?.role || "guest";
+        const permissions = user?.permissions || [];
+        const plan = subscription?.plan || user?.plan || "free";
+        const status = subscription?.status || "inactive";
 
-        if (!token || token === "undefined" || token === "null") {
-            setSession(null);
-            setLoading(false);
-            setError(null);
-            return;
-        }
+        const isSubscribed = status === "active" || status === "trialing";
 
-        try {
-            const res = await fetch(ME_URL, {
-                signal,
-                credentials: "include",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    ...(orgId ? { "X-Org-Id": orgId } : {})
-                }
-            });
+        const hasRole = (requiredRoles) => {
+            if (!user) return false;
+            if (Array.isArray(requiredRoles)) return requiredRoles.includes(role);
+            return role === requiredRoles;
+        };
 
-            if (res.status === 401) {
-                main?.logout?.(false);
-                setSession(null);
-                setError(null);
-                return;
-            } // expired session: sign out quietly
+        const hasPermission = (permission) => {
+            if (!user) return false;
+            if (role === "admin" || role === "owner") return true;
+            return permissions.includes(permission);
+        };
 
-            if (res.status === 403 && orgId) {
-                localStorage.removeItem("activeOrgId");
-                setOrgId(null);
-                return;
-            } // stale workspace: fall back
+        const hasPlan = (requiredPlan) => {
+            const plans = ["free", "starter", "pro", "enterprise"];
+            const userPlanIndex = plans.indexOf(plan.toLowerCase());
+            const requiredPlanIndex = plans.indexOf(requiredPlan.toLowerCase());
+            return userPlanIndex >= requiredPlanIndex;
+        };
 
-            if (!res.ok) throw new Error(String(res.status));
+        return {
+            role,
+            permissions,
+            plan,
+            subscriptionStatus: status,
+            isSubscribed,
+            subscribed: isSubscribed,
+            status,
+            trialEndsAt: subscription?.trialEndsAt,
+            usage: subscription?.usage || {},
+            limits: subscription?.limits || {},
+            hasRole,
+            hasPermission,
+            hasPlan,
+            can: (feature) => hasPermission(feature) || hasPlan(feature),
+            canAccess: (requirement = {}) => {
+                if (requirement.role && !hasRole(requirement.role)) return false;
+                if (requirement.permission && !hasPermission(requirement.permission)) return false;
+                if (requirement.plan && !hasPlan(requirement.plan)) return false;
+                return true;
+            },
+        };
+    }, [user, subscription]);
 
-            const data = await res.json();
-            setSession(data);
-            setError(null);
-            if (data.activeOrgId) localStorage.setItem("activeOrgId", data.activeOrgId);
-        } catch (err) {
-            if (err.name !== "AbortError") {
-                setSession(null);
-                setError(`Could not load your plan (${err.message}).`); // visible, so a server problem is never mistaken for "no subscription"
-            }
-        } finally {
-            if (!signal?.aborted) setLoading(false);
-        }
-    }, [token, authLoading, orgId, main]);
+    return (
+        <AccessContext.Provider value={{ ...accessControls, loading: authLoading }}>
+            {children}
+        </AccessContext.Provider>
+    );
+};
 
-    useEffect(() => {
-        if (authLoading) return; // Don't trigger effect until AuthContext finishes initialization
+// Hook Exports
+export const useAccess = () => {
+    const context = useContext(AccessContext);
+    if (!context) {
+        throw new Error("useAccess must be used within an AccessProvider");
+    }
+    return context;
+};
 
-        const c = new AbortController();
-        setLoading(true);
-        load(c.signal);
-        return () => c.abort();
-    }, [load, authLoading]);
+// Alias exports for backwards compatibility across SupportOps and Landing Page
+export const useApp = useAccess;
+export const useAccessContext = useAccess;
 
-    // After login/signup the main app sends people to its own dashboard. If they started in SupportOps,
-    // take them back to where they were headed.
-    useEffect(() => {
-        if (!session) return;
-        const next = sessionStorage.getItem("postAuthRedirect");
-        if (!next) return;
-        sessionStorage.removeItem("postAuthRedirect");
-        if (next.startsWith("/") && !next.startsWith("//")) navigate(next, { replace: true });
-    }, [session, navigate]);
-
-    const switchOrg = useCallback((id) => {
-        localStorage.setItem("activeOrgId", id);
-        window.location.reload();
-    }, []);
-
-    const value = useMemo(() => ({
-        loading: loading || authLoading,
-        error,
-        apps: session?.apps ?? {},
-        orgs: session?.orgs ?? [],
-        activeOrgId: session?.activeOrgId ?? null,
-        refresh: () => load(),
-        switchOrg,
-    }), [loading, authLoading, error, session, load, switchOrg]);
-
-    return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
-}
-
-/** const { subscribed, plan, status, role, can, usage, limits, trialEndsAt } = useApp("supportops"); */
-export function useApp(slug) {
-    const ctx = useContext(AccessContext);
-    if (!ctx) throw new Error("Wrap the app in <AccessProvider> (main.jsx), inside <AuthProvider>");
-    const app = ctx.apps[slug] ?? null;
-    return useMemo(() => ({
-        loading: ctx.loading,
-        error: ctx.error,
-        subscribed: Boolean(app),
-        plan: app?.plan,
-        status: app?.status,
-        role: app?.role,
-        features: app?.features ?? [],
-        limits: app?.limits ?? {},
-        usage: app?.usage ?? {},
-        trialEndsAt: app?.trialEndsAt,
-        can: (feature) => Boolean(app?.features?.includes(feature)),
-        refresh: ctx.refresh,
-    }), [ctx, app]);
-}
+export default AccessProvider;
