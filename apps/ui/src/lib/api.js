@@ -2,11 +2,13 @@
 import axios from "axios";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "https://nexus-core-a0px.onrender.com/api";
+  import.meta.env.VITE_BACKEND_API_URL ||
+  import.meta.env.VITE_API_URL ||
+  "https://nexus-core-a0px.onrender.com/api";
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 45000, // Increased to 45s for Render cold-starts
+  timeout: 45000, // 45s for Render cold-starts
   headers: {
     "Content-Type": "application/json",
   },
@@ -41,10 +43,21 @@ apiClient.interceptors.response.use(
 
 export const apiFetch = async (endpoint, options = {}) => {
   const method = (options.method || "GET").toLowerCase();
+
+  // Safely parse JSON strings passed to body (e.g. JSON.stringify(...))
+  let data = options.body;
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      // Keep original string if not valid JSON
+    }
+  }
+
   const config = {
     url: endpoint,
     method,
-    data: options.body,
+    data,
     params: options.params,
     timeout: options.timeout || 45000,
     ...options,
@@ -52,3 +65,22 @@ export const apiFetch = async (endpoint, options = {}) => {
 
   return apiClient(config);
 };
+
+/**
+  Safe wrapper around apiFetch that catches errors without throwing.
+  Returns { data, error } and optionally invokes a toast handler.
+ */
+export const safeApiFetch = async (endpoint, options = {}, addToast = null) => {
+  try {
+    const data = await apiFetch(endpoint, options);
+    return { data, error: null };
+  } catch (err) {
+    const message = err.message || "An unexpected error occurred";
+    if (typeof addToast === "function") {
+      addToast(message, "error");
+    }
+    return { data: null, error: err };
+  }
+};
+
+export default apiFetch;
