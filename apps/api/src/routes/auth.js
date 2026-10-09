@@ -61,7 +61,14 @@ export async function authRoutes(server) {
   // REGISTER
   server.post("/register", async (req, reply) => {
     try {
-      const result = await registerUser(req.body);
+      const body = req.body || {};
+      const payload = {
+        ...body,
+        email: body.email || body.username,
+        accessKey: body.accessKey || body.password,
+      };
+
+      const result = await registerUser(payload);
       setRefreshCookie(reply, result.rawRefreshToken);
 
       const redirectTo =
@@ -80,14 +87,35 @@ export async function authRoutes(server) {
         });
       }
       console.error("Register error:", err);
-      return reply.code(500).send({ error: "AUTH_REGISTER_ERROR", message: "Registration failed" });
+      return reply
+        .code(500)
+        .send({ error: "AUTH_REGISTER_ERROR", message: "Registration failed" });
     }
   });
 
   // LOGIN
   server.post("/login", async (req, reply) => {
     try {
-      const result = await loginUser(req.body);
+      const body = req.body || {};
+      const identifier = body.email || body.username;
+      const secret = body.password || body.accessKey;
+
+      if (!identifier || !secret) {
+        return reply.code(400).send({
+          error: "AUTH_MISSING_FIELDS",
+          message: "Both email and password/accessKey are required.",
+        });
+      }
+
+      const payload = {
+        ...body,
+        email: identifier,
+        username: identifier,
+        password: secret,
+        accessKey: secret,
+      };
+
+      const result = await loginUser(payload);
       setRefreshCookie(reply, result.rawRefreshToken);
 
       const redirectTo =
@@ -106,7 +134,9 @@ export async function authRoutes(server) {
         });
       }
       console.error("Login error:", err);
-      return reply.code(500).send({ error: "AUTH_LOGIN_ERROR", message: "Login failed" });
+      return reply
+        .code(500)
+        .send({ error: "AUTH_LOGIN_ERROR", message: "Login failed" });
     }
   });
 
@@ -126,15 +156,20 @@ export async function authRoutes(server) {
       });
 
       if (!user) {
-        return reply.code(404).send({ error: "USER_NOT_FOUND", message: "User account no longer exists" });
+        return reply.code(404).send({
+          error: "USER_NOT_FOUND",
+          message: "User account no longer exists",
+        });
       }
 
       const redirectTo = resolveRedirectPath(user, "/nexus");
 
-      return reply.send({ user, redirectTo });
+      return reply.send({ ...user, user, redirectTo });
     } catch (err) {
       console.error("Fetch user error:", err);
-      return reply.code(500).send({ error: "AUTH_ME_ERROR", message: "Failed to fetch user session" });
+      return reply
+        .code(500)
+        .send({ error: "AUTH_ME_ERROR", message: "Failed to fetch user session" });
     }
   });
 
@@ -161,7 +196,9 @@ export async function authRoutes(server) {
           message: err.message,
         });
       }
-      return reply.code(500).send({ error: "AUTH_REGISTER_ERROR", message: "Registration failed" });
+      return reply
+        .code(500)
+        .send({ error: "AUTH_REGISTER_ERROR", message: "Registration failed" });
     }
   });
 
@@ -187,7 +224,9 @@ export async function authRoutes(server) {
           message: err.message,
         });
       }
-      return reply.code(500).send({ error: "AUTH_LOGIN_ERROR", message: "Login failed" });
+      return reply
+        .code(500)
+        .send({ error: "AUTH_LOGIN_ERROR", message: "Login failed" });
     }
   });
 
@@ -196,7 +235,9 @@ export async function authRoutes(server) {
     try {
       const rawRefreshToken = req.cookies?.refreshToken;
       if (!rawRefreshToken) {
-        return reply.code(401).send({ error: "NO_REFRESH_TOKEN", message: "Refresh token missing" });
+        return reply
+          .code(401)
+          .send({ error: "NO_REFRESH_TOKEN", message: "Refresh token missing" });
       }
 
       const result = await refreshTokens(rawRefreshToken);
@@ -210,7 +251,9 @@ export async function authRoutes(server) {
         });
       }
       console.error("Refresh error:", err);
-      return reply.code(500).send({ error: "AUTH_REFRESH_ERROR", message: "Token refresh failed" });
+      return reply
+        .code(500)
+        .send({ error: "AUTH_REFRESH_ERROR", message: "Token refresh failed" });
     }
   });
 
@@ -219,13 +262,18 @@ export async function authRoutes(server) {
     try {
       const { email } = req.body || {};
       if (!email) {
-        return reply.code(400).send({ error: "INVALID_EMAIL", message: "Email is required" });
+        return reply
+          .code(400)
+          .send({ error: "INVALID_EMAIL", message: "Email is required" });
       }
 
       const user = await prisma.user.findUnique({ where: { email } });
 
       if (!user) {
-        return reply.send({ success: true, message: "If account exists, reset link sent" });
+        return reply.send({
+          success: true,
+          message: "If account exists, reset link sent",
+        });
       }
 
       const resetToken = generateRandomToken(32);
@@ -240,10 +288,16 @@ export async function authRoutes(server) {
       });
 
       await auditLog(user.id, "password_reset_requested", {});
-      return reply.send({ success: true, message: "If account exists, reset link sent" });
+      return reply.send({
+        success: true,
+        message: "If account exists, reset link sent",
+      });
     } catch (err) {
       console.error("Forgot password error:", err);
-      return reply.code(500).send({ error: "AUTH_FORGOT_PASSWORD_ERROR", message: "Password reset request failed" });
+      return reply.code(500).send({
+        error: "AUTH_FORGOT_PASSWORD_ERROR",
+        message: "Password reset request failed",
+      });
     }
   });
 
@@ -252,7 +306,10 @@ export async function authRoutes(server) {
     try {
       const { token, newPassword } = req.body || {};
       if (!token || !newPassword) {
-        return reply.code(400).send({ error: "INVALID_PAYLOAD", message: "Token and new password required" });
+        return reply.code(400).send({
+          error: "INVALID_PAYLOAD",
+          message: "Token and new password required",
+        });
       }
 
       const hashedToken = hashToken(token);
@@ -265,20 +322,30 @@ export async function authRoutes(server) {
       });
 
       if (!user) {
-        return reply.code(400).send({ error: "AUTH_INVALID_RESET_TOKEN", message: "Reset token expired or invalid" });
+        return reply.code(400).send({
+          error: "AUTH_INVALID_RESET_TOKEN",
+          message: "Reset token expired or invalid",
+        });
       }
 
       const hash = await bcrypt.hash(newPassword, 12);
       await prisma.user.update({
         where: { id: user.id },
-        data: { password_hash: hash, reset_token: null, reset_token_expires: null },
+        data: {
+          password_hash: hash,
+          reset_token: null,
+          reset_token_expires: null,
+        },
       });
 
       await auditLog(user.id, "password_reset_success", {});
       return reply.send({ success: true });
     } catch (err) {
       console.error("Reset password error:", err);
-      return reply.code(500).send({ error: "AUTH_RESET_PASSWORD_ERROR", message: "Password reset failed" });
+      return reply.code(500).send({
+        error: "AUTH_RESET_PASSWORD_ERROR",
+        message: "Password reset failed",
+      });
     }
   });
 
@@ -297,7 +364,9 @@ export async function authRoutes(server) {
       });
 
       if (!user) {
-        return reply.code(404).send({ error: "USER_NOT_FOUND", message: "User account not found" });
+        return reply
+          .code(404)
+          .send({ error: "USER_NOT_FOUND", message: "User account not found" });
       }
 
       return reply.send({
@@ -305,12 +374,20 @@ export async function authRoutes(server) {
         email: user.email,
         tier: user.subscription?.tier || "free",
         active: user.subscription?.status === "active",
+        status: user.subscription?.status || "active",
         role: user.role,
         created_at: user.createdAt,
       });
     } catch (err) {
-      req.log.error("Subscription error:", err);
-      return reply.code(500).send({ error: "AUTH_SUBSCRIPTION_ERROR", message: "Failed to fetch subscription" });
+      if (req.log?.error) {
+        req.log.error("Subscription error:", err);
+      } else {
+        console.error("Subscription error:", err);
+      }
+      return reply.code(500).send({
+        error: "AUTH_SUBSCRIPTION_ERROR",
+        message: "Failed to fetch subscription",
+      });
     }
   });
 
@@ -331,7 +408,9 @@ export async function authRoutes(server) {
         });
       }
       console.error("Stripe checkout error:", err);
-      return reply.code(500).send({ error: "AUTH_STRIPE_ERROR", message: "Checkout creation failed" });
+      return reply
+        .code(500)
+        .send({ error: "AUTH_STRIPE_ERROR", message: "Checkout creation failed" });
     }
   });
 
