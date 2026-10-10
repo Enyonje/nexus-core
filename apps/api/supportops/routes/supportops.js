@@ -1,5 +1,5 @@
 // src/routes/supportops.js
-import { requireAuth } from "../security/authMiddleware.js";
+import { requireAuth } from "./authMiddleware.js";
 import { prisma } from "../config/prisma.js";
 
 export async function supportopsRoutes(app) {
