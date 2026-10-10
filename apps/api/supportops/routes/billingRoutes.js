@@ -3,10 +3,10 @@
 // Register: await app.register(billingRoutes, { prefix: "/api/v1/billing" });
 // Env: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, APP_URL (frontend)
 
-import { prisma } from "../../../config/prisma.js";
-import { requireAuth } from "../../../security/authMiddleware.js";
-import { AccessError, invalidateSubscription } from "../../../security/entitlements.js";
-import { mapStripeStatus, trialEnd } from "../../../security/entitlementRules.js";
+import { prisma } from "../config/prisma.js";
+import { requireAuth } from "./authMiddleware.js";
+import { AccessError, invalidateSubscription } from "../security/entitlements.js";
+import { mapStripeStatus, trialEnd } from "../security/entitlementRules.js";
 
 const stripe = async () => {
     const { default: Stripe } = await import("stripe");
