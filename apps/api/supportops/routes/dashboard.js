@@ -83,24 +83,6 @@ export async function dashboardRoutes(app) {
             return reply.code(500).send({ error: "REVENUE_FETCH_FAILED", message: err.message });
         }
     });
-
-    // GET /health (Live system check)
-    app.get("/health", async (req, reply) => {
-        let dbStatus = "connected";
-        try {
-            await prisma.$queryRaw`SELECT 1`;
-        } catch {
-            dbStatus = "disconnected";
-        }
-
-        return reply.send({
-            status: dbStatus === "connected" ? "ok" : "degraded",
-            database: dbStatus,
-            uptime: process.uptime(),
-            apiLatencyMs: 14,
-            timestamp: new Date().toISOString(),
-        });
-    });
 }
 
 export default dashboardRoutes;
