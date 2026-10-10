@@ -1,26 +1,8 @@
 // src/routes/supportops.js
 import { requireAuth } from "./authMiddleware.js";
-import { prisma } from "../config/prisma.js";
+import { prisma } from "../../src/config/prisma.js"; // Or adjust to your correct prisma path if needed
 
 export async function supportopsRoutes(app) {
-    // GET /tickets/channels & /supportops/tickets/channels
-    const getChannels = async (req, reply) => {
-        try {
-            // Query integration or channel configurations from DB if stored, else return live availability state
-            const channels = [
-                { key: "whatsapp", name: "WhatsApp", connected: true, provider: "Meta Cloud API" },
-                { key: "voice", name: "Phone", connected: true, provider: "Twilio Voice" },
-                { key: "email", name: "Email", connected: true, provider: "SendGrid / IMAP" },
-                { key: "sms", name: "SMS", connected: false, provider: "Twilio SMS" },
-                { key: "web", name: "Web Chat", connected: true, provider: "Nexus Widget" },
-                { key: "social", name: "Social", connected: false, provider: "Intercom Bridge" },
-            ];
-            return reply.send({ channels });
-        } catch (err) {
-            return reply.code(500).send({ error: "CHANNELS_FETCH_FAILED", message: err.message });
-        }
-    };
-
     // GET /tickets & /supportops/tickets (Real database records)
     const getTickets = async (req, reply) => {
         try {
@@ -42,8 +24,8 @@ export async function supportopsRoutes(app) {
         }
     };
 
-    app.get("/tickets/channels", { preHandler: requireAuth }, getChannels);
-    app.get("/supportops/tickets/channels", { preHandler: requireAuth }, getChannels);
+    // Note: Channel routes removed from here to prevent FST_ERR_DUPLICATED_ROUTE 
+    // because they are registered via channelsRoutesMod in server.js.
 
     app.get("/tickets", { preHandler: requireAuth }, getTickets);
     app.get("/supportops/tickets", { preHandler: requireAuth }, getTickets);
