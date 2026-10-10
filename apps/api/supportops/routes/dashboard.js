@@ -1,5 +1,5 @@
 // src/routes/dashboard.js
-import { requireAuth } from "./security/authMiddleware.js";
+import { requireAuth } from "../../security/authMiddleware.js";
 import { prisma } from "../../src/config/prisma.js";
 
 export async function dashboardRoutes(app) {
