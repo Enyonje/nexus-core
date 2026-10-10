@@ -1,5 +1,6 @@
+// src/context/AccessProvider.jsx
 import React, { createContext, useContext, useMemo } from "react";
-import { useAuth } from "./AuthProvider";
+import { useAuth } from "./AuthProvider"; // Adjust path if needed to point to your useAuth hook
 
 export const AccessContext = createContext(null);
 

@@ -1,9 +1,10 @@
 // supportops/src/context/AuthContext.jsx
-// SupportOps has NO login of its own. It reads the signed-in user from the main app's AuthProvider.
-// Unauthenticated users are allowed guest access so they can view the Pricing page and subscribe.
+// SupportOps reads the signed-in user from the main app's AuthProvider.
+// Unauthenticated users are allowed guest access for the Pricing page and subscriptions.
 import { useContext, useMemo } from "react";
-import { AuthContext as MainAuthContext } from "../../../context/AuthProvider"; // apps/ui/src/context/AuthProvider.jsx
-import { AccessContext } from "../../../context/AccessProvider";
+import { AuthContext as MainAuthContext } from "./AuthProvider";
+import { AccessContext } from "./AccessProvider";
+import { apiFetch } from "../lib/api";
 
 /**
  * Determines the user's role inside SupportOps.
@@ -35,10 +36,11 @@ export function useAuth() {
   // If no token/user exists, don't hold guest users in an auth loading state
   const isAccessLoading = Boolean(user && access?.loading);
   const isAuthLoading = Boolean((loading || initializing) && user) || isAccessLoading;
+  const effectiveAuthFetch = authFetch || apiFetch;
 
   return useMemo(
     () => ({
-      // Provide a baseline guest profile when no token is present so Pricing/Subscription components don't crash on user property reads
+      // Provide baseline guest profile when unauthenticated so Pricing/Subscription components don't crash
       user: user
         ? { ...user, role }
         : { id: null, email: null, role: "guest", isGuest: true },
@@ -46,10 +48,10 @@ export function useAuth() {
       loading: isAuthLoading,
       isAuth: Boolean(user),
       isGuest: !user,
-      logout,
-      authFetch,
+      logout: logout || (() => { window.location.href = "/login"; }),
+      authFetch: effectiveAuthFetch,
     }),
-    [user, role, isAuthLoading, logout, authFetch]
+    [user, role, isAuthLoading, logout, effectiveAuthFetch]
   );
 }
 

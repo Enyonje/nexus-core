@@ -1,3 +1,4 @@
+// server.js
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
@@ -18,6 +19,7 @@ import * as auditRoutesMod from "./routes/audit.js";
 import * as paymentsRoutesMod from "./routes/payments.js";
 import * as streamRoutesMod from "./routes/stream.js";
 import * as stripeRoutesMod from "./routes/stripe.js";
+import * as dashboardRoutesMod from "./routes/dashboard.js"; // <--- Added Dashboard Routes
 
 // SupportOps Routes
 import * as aiRoutesMod from "../supportops/routes/ai.js";
@@ -34,6 +36,7 @@ import * as oldTicketsRoutesMod from "../supportops/routes/tickets.js";
 import * as inviteRoutesMod from "../supportops/routes/inviteRoutes.js";
 import * as readinessRoutesMod from "../supportops/routes/readinessRoutes.js";
 import * as billingV1Mod from "../supportops/routes/billingRoutes.js";
+import webhookRoutes from "../supportops/routes/webhooks.js";
 
 dotenv.config();
 
@@ -136,6 +139,8 @@ async function start() {
   app.register(authPlugin, { prefix: "/auth" });
   app.register(authPlugin, { prefix: "/api/auth" });
   app.register(authPlugin, { prefix: "/api/v1/auth" });
+  app.register(webhookRoutes, { prefix: "/api" });
+  app.register(webhookRoutes, { prefix: "/api/v1" });
 
   // Other Core Routes
   mountBoth("goals", goalsRoutesMod, "goals");
@@ -145,6 +150,7 @@ async function start() {
   mountBoth("payments", paymentsRoutesMod, "payments");
   mountBoth("stream", streamRoutesMod, "stream");
   mountBoth("stripe", stripeRoutesMod, "stripe");
+  mountBoth("dashboard", dashboardRoutesMod, ""); // <--- Registers /api/metrics, /api/dashboard/metrics, etc.
 
   app.register(resolvePlugin(webhooksRoutesMod, "webhooks"));
 
