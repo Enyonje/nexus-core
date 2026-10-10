@@ -8,6 +8,30 @@ const clients = new Map();
 const globalClients = new Set();
 
 /**
+ * Standardized SSE Response Headers setup helper
+ */
+function initializeSSEResponse(req, reply) {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    "https://nexusthecore.com",
+    "https://nexus-core-chi.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+  ];
+
+  reply.raw.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no", // CRITICAL for Render / NGINX
+    "Access-Control-Allow-Origin": origin && allowedOrigins.includes(origin) ? origin : "*",
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Allow-Methods": "GET,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Org-Id",
+  });
+}
+
+/**
  * Register SSE client for a given executionId
  */
 function registerClient(executionId, reply) {
@@ -41,11 +65,12 @@ function registerGlobalClient(reply) {
  * Emit event to all listeners for a specific execution and global stream
  */
 function emitEvent(executionId, payload) {
+  const serialized = `event: ${payload.event || "activity"}\ndata: ${JSON.stringify(payload)}\n\n`;
+
   // Emit to global activity stream listeners
   for (const reply of globalClients) {
     try {
-      reply.raw.write(`event: ${payload.event || "activity"}\n`);
-      reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+      reply.raw.write(serialized);
     } catch (err) {
       reply.log?.warn("Global SSE write failed:", err.message);
     }
@@ -57,8 +82,7 @@ function emitEvent(executionId, payload) {
 
   for (const reply of listeners) {
     try {
-      reply.raw.write(`event: ${payload.event}\n`);
-      reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+      reply.raw.write(serialized);
     } catch (err) {
       reply.log?.warn("SSE write failed:", err.message);
     }
@@ -106,26 +130,8 @@ export async function streamRoutes(server) {
     { preHandler: requireAuth },
     async (req, reply) => {
       try {
-        const origin = req.headers.origin;
-        const allowedOrigins = [
-          "https://nexusthecore.com",
-          "https://nexus-core-chi.vercel.app",
-          "http://localhost:5173",
-          "http://localhost:3000",
-        ];
+        initializeSSEResponse(req, reply);
 
-        reply.raw.writeHead(200, {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache, no-transform",
-          "Connection": "keep-alive",
-          "X-Accel-Buffering": "no",
-          "Access-Control-Allow-Origin": origin && allowedOrigins.includes(origin) ? origin : "*",
-          "Access-Control-Allow-Credentials": "true",
-          "Access-Control-Allow-Methods": "GET,OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Org-Id",
-        });
-
-        // Initial handshake event
         reply.raw.write(
           `data: ${JSON.stringify({
             event: "nexus_connected",
@@ -151,24 +157,7 @@ export async function streamRoutes(server) {
     async (req, reply) => {
       try {
         const { executionId } = req.params;
-        const origin = req.headers.origin;
-        const allowedOrigins = [
-          "https://nexusthecore.com",
-          "https://nexus-core-chi.vercel.app",
-          "http://localhost:5173",
-          "http://localhost:3000",
-        ];
-
-        reply.raw.writeHead(200, {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache, no-transform",
-          "Connection": "keep-alive",
-          "X-Accel-Buffering": "no",
-          "Access-Control-Allow-Origin": origin && allowedOrigins.includes(origin) ? origin : "*",
-          "Access-Control-Allow-Credentials": "true",
-          "Access-Control-Allow-Methods": "GET,OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Org-Id",
-        });
+        initializeSSEResponse(req, reply);
 
         reply.raw.write(
           `data: ${JSON.stringify({
@@ -191,8 +180,7 @@ export async function streamRoutes(server) {
   =============================== */
   server.get("/stream/health", { preHandler: requireAuth }, async (_req, reply) => {
     try {
-      const active = getActiveStreams();
-      return { status: "ok", activeStreams: active };
+      return { status: "ok", activeStreams: getActiveStreams() };
     } catch (err) {
       server.log.error("Stream health check failed:", err);
       return reply.code(500).send({ error: "Internal Monitoring Failure" });

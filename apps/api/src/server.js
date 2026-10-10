@@ -37,6 +37,7 @@ import * as inviteRoutesMod from "../supportops/routes/inviteRoutes.js";
 import * as readinessRoutesMod from "../supportops/routes/readinessRoutes.js";
 import * as billingV1Mod from "../supportops/routes/billingRoutes.js";
 import webhookRoutes from "../supportops/routes/webhooks.js";
+import realtimeRoutes from "../supportops/routes/realtime.js";
 
 dotenv.config();
 
@@ -132,6 +133,7 @@ async function start() {
   }
 
   await app.register(fastifyJwt, { secret: env.JWT_SECRET || "fallback-jwt" });
+  await app.register(realtimeRoutes, { prefix: "/api/v1" });
 
   /* ========================= CORE ROUTES ========================= */
   // Mount auth plugin under root /auth, /api/auth, and /api/v1/auth
@@ -169,6 +171,7 @@ async function start() {
   mountBoth("supportops/webhooks-stripe", stripeWebhookRoutesMod, "supportops/webhooks/stripe");
   mountBoth("supportops/supportops", supportopsRoutesMod, "supportops");
   mountBoth("billing-v1", billingV1Mod, "billing");
+
 
   /* ========================= ERROR HANDLERS ========================= */
   app.setNotFoundHandler((req, reply) => {
