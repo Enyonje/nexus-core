@@ -380,6 +380,7 @@ export async function authRoutes(server) {
         select: {
           id: true,
           email: true,
+          organization: true,
           role: true,
           created_at: true,
         },
@@ -391,12 +392,23 @@ export async function authRoutes(server) {
           .send({ error: "USER_NOT_FOUND", message: "User account not found" });
       }
 
+      let subRecord = null;
+      try {
+        if (user.organization) {
+          subRecord = await prisma.subscription?.findFirst?.({
+            where: { org_id: user.organization },
+          });
+        }
+      } catch {
+        // Fallback gracefully if subscription table query fails
+      }
+
       return reply.send({
         id: user.id,
         email: user.email,
-        tier: "growth",
-        active: true,
-        status: "active",
+        tier: subRecord?.plan_id || subRecord?.tier || "growth",
+        active: subRecord ? subRecord.status === "active" : true,
+        status: subRecord?.status || "active",
         role: user.role || "developer",
         created_at: user.created_at,
       });
@@ -408,7 +420,6 @@ export async function authRoutes(server) {
       });
     }
   });
-
   // STRIPE CHECKOUT
   server.post("/stripe/checkout", { preHandler: requireAuth }, async (req, reply) => {
     try {
