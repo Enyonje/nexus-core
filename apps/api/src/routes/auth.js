@@ -30,18 +30,30 @@ function setRefreshCookie(reply, token) {
 /**
  * Resolves the appropriate redirect destination based on user context,
  * product tier, or explicitly assigned platform metadata.
+ * Safely coerces fields to prevent type errors.
  */
 function resolveRedirectPath(user, defaultPath = "/nexus") {
   if (!user) return defaultPath;
 
-  const product = user.product?.toLowerCase();
-  const organization = user.organization?.toLowerCase();
-  const tier = user.subscription?.tier?.toLowerCase();
+  const rawProduct = typeof user.product === "string" ? user.product : user.product?.name || user.product?.slug || "";
+  const product = rawProduct.toLowerCase();
+
+  let rawOrg = user.organization;
+  if (typeof rawOrg === "object" && rawOrg !== null) {
+    rawOrg = rawOrg.name || rawOrg.slug || "";
+  }
+  const organization = (typeof rawOrg === "string" ? rawOrg : "").toLowerCase();
+
+  let rawTier = user.subscription?.tier || user.subscription;
+  if (typeof rawTier === "object" && rawTier !== null) {
+    rawTier = rawTier.tier || rawTier.name || "";
+  }
+  const tier = (typeof rawTier === "string" ? rawTier : "").toLowerCase();
 
   if (
     product === "supportops" ||
-    organization?.includes("supportops") ||
-    tier?.includes("supportops")
+    organization.includes("supportops") ||
+    tier.includes("supportops")
   ) {
     return "/supportops";
   }
@@ -49,8 +61,8 @@ function resolveRedirectPath(user, defaultPath = "/nexus") {
   if (
     product === "nexus" ||
     product === "nexuscore" ||
-    organization?.includes("nexus") ||
-    tier?.includes("nexus")
+    organization.includes("nexus") ||
+    tier.includes("nexus")
   ) {
     return "/nexus";
   }
@@ -141,7 +153,7 @@ export async function authRoutes(server) {
     }
   });
 
-  // CURRENT USER SESSION DECODE/VERIFY (Resilient against missing relations)
+  // CURRENT USER SESSION DECODE/VERIFY (Resilient against schema mismatches)
   server.get("/me", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const user = await prisma.user.findUnique({
