@@ -19,7 +19,7 @@ import * as auditRoutesMod from "./routes/audit.js";
 import * as paymentsRoutesMod from "./routes/payments.js";
 import * as streamRoutesMod from "./routes/stream.js";
 import * as stripeRoutesMod from "./routes/stripe.js";
-import * as dashboardRoutesMod from "./routes/dashboard.js"; // <--- Added Dashboard Routes
+import * as dashboardRoutesMod from "../supportops/routes/dashboard.js"; // <--- Added Dashboard Routes
 
 // SupportOps Routes
 import * as aiRoutesMod from "../supportops/routes/ai.js";
