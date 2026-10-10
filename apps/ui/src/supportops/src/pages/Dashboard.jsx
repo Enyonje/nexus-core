@@ -1,8 +1,9 @@
+// src/pages/Dashboard.jsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   MessageCircle, Phone, Mail, Smartphone, Globe, Share2, Clock, AlertTriangle,
-  CheckCircle2, TrendingUp, Users, DollarSign, Sparkles, Ticket, RefreshCw,
+  CheckCircle2, Users, DollarSign, Sparkles, Ticket, RefreshCw,
   Inbox, Activity, Plug, Zap,
 } from "lucide-react";
 import RevenueChart from "../components/RevenueChart";
@@ -29,7 +30,7 @@ const TITLES = {
   investor: ["Business performance", "Revenue, growth and what AI is saving"],
 };
 
-// Shown only in development when the tickets API returns nothing
+// Development sample fallback data
 const SAMPLE = [
   { id: "T-1042", subject: "Payment failed twice at checkout", customer: "Amina K.", channel: "whatsapp", priority: "high", slaMins: 12 },
   { id: "T-1041", subject: "Missed call: delivery not received", customer: "Brian O.", channel: "voice", priority: "urgent", slaMins: -8 },
@@ -39,11 +40,15 @@ const SAMPLE = [
 
 /* ---------- helpers ---------- */
 async function getJSON(url, signal) {
-  const token = localStorage.getItem("authToken");
-  const org = localStorage.getItem("activeOrgId");
+  const token = localStorage.getItem("authToken") || localStorage.getItem("token");
+  const org = localStorage.getItem("activeOrgId") || localStorage.getItem("orgId");
   const res = await fetch(url, {
     signal,
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(org ? { "X-Org-Id": org } : {}) },
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(org ? { "X-Org-Id": org } : {}),
+      "Content-Type": "application/json",
+    },
   });
   if (!res.ok) throw new Error(String(res.status));
   return res.json();
@@ -149,7 +154,7 @@ function ChannelConnections({ channels }) {
                 <p className={`text-[11px] ${on ? "text-emerald-400" : "text-slate-500"}`}>{on ? "Connected" : "Not connected"}</p>
               </div>
             </div>
-            <Link to={ROUTES.admin.channels} className="px-3 py-1.5 rounded-lg text-xs border border-slate-700 text-slate-200 hover:bg-white/5">{on ? "Manage" : "Connect"}</Link>
+            <Link to={ROUTES?.admin?.channels || "/admin/channels"} className="px-3 py-1.5 rounded-lg text-xs border border-slate-700 text-slate-200 hover:bg-white/5">{on ? "Manage" : "Connect"}</Link>
           </li>
         );
       })}
@@ -221,7 +226,6 @@ export default function WorkspaceDashboard({ view, role = "admin", user }) {
   const connected = Object.values(CHANNELS).filter((_, i) => channels[Object.keys(CHANNELS)[i]]?.connected).length;
   const mrrGrowth = metrics?.mrrChange;
 
-  // One sentence telling each role what to do first
   const nextAction = {
     agent: atRisk.length ? `${atRisk.length} ticket${atRisk.length > 1 ? "s" : ""} will breach SLA within the hour. Start with ${atRisk[0].id}.` : "Nothing is close to breaching SLA. Pick up the oldest ticket.",
     management: atRisk.length ? `${atRisk.length} open ticket${atRisk.length > 1 ? "s are" : " is"} at SLA risk. Consider rebalancing the queue.` : "SLA health looks good across channels.",
@@ -303,7 +307,7 @@ export default function WorkspaceDashboard({ view, role = "admin", user }) {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div className="xl:col-span-2 space-y-6">
               {current === "agent" && (
-                <Card title="Priority queue" icon={Inbox} action={<Link to={ROUTES.agent.tickets} className="text-xs text-cyan-400 hover:underline">Open tickets</Link>}>
+                <Card title="Priority queue" icon={Inbox} action={<Link to={ROUTES?.agent?.tickets || "/supportops/tickets"} className="text-xs text-cyan-400 hover:underline">Open tickets</Link>}>
                   <TicketList tickets={tickets} />
                 </Card>
               )}

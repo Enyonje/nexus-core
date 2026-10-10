@@ -44,16 +44,15 @@ const group = (prefix) => {
 
 // One builder per registered router
 export const SUPPORTOPS_API = {
-    ai: group("/ai"),                 // prefix: /api/v1/supportops/ai
-    aiReview: group("/ai-review"),    // prefix: /api/v1/supportops/ai-review
+    ai: group("/ai"),                    // prefix: /api/v1/supportops/ai
+    aiReview: group("/ai-review"),      // prefix: /api/v1/supportops/ai-review
     incidents: group("/incidents"),   // prefix: /api/v1/supportops/incidents
     analytics: group("/analytics"),   // prefix: /api/v1/supportops/analytics
     tickets: group("/tickets"),       // prefix: /api/v1/supportops/tickets
     users: group("/users"),
-    chat: group("/chat"),           // prefix: /api/v1/supportops/chat
-    invites: group("/invites"),     // prefix: /api/v1/supportops/invites
-    readiness: group("/readiness"), // prefix: /api/v1/supportops/readiness           // prefix: /api/v1/supportops/users
-    // webhooks/stripe is server-to-server only (Stripe calls it), so the frontend never uses it
+    chat: group("/chat"),             // prefix: /api/v1/supportops/chat
+    invites: group("/invites"),       // prefix: /api/v1/supportops/invites
+    readiness: group("/readiness"), // prefix: /api/v1/supportops/readiness
 };
 
 // Named backend API endpoints
@@ -61,9 +60,11 @@ export const API_ENDPOINTS = {
     // Fastify: app.get("/api/v1/dashboard/metrics")
     metrics: (timeframe = "30d") => api(`${V1}/dashboard/metrics${qs({ timeframe })}`),
     health: api(`${V1}/system/health`),
-    activityStream: api(`${V1}/agents/activity/stream`),
 
-    // SupportOps routers. The ".root" is certain; sub-paths must match your route files.
+    // Fixed: Aligned with server.js mountBoth("stream", streamRoutesMod, "stream")
+    activityStream: api(`${V1}/stream/agents/activity/stream`),
+
+    // SupportOps routers
     ai: SUPPORTOPS_API.ai,
     aiReview: SUPPORTOPS_API.aiReview,
     incidents: SUPPORTOPS_API.incidents,
@@ -77,9 +78,8 @@ export const API_ENDPOINTS = {
         checkout: api(`${V1}/billing/checkout`),
     },
 
-    // Your existing authRoutes plugin. Set AUTH_PREFIX to wherever it is registered.
     auth: {
-        register: api(`${AUTH_PREFIX}/supportops/register`), // new SupportOps route (see backend patch)
+        register: api(`${AUTH_PREFIX}/register`),
         login: api(`${AUTH_PREFIX}/login`),
         me: api(`${AUTH_PREFIX}/me`),
         refresh: api(`${AUTH_PREFIX}/refresh`),
@@ -94,8 +94,8 @@ export const API_ENDPOINTS = {
 export const ROUTES = {
     home: p("/"),
     features: p("/features"),
-    login: "/login",      // main app (central login)
-    signup: "/register",  // main app (central signup)
+    login: "/login",
+    signup: "/register",
     cancel: p("/cancel"),
     success: p("/success"),
     pricing: p("/pricing"),

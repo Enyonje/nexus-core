@@ -1,3 +1,4 @@
+// src/pages/Dashboard.jsx
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
@@ -56,9 +57,18 @@ export default function Dashboard() {
         {/* Header Section */}
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-8 border-b border-slate-800/80">
           <div className="space-y-2">
-            <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white">
-              Nexus <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Core</span>
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white">
+                Nexus <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Core</span>
+              </h1>
+              {/* Cross-Product Bridge to SupportOps */}
+              <Link
+                to="/supportops"
+                className="text-[10px] font-mono font-bold text-blue-400 hover:text-blue-300 uppercase tracking-wider border border-blue-500/30 bg-blue-500/10 px-3 py-1 rounded-lg transition-colors"
+              >
+                Switch to SupportOps →
+              </Link>
+            </div>
             <div className="flex items-center gap-3">
               <p className="text-slate-400 font-mono font-bold text-[10px] uppercase tracking-widest">
                 Clearance Tier: <span className="text-cyan-400">{subscription || "Guest"}</span>
@@ -74,12 +84,20 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <Link
-            to="/subscription"
-            className="bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold uppercase tracking-wider px-6 py-3 rounded-xl transition-all shadow-lg shadow-cyan-900/30 text-center active:scale-95"
-          >
-            {isFreeUser ? "Upgrade Clearance Tier →" : "Manage Subscription"}
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              to="/pricing"
+              className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold uppercase tracking-wider px-5 py-3 rounded-xl transition-all border border-slate-700 text-center active:scale-95"
+            >
+              Pricing Plans
+            </Link>
+            <Link
+              to="/subscription"
+              className="bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold uppercase tracking-wider px-6 py-3 rounded-xl transition-all shadow-lg shadow-cyan-900/30 text-center active:scale-95"
+            >
+              {isFreeUser ? "Upgrade Clearance Tier →" : "Manage Subscription"}
+            </Link>
+          </div>
         </header>
 
         {/* Operational Metrics */}
@@ -121,6 +139,11 @@ export default function Dashboard() {
               description="Monitor live autonomous neural agent execution streams."
               to={activeExecutionId ? `/executions/${activeExecutionId}/stream` : "/executions"}
               locked={isFreeUser}
+            />
+            <ActionCard
+              title="Customer Support Ops"
+              description="Manage multi-channel tickets, WhatsApp, and voice queues."
+              to="/supportops"
             />
           </section>
 

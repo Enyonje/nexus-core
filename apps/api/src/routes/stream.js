@@ -4,6 +4,8 @@ import { db } from "../db/db.js"; // your Postgres pool/connection
 
 // Local map of executionId -> Set of SSE reply objects
 const clients = new Map();
+// Global activity stream clients
+const globalClients = new Set();
 
 /**
  * Register SSE client for a given executionId
@@ -14,7 +16,6 @@ function registerClient(executionId, reply) {
   }
   clients.get(executionId).add(reply);
 
-  // Cleanup on disconnect
   reply.raw.on("close", () => {
     const listeners = clients.get(executionId);
     if (listeners) {
@@ -27,9 +28,30 @@ function registerClient(executionId, reply) {
 }
 
 /**
- * Emit event to all listeners for a specific execution
+ * Register global activity stream client
+ */
+function registerGlobalClient(reply) {
+  globalClients.add(reply);
+  reply.raw.on("close", () => {
+    globalClients.delete(reply);
+  });
+}
+
+/**
+ * Emit event to all listeners for a specific execution and global stream
  */
 function emitEvent(executionId, payload) {
+  // Emit to global activity stream listeners
+  for (const reply of globalClients) {
+    try {
+      reply.raw.write(`event: ${payload.event || "activity"}\n`);
+      reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch (err) {
+      reply.log?.warn("Global SSE write failed:", err.message);
+    }
+  }
+
+  // Emit to specific execution listeners
   const listeners = clients.get(executionId);
   if (!listeners) return;
 
@@ -38,7 +60,7 @@ function emitEvent(executionId, payload) {
       reply.raw.write(`event: ${payload.event}\n`);
       reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
     } catch (err) {
-      reply.log.warn("SSE write failed:", err.message);
+      reply.log?.warn("SSE write failed:", err.message);
     }
   }
 }
@@ -47,7 +69,7 @@ function emitEvent(executionId, payload) {
  * Get active streams summary
  */
 function getActiveStreams() {
-  const summary = {};
+  const summary = { globalListeners: globalClients.size };
   for (const [executionId, listeners] of clients.entries()) {
     summary[executionId] = listeners.size;
   }
@@ -58,34 +80,33 @@ function getActiveStreams() {
  * Subscribe to Postgres NOTIFY channel
  */
 (async () => {
-  const client = await db.connect();
-  await client.query("LISTEN execution_events");
+  try {
+    const client = await db.connect();
+    await client.query("LISTEN execution_events");
 
-  client.on("notification", (msg) => {
-    try {
-      const payload = JSON.parse(msg.payload);
-      if (payload.executionId) {
-        emitEvent(payload.executionId, payload);
+    client.on("notification", (msg) => {
+      try {
+        const payload = JSON.parse(msg.payload);
+        emitEvent(payload.executionId || "global", payload);
+      } catch (err) {
+        console.error("Failed to parse NOTIFY payload:", err);
       }
-    } catch (err) {
-      console.error("Failed to parse NOTIFY payload:", err);
-    }
-  });
+    });
+  } catch (err) {
+    console.warn("Postgres LISTEN setup warning:", err.message);
+  }
 })();
 
 export async function streamRoutes(server) {
   /* ===============================
-     SSE STREAM (LIVE TRACE)
+     GLOBAL AGENT ACTIVITY STREAM (SSE)
   =============================== */
   server.get(
-    "/api/executions/:executionId/stream",
+    "/agents/activity/stream",
     { preHandler: requireAuth },
     async (req, reply) => {
       try {
-        const { executionId } = req.params;
         const origin = req.headers.origin;
-
-        // Allowed origins
         const allowedOrigins = [
           "https://nexusthecore.com",
           "https://nexus-core-chi.vercel.app",
@@ -93,31 +114,70 @@ export async function streamRoutes(server) {
           "http://localhost:3000",
         ];
 
-        // Validate origin
-        if (!origin || allowedOrigins.includes(origin)) {
-          reply.raw.writeHead(200, {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no", // CRITICAL for Render/Cloudflare
-            "Access-Control-Allow-Origin": origin || "*",
-            "Access-Control-Allow-Credentials": "true",
-            "Access-Control-Allow-Methods": "GET,OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-          });
-        } else {
-          return reply.code(403).send({ error: "Access Denied: Origin Mismatch" });
-        }
+        reply.raw.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache, no-transform",
+          "Connection": "keep-alive",
+          "X-Accel-Buffering": "no",
+          "Access-Control-Allow-Origin": origin && allowedOrigins.includes(origin) ? origin : "*",
+          "Access-Control-Allow-Credentials": "true",
+          "Access-Control-Allow-Methods": "GET,OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Org-Id",
+        });
 
         // Initial handshake event
         reply.raw.write(
           `data: ${JSON.stringify({
             event: "nexus_connected",
+            description: "Neural activity link established successfully.",
+            data: { system: "Nexus Core Stream", status: "Synchronized" },
+          })}\n\n`
+        );
+
+        registerGlobalClient(reply);
+      } catch (err) {
+        server.log.error("Global Activity Stream error:", err);
+        return reply.code(500).send({ error: "Stream Failure", detail: err.message });
+      }
+    }
+  );
+
+  /* ===============================
+     SSE STREAM (INDIVIDUAL EXECUTION TRACE)
+  =============================== */
+  server.get(
+    "/executions/:executionId/stream",
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        const { executionId } = req.params;
+        const origin = req.headers.origin;
+        const allowedOrigins = [
+          "https://nexusthecore.com",
+          "https://nexus-core-chi.vercel.app",
+          "http://localhost:5173",
+          "http://localhost:3000",
+        ];
+
+        reply.raw.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache, no-transform",
+          "Connection": "keep-alive",
+          "X-Accel-Buffering": "no",
+          "Access-Control-Allow-Origin": origin && allowedOrigins.includes(origin) ? origin : "*",
+          "Access-Control-Allow-Credentials": "true",
+          "Access-Control-Allow-Methods": "GET,OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Org-Id",
+        });
+
+        reply.raw.write(
+          `data: ${JSON.stringify({
+            event: "nexus_connected",
+            description: "Neural execution trace active.",
             data: { system: "Neural Link Alpha", status: "Synchronized" },
           })}\n\n`
         );
 
-        // Register client
         registerClient(executionId, reply);
       } catch (err) {
         server.log.error("Stream error:", err);
@@ -129,7 +189,7 @@ export async function streamRoutes(server) {
   /* ===============================
      STREAM HEALTH
   =============================== */
-  server.get("/api/stream/health", { preHandler: requireAuth }, async (_req, reply) => {
+  server.get("/stream/health", { preHandler: requireAuth }, async (_req, reply) => {
     try {
       const active = getActiveStreams();
       return { status: "ok", activeStreams: active };
@@ -142,13 +202,13 @@ export async function streamRoutes(server) {
   /* ===============================
      GOALS (Dashboard View)
   =============================== */
-  server.get("/api/goals", { preHandler: requireAuth }, async (req, reply) => {
+  server.get("/goals", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const userId = req.user.id;
       const { rows } = await server.pg.query(
         `SELECT * FROM goals WHERE user_id=$1 ORDER BY created_at DESC`,
         [userId]
-      );
+      ).catch(() => ({ rows: [] }));
       return rows;
     } catch (err) {
       server.log.error("Goal list failed:", err);
@@ -156,3 +216,5 @@ export async function streamRoutes(server) {
     }
   });
 }
+
+export default streamRoutes;

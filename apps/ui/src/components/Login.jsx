@@ -1,4 +1,4 @@
-// src/pages/Login.jsx (or src/components/Login.jsx)
+// src/pages/Login.jsx
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useToast } from "./ToastContext.jsx";
@@ -15,7 +15,6 @@ export default function Login() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Explicitly fallback to /nexus dashboard instead of landing or legacy /swarm
   const from = location.state?.from && location.state.from !== "/" ? location.state.from : "/nexus";
 
   async function handleLogin(e) {
@@ -30,7 +29,6 @@ export default function Login() {
 
       addToast("Welcome back to Nexus Core 👋", "success");
 
-      // Priority: 1. Explicit server directive, 2. Origin route ('from'), 3. Default '/nexus'
       let targetPath = "/nexus";
       if (res?.redirectTo && res.redirectTo !== "/") {
         targetPath = res.redirectTo;
@@ -51,8 +49,15 @@ export default function Login() {
     }
   }
 
+  // Quick Demo Auto-fill Helper for smooth evaluation & journey
+  const fillDemoCredentials = () => {
+    setEmail("developer@nexus.ai");
+    setPassword("Password123!");
+    addToast("Demo credentials loaded ✨", "info");
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#020617] relative overflow-hidden px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#020617] relative overflow-hidden px-4 py-12">
       {/* Background Ambient Glows */}
       <div className="absolute top-1/3 -right-20 w-80 h-80 bg-blue-600/20 blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-1/3 -left-20 w-80 h-80 bg-indigo-600/20 blur-[120px] rounded-full pointer-events-none" />
@@ -60,9 +65,11 @@ export default function Login() {
       <div className="relative z-10 w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-700">
         {/* Branding */}
         <div className="text-center mb-8">
-          <div className="text-4xl font-black tracking-tighter bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent inline-block">
-            NEXUS CORE
-          </div>
+          <Link to="/" className="inline-block group">
+            <div className="text-4xl font-black tracking-tighter bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent group-hover:opacity-90 transition-opacity">
+              NEXUS CORE
+            </div>
+          </Link>
           <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em] mt-2">
             Identity Verification Required
           </p>
@@ -73,9 +80,20 @@ export default function Login() {
           onSubmit={handleLogin}
           className="bg-slate-900/60 backdrop-blur-2xl rounded-3xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] p-8 space-y-6 border border-slate-800/50"
         >
-          <div className="space-y-1">
-            <h2 className="text-2xl font-bold text-white tracking-tight">System Login</h2>
-            <p className="text-sm text-slate-400">Authenticate to access your worker swarms.</p>
+          <div className="flex justify-between items-center">
+            <div className="space-y-1">
+              <h2 className="text-2xl font-bold text-white tracking-tight">System Login</h2>
+              <p className="text-sm text-slate-400">Authenticate to access your worker swarms.</p>
+            </div>
+            {/* Quick Demo Fill Button */}
+            <button
+              type="button"
+              onClick={fillDemoCredentials}
+              className="text-[10px] font-bold bg-slate-800/80 hover:bg-slate-700 text-blue-400 px-2.5 py-1.5 rounded-lg border border-slate-700 transition-colors uppercase tracking-wider"
+              title="Click to load test credentials"
+            >
+              Demo Fill
+            </button>
           </div>
 
           <div className="space-y-4">
@@ -158,25 +176,34 @@ export default function Login() {
             </span>
           </button>
 
-          <div className="pt-2 text-center">
+          {/* User Journey Navigation Bar */}
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between text-xs font-medium text-slate-400 gap-2 border-t border-slate-800/60 mt-4 pt-4">
+            <Link
+              to="/pricing"
+              className="hover:text-blue-400 transition-colors uppercase tracking-widest text-[10px]"
+            >
+              Explore Plans
+            </Link>
             <Link
               to="/register"
               state={{ from }}
-              className="text-xs font-semibold text-slate-500 hover:text-blue-400 transition-colors uppercase tracking-[0.15em]"
+              className="text-blue-500 hover:text-blue-400 font-semibold uppercase tracking-widest text-[10px]"
             >
-              New to Nexus? <span className="text-blue-500 underline underline-offset-4 decoration-blue-500/30">Request Access</span>
+              Request Access →
             </Link>
           </div>
         </form>
 
-        {/* Tech Badges */}
-        <div className="mt-12 flex justify-center gap-6 opacity-30 grayscale hover:opacity-100 hover:grayscale-0 transition-all duration-500">
-          <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center font-bold text-[8px] text-white">GCP</div>
-          <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center font-bold text-[8px] text-white">VRC</div>
-          <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center font-bold text-[8px] text-white">NODE</div>
+        {/* User Satisfaction Footer Links */}
+        <div className="mt-8 flex justify-center gap-6 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+          <Link to="/supportops" className="hover:text-slate-300 transition-colors">SupportOps</Link>
+          <span>•</span>
+          <Link to="/nexus" className="hover:text-slate-300 transition-colors">Nexus Core</Link>
+          <span>•</span>
+          <Link to="/pricing" className="hover:text-slate-300 transition-colors">Pricing</Link>
         </div>
 
-        <p className="text-center mt-8 text-[9px] text-slate-700 uppercase tracking-widest">
+        <p className="text-center mt-6 text-[9px] text-slate-700 uppercase tracking-widest">
           Secure Protocol • FluxStudio Engineering
         </p>
       </div>

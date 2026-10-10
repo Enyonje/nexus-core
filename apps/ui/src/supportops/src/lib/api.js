@@ -9,7 +9,7 @@ const api = axios.create({
   timeout: 15000,
 });
 
-// Attach JWT automatically (checks access_token, token, and authToken)
+// Attach JWT token and Workspace Organization header automatically
 api.interceptors.request.use(
   (config) => {
     const token =
@@ -20,6 +20,16 @@ api.interceptors.request.use(
     if (token && token !== "undefined" && token !== "null") {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Automatically attach active workspace organization ID for SupportOps/Nexus routing
+    const activeOrgId =
+      localStorage.getItem("activeOrgId") ||
+      localStorage.getItem("orgId");
+
+    if (activeOrgId && activeOrgId !== "undefined" && activeOrgId !== "null") {
+      config.headers["X-Org-Id"] = activeOrgId;
+    }
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -41,6 +51,8 @@ api.interceptors.response.use(
       localStorage.removeItem("token");
       localStorage.removeItem("authToken");
       localStorage.removeItem("user");
+      localStorage.removeItem("activeOrgId");
+      localStorage.removeItem("orgId");
 
       // Dispatch custom event for state providers
       window.dispatchEvent(new CustomEvent("auth:unauthorized"));
