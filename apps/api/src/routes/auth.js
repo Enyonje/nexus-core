@@ -30,7 +30,6 @@ function setRefreshCookie(reply, token) {
 /**
  * Resolves the appropriate redirect destination based on user context,
  * product tier, or explicitly assigned platform metadata.
- * Safely coerces fields to prevent type errors.
  */
 function resolveRedirectPath(user, defaultPath = "/nexus") {
   if (!user) return defaultPath;
@@ -153,7 +152,7 @@ export async function authRoutes(server) {
     }
   });
 
-  // CURRENT USER SESSION DECODE/VERIFY (Resilient against schema mismatches)
+  // CURRENT USER SESSION DECODE/VERIFY
   server.get("/me", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const user = await prisma.user.findUnique({
@@ -176,12 +175,15 @@ export async function authRoutes(server) {
 
       let subscription = { tier: "growth", status: "active" };
       try {
-        const subRecord = await prisma.subscription?.findUnique?.({
-          where: { userId: user.id },
-        });
-        if (subRecord) subscription = subRecord;
+        const orgId = req.headers["x-org-id"] || user.organization;
+        if (orgId) {
+          const subRecord = await prisma.subscription?.findFirst?.({
+            where: { org_id: typeof orgId === "string" ? orgId : orgId?.id },
+          });
+          if (subRecord) subscription = subRecord;
+        }
       } catch {
-        // Fallback if subscription table isn't migrated
+        // Fallback if subscription table query fails
       }
 
       const userPayload = { ...user, createdAt: user.created_at, subscription };
@@ -372,7 +374,7 @@ export async function authRoutes(server) {
     }
   });
 
-  // SUBSCRIPTION STATUS (Protected user lookup)
+  // SUBSCRIPTION STATUS (Protected user lookup with fixed string ID query)
   server.get("/subscription", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const user = await prisma.user.findUnique({
@@ -394,9 +396,10 @@ export async function authRoutes(server) {
 
       let subRecord = null;
       try {
-        if (user.organization) {
+        const orgId = req.headers["x-org-id"] || user.organization;
+        if (orgId) {
           subRecord = await prisma.subscription?.findFirst?.({
-            where: { org_id: user.organization },
+            where: { org_id: typeof orgId === "string" ? orgId : orgId?.id },
           });
         }
       } catch {
@@ -420,6 +423,7 @@ export async function authRoutes(server) {
       });
     }
   });
+
   // STRIPE CHECKOUT
   server.post("/stripe/checkout", { preHandler: requireAuth }, async (req, reply) => {
     try {
