@@ -8,7 +8,7 @@ const API_BASE_URL =
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 45000, // 45s for Render cold-starts
+  timeout: 45000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -44,7 +44,13 @@ apiClient.interceptors.response.use(
 export const apiFetch = async (endpoint, options = {}) => {
   const method = (options.method || "GET").toLowerCase();
 
-  // Safely parse JSON strings passed to body (e.g. JSON.stringify(...))
+  // Normalize endpoint: if it starts with /auth, /billing, etc., ensure it aligns with backend prefix
+  let cleanEndpoint = endpoint;
+  if (cleanEndpoint.startsWith("/") && !cleanEndpoint.startsWith("/api")) {
+    // If baseURL already ends with /api, strip leading slash or map cleanly
+    cleanEndpoint = cleanEndpoint.replace(/^\//, "");
+  }
+
   let data = options.body;
   if (typeof data === "string") {
     try {
@@ -55,7 +61,7 @@ export const apiFetch = async (endpoint, options = {}) => {
   }
 
   const config = {
-    url: endpoint,
+    url: cleanEndpoint,
     method,
     data,
     params: options.params,
@@ -66,10 +72,6 @@ export const apiFetch = async (endpoint, options = {}) => {
   return apiClient(config);
 };
 
-/**
-  Safe wrapper around apiFetch that catches errors without throwing.
-  Returns { data, error } and optionally invokes a toast handler.
- */
 export const safeApiFetch = async (endpoint, options = {}, addToast = null) => {
   try {
     const data = await apiFetch(endpoint, options);
