@@ -1,14 +1,16 @@
 // src/lib/api.js
 import axios from "axios";
 
-const API_BASE_URL =
+// Base URL without trailing /api to prevent Axios absolute-path replacement
+const API_BASE_URL = (
   import.meta.env.VITE_BACKEND_API_URL ||
   import.meta.env.VITE_API_URL ||
-  "https://nexus-core-a0px.onrender.com/api";
+  "https://nexus-core-a0px.onrender.com"
+).replace(/\/api\/?$/, "");
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 45000,
+  timeout: 45000, // 45s for Render cold-starts
   headers: {
     "Content-Type": "application/json",
   },
@@ -44,13 +46,13 @@ apiClient.interceptors.response.use(
 export const apiFetch = async (endpoint, options = {}) => {
   const method = (options.method || "GET").toLowerCase();
 
-  // Normalize endpoint: if it starts with /auth, /billing, etc., ensure it aligns with backend prefix
-  let cleanEndpoint = endpoint;
-  if (cleanEndpoint.startsWith("/") && !cleanEndpoint.startsWith("/api")) {
-    // If baseURL already ends with /api, strip leading slash or map cleanly
-    cleanEndpoint = cleanEndpoint.replace(/^\//, "");
+  // Automatically ensure all endpoints route through /api
+  let cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  if (!cleanEndpoint.startsWith("/api")) {
+    cleanEndpoint = `/api${cleanEndpoint}`;
   }
 
+  // Safely parse JSON strings passed to body
   let data = options.body;
   if (typeof data === "string") {
     try {

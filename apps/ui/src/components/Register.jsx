@@ -1,3 +1,4 @@
+// src/pages/Register.jsx
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
@@ -22,44 +23,49 @@ export default function Register() {
     setLoading(true);
 
     try {
+      const cleanEmail = email.trim();
       const res = await apiFetch("/auth/register", {
         method: "POST",
         body: JSON.stringify({
-          email,
+          email: cleanEmail,
+          password: password,
           accessKey: password,
-          organization,
-          intent, // Passes selection to backend if required
+          organization: organization.trim(),
+          intent,
         }),
       });
 
       if (!res?.token || !res?.user) {
-        throw new Error("Invalid register response");
+        throw new Error(res?.message || "Invalid registration response from server");
       }
 
+      // Persist auth tokens
       localStorage.setItem("authToken", res.token);
+      localStorage.setItem("token", res.token);
       localStorage.setItem("user", JSON.stringify(res.user));
 
+      // Trigger AuthProvider state update
       login({
         user: res.user,
         token: res.token,
       });
 
-      addToast("Welcome to the Workforce! 🎉", "success");
+      addToast("Welcome to Nexus Core! 🎉", "success");
 
-      // Dynamic target route based on intent selection
-      let targetPath = intent === "explore_agents" ? "/agents" : "/swarm";
+      // Dynamic default path based on workspace intent
+      let targetPath = intent === "explore_agents" ? "/agents" : "/nexus";
 
-      // Respect explicit redirect state if present
-      if (location.state?.from && location.state.from !== "/") {
-        targetPath = location.state.from;
-      } else if (res.redirectTo && res.redirectTo !== "/") {
+      // Respect explicit redirect directives
+      if (res.redirectTo && res.redirectTo !== "/") {
         targetPath = res.redirectTo;
+      } else if (location.state?.from && location.state.from !== "/") {
+        targetPath = location.state.from;
       }
 
       navigate(targetPath, { replace: true });
     } catch (err) {
       console.error("Register error:", err);
-      addToast(err.message || "Registration failed", "error");
+      addToast(err.message || "Registration failed. Please try again.", "error");
     } finally {
       setLoading(false);
     }
@@ -145,7 +151,7 @@ export default function Register() {
               </label>
               <input
                 type="email"
-                placeholder="evans@nexus.ai"
+                placeholder="developer@nexus.ai"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-slate-950/50 border border-slate-800/80 text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all placeholder:text-slate-700"

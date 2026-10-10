@@ -15,24 +15,29 @@ export default function Login() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Retrieve origin route or fallback to main application root
-  const from = location.state?.from || "/swarm";
+  // Explicitly fallback to /nexus dashboard instead of landing or legacy /swarm
+  const from = location.state?.from && location.state.from !== "/" ? location.state.from : "/nexus";
 
   async function handleLogin(e) {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // Pass standard email & password keys expected by Fastify route schema
       const res = await login({
         email: email.trim(),
         password: password,
       });
 
-      addToast("Welcome back to the Core 👋", "success");
+      addToast("Welcome back to Nexus Core 👋", "success");
 
-      // Navigate to server directive or target location
-      const targetPath = res?.redirectTo && res?.redirectTo !== "/" ? res.redirectTo : from;
+      // Priority: 1. Explicit server directive, 2. Origin route ('from'), 3. Default '/nexus'
+      let targetPath = "/nexus";
+      if (res?.redirectTo && res.redirectTo !== "/") {
+        targetPath = res.redirectTo;
+      } else if (from && from !== "/") {
+        targetPath = from;
+      }
+
       navigate(targetPath, { replace: true });
     } catch (err) {
       console.error("Login error:", err);
@@ -112,7 +117,6 @@ export default function Login() {
                   className="w-full bg-slate-950/50 border border-slate-800/80 text-white px-4 py-3.5 pr-12 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all placeholder:text-slate-700"
                   required
                 />
-                {/* Password Toggle */}
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
