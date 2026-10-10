@@ -66,7 +66,6 @@ function resolvePlugin(mod, label = "unknown") {
 const app = Fastify({ logger: true, bodyLimit: 1048576 });
 
 // ========================= IMMEDIATE HEALTH CHECK ROUTE =========================
-// Registered instantly so Render ping probes never receive 404s during boot
 const healthHandler = async (_req, reply) => {
   return reply.code(200).send({
     status: "ok",
@@ -117,12 +116,16 @@ async function start() {
   await app.register(websocket);
 
   if (env.DATABASE_URL) {
-    await app.register(fastifyPostgres, {
-      connectionString: env.DATABASE_URL,
-      ssl: env.NODE_ENV === "production"
-        ? { ca: env.PG_CA_CERT, rejectUnauthorized: false }
-        : false,
-    }).catch(err => console.warn("DB connection warning during boot:", err.message));
+    try {
+      await app.register(fastifyPostgres, {
+        connectionString: env.DATABASE_URL,
+        ssl: env.NODE_ENV === "production"
+          ? { ca: env.PG_CA_CERT, rejectUnauthorized: false }
+          : false,
+      });
+    } catch (err) {
+      console.warn("DB connection warning during boot:", err.message);
+    }
   }
 
   await app.register(fastifyJwt, { secret: env.JWT_SECRET || "fallback-jwt" });
