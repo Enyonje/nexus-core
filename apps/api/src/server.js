@@ -15,7 +15,6 @@ import * as goalsRoutesMod from "./routes/goals.js";
 import * as adminRoutesMod from "./routes/admin.js";
 import * as executionsRoutesMod from "./routes/executions.js";
 import * as auditRoutesMod from "./routes/audit.js";
-import * as billingRoutesMod from "./routes/billing.js";
 import * as paymentsRoutesMod from "./routes/payments.js";
 import * as streamRoutesMod from "./routes/stream.js";
 import * as stripeRoutesMod from "./routes/stripe.js";
@@ -67,8 +66,12 @@ function resolvePlugin(mod, label = "unknown") {
 const app = Fastify({ logger: true, bodyLimit: 1048576 });
 
 async function start() {
-  const mount = (label, mod, prefix) =>
-    app.register(resolvePlugin(mod, label), prefix ? { prefix } : undefined);
+  const mountBoth = (label, mod, prefixSegment) => {
+    const plugin = resolvePlugin(mod, label);
+    // Register under both /api/v1/... and /api/... so frontend queries never 404
+    app.register(plugin, { prefix: `/api/v1/${prefixSegment}` });
+    app.register(plugin, { prefix: `/api/${prefixSegment}` });
+  };
 
   /* ========================= CORS ========================= */
   const allowedOrigins = [
@@ -79,7 +82,7 @@ async function start() {
   ];
   await app.register(cors, () => (req, cb) => {
     const origin = req.headers.origin;
-    const isWidget = req.url.startsWith("/api/v1/supportops/chat/widget/");
+    const isWidget = req.url.includes("/chat/widget/");
     const allowed = !origin || isWidget || allowedOrigins.includes(origin);
     cb(null, {
       origin: allowed,
@@ -110,7 +113,7 @@ async function start() {
   await app.register(fastifyJwt, { secret: env.JWT_SECRET });
 
   /* ========================= HEALTH ========================= */
-  app.get("/api/v1/system/health", async (_req, reply) => {
+  const healthHandler = async (_req, reply) => {
     let database = "connected";
     try {
       await app.pg.query("SELECT 1");
@@ -123,36 +126,39 @@ async function start() {
       services: { database },
       timestamp: new Date().toISOString(),
     });
-  });
+  };
+  app.get("/api/v1/system/health", healthHandler);
+  app.get("/api/system/health", healthHandler);
 
   /* ========================= CORE ROUTES ========================= */
-  await mount("auth", authRoutesMod, "/api/v1/auth");
-  await mount("goals", goalsRoutesMod, "/api/v1/goals");
-  await mount("admin", adminRoutesMod, "/api/v1/admin");
-  await mount("executions", executionsRoutesMod, "/api/v1/executions");
-  await mount("audit", auditRoutesMod, "/api/v1/audit");
-  await mount("payments", paymentsRoutesMod, "/api/v1/payments");
-  await mount("stream", streamRoutesMod, "/api/v1/stream");
-  await mount("stripe", stripeRoutesMod, "/api/v1/stripe");
-  await mount("webhooks", webhooksRoutesMod);
+  mountBoth("auth", authRoutesMod, "auth");
+  mountBoth("goals", goalsRoutesMod, "goals");
+  mountBoth("admin", adminRoutesMod, "admin");
+  mountBoth("executions", executionsRoutesMod, "executions");
+  mountBoth("audit", auditRoutesMod, "audit");
+  mountBoth("payments", paymentsRoutesMod, "payments");
+  mountBoth("stream", streamRoutesMod, "stream");
+  mountBoth("stripe", stripeRoutesMod, "stripe");
+
+  app.register(resolvePlugin(webhooksRoutesMod, "webhooks"));
 
   /* ========================= SUPPORTOPS ROUTES ========================= */
-  await mount("supportops/tickets", ticketsRoutesMod, "/api/v1/supportops/tickets");
-  await mount("supportops/channels", channelsRoutesMod, "/api/v1/supportops/tickets/channels");
-  await mount("supportops/chat", chatRoutesMod, "/api/v1/supportops/chat");
-  await mount("supportops/invites", inviteRoutesMod, "/api/v1/supportops/invites");
-  await mount("supportops/readiness", readinessRoutesMod, "/api/v1/supportops/readiness");
-  await mount("supportops/tickets-legacy", oldTicketsRoutesMod, "/api/v1/supportops/tickets-legacy");
-  await mount("supportops/ai", aiRoutesMod, "/api/v1/supportops/ai");
-  await mount("supportops/ai-v2", aiLegacyRoutesMod, "/api/v1/supportops/ai-v2");
-  await mount("supportops/ai-review", aiReviewRoutesMod, "/api/v1/supportops/ai-review");
-  await mount("supportops/incidents", incidentsRoutesMod, "/api/v1/supportops/incidents");
-  await mount("supportops/analytics", orgAnalyticsRoutesMod, "/api/v1/supportops/analytics");
-  await mount("supportops/webhooks-stripe", stripeWebhookRoutesMod, "/api/v1/supportops/webhooks/stripe");
-  await mount("supportops/supportops", supportopsRoutesMod, "/api/v1/supportops");
+  mountBoth("supportops/tickets", ticketsRoutesMod, "supportops/tickets");
+  mountBoth("supportops/channels", channelsRoutesMod, "supportops/tickets/channels");
+  mountBoth("supportops/chat", chatRoutesMod, "supportops/chat");
+  mountBoth("supportops/invites", inviteRoutesMod, "supportops/invites");
+  mountBoth("supportops/readiness", readinessRoutesMod, "supportops/readiness");
+  mountBoth("supportops/tickets-legacy", oldTicketsRoutesMod, "supportops/tickets-legacy");
+  mountBoth("supportops/ai", aiRoutesMod, "supportops/ai");
+  mountBoth("supportops/ai-v2", aiLegacyRoutesMod, "supportops/ai-v2");
+  mountBoth("supportops/ai-review", aiReviewRoutesMod, "supportops/ai-review");
+  mountBoth("supportops/incidents", incidentsRoutesMod, "supportops/incidents");
+  mountBoth("supportops/analytics", orgAnalyticsRoutesMod, "supportops/analytics");
+  mountBoth("supportops/webhooks-stripe", stripeWebhookRoutesMod, "supportops/webhooks/stripe");
+  mountBoth("supportops/supportops", supportopsRoutesMod, "supportops");
 
-  // SupportOps billing plugin
-  await mount("billing-v1", billingV1Mod, "/api/v1/billing");
+  // SupportOps billing plugin (mounted at /api/billing and /api/v1/billing)
+  mountBoth("billing-v1", billingV1Mod, "billing");
 
   /* ========================= ERROR HANDLERS ========================= */
   app.setNotFoundHandler((req, reply) => {
@@ -162,6 +168,7 @@ async function start() {
       message: `Route ${req.method}:${req.url} not found`,
     });
   });
+
   app.setErrorHandler((error, req, reply) => {
     req.log.error(error);
     const status = error.statusCode || 500;
@@ -177,8 +184,8 @@ async function start() {
   await app.ready();
   app.log.info(`\nRegistered routes:\n${app.printRoutes()}`);
 
-  await app.listen({ port: env.PORT, host: "0.0.0.0" });
-  console.log(`🚀 API running on port ${env.PORT} in ${env.NODE_ENV} mode`);
+  await app.listen({ port: env.PORT || 10000, host: "0.0.0.0" });
+  console.log(`🚀 API running on port ${env.PORT || 10000} in ${env.NODE_ENV} mode`);
 }
 
 start().catch((err) => {
