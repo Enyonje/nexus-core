@@ -131,7 +131,13 @@ async function start() {
   await app.register(fastifyJwt, { secret: env.JWT_SECRET || "fallback-jwt" });
 
   /* ========================= CORE ROUTES ========================= */
-  mountBoth("auth", authRoutesMod, "auth");
+  // Mount auth plugin under root /auth, /api/auth, and /api/v1/auth
+  const authPlugin = resolvePlugin(authRoutesMod, "auth");
+  app.register(authPlugin, { prefix: "/auth" });
+  app.register(authPlugin, { prefix: "/api/auth" });
+  app.register(authPlugin, { prefix: "/api/v1/auth" });
+
+  // Other Core Routes
   mountBoth("goals", goalsRoutesMod, "goals");
   mountBoth("admin", adminRoutesMod, "admin");
   mountBoth("executions", executionsRoutesMod, "executions");

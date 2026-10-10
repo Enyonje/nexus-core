@@ -151,7 +151,7 @@ export async function authRoutes(server) {
           email: true,
           organization: true,
           role: true,
-          createdAt: true,
+          created_at: true,
         },
       });
 
@@ -172,7 +172,7 @@ export async function authRoutes(server) {
         // Fallback if subscription table isn't migrated
       }
 
-      const userPayload = { ...user, subscription };
+      const userPayload = { ...user, createdAt: user.created_at, subscription };
       const redirectTo = resolveRedirectPath(userPayload, "/nexus");
 
       return reply.send({ ...userPayload, user: userPayload, redirectTo });
@@ -369,7 +369,7 @@ export async function authRoutes(server) {
           id: true,
           email: true,
           role: true,
-          createdAt: true,
+          created_at: true,
         },
       });
 
@@ -386,7 +386,7 @@ export async function authRoutes(server) {
         active: true,
         status: "active",
         role: user.role || "developer",
-        created_at: user.createdAt,
+        created_at: user.created_at,
       });
     } catch (err) {
       console.error("Subscription error:", err);
