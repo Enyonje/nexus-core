@@ -31,7 +31,7 @@ export default function LandingPage() {
       title: "Cross-Border Compliance System",
       slug: "cross-border-compliance-system",
       desc: "Real-time international statutory screening, localized regulatory risk mitigation, and automated cross-border legal checks.",
-      path: "/compliance",
+      path: "/agents/cross-border-compliance",
       status: "Production Ready",
       color: "from-emerald-400 to-teal-500",
       accent: "emerald",
@@ -43,7 +43,7 @@ export default function LandingPage() {
       title: "Support-Ops AI",
       slug: "support-ops-ai",
       desc: "Autonomous triage, self-healing integration setups, and SLA escalation tracking powered by internal engineering context.",
-      path: "{targetDashboard}",
+      path: "/supportops",
       status: "Beta Access",
       color: "from-blue-400 to-indigo-500",
       accent: "blue",
@@ -74,7 +74,7 @@ export default function LandingPage() {
 
         <div className="hidden md:flex items-center gap-10 text-[11px] font-black uppercase tracking-widest text-slate-400">
           <Link to="/docs" className="hover:text-blue-400 transition-colors">Platform</Link>
-          <Link to="/agents" className="text-blue-400 border-b border-blue-500/50 pb-0.5 tracking-widest">Specialised Agents</Link>
+          <Link to="/agents" className="hover:text-blue-400 transition-colors">Specialised Agents</Link>
           <Link to="/subscription" className="hover:text-blue-400 transition-colors">Pricing</Link>
           <Link to="/architecture" className="hover:text-blue-400 transition-colors">Architecture</Link>
         </div>
@@ -279,7 +279,7 @@ export default function LandingPage() {
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Sandboxed Runtime
                       </span>
                       <Link
-                        to="/supportops/*"
+                        to={agent.path}
                         state={{ from: location.pathname }}
                         className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white border border-white/10 text-white hover:text-slate-950 text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2"
                       >

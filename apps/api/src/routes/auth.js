@@ -1,4 +1,3 @@
-// src/routes/auth.js
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { requireAuth } from "../security/authMiddleware.js";
@@ -29,10 +28,18 @@ function setRefreshCookie(reply, token) {
 
 /**
  * Resolves the appropriate redirect destination based on user context,
- * product tier, or explicitly assigned platform metadata.
+ * intent, product tier, or explicitly assigned platform metadata.
  */
-function resolveRedirectPath(user, defaultPath = "/nexus") {
+function resolveRedirectPath(user, defaultPath = "/dashboard") {
   if (!user) return defaultPath;
+
+  // Honor explicit UI/UX registration or login intent
+  if (user.intent === "explore_agents") {
+    return "/agents";
+  }
+  if (user.intent === "launch_swarm") {
+    return "/dashboard";
+  }
 
   const rawProduct = typeof user.product === "string" ? user.product : user.product?.name || user.product?.slug || "";
   const product = rawProduct.toLowerCase();
@@ -63,7 +70,7 @@ function resolveRedirectPath(user, defaultPath = "/nexus") {
     organization.includes("nexus") ||
     tier.includes("nexus")
   ) {
-    return "/nexus";
+    return "/dashboard";
   }
 
   return defaultPath;
@@ -78,13 +85,18 @@ export async function authRoutes(server) {
         ...body,
         email: body.email || body.username,
         accessKey: body.accessKey || body.password,
+        intent: body.intent || "launch_swarm",
       };
 
       const result = await registerUser(payload);
       setRefreshCookie(reply, result.rawRefreshToken);
 
+      if (result.user && !result.user.intent) {
+        result.user.intent = payload.intent;
+      }
+
       const redirectTo =
-        result.redirectTo || resolveRedirectPath(result.user, "/nexus");
+        result.redirectTo || resolveRedirectPath(result.user, "/dashboard");
 
       return reply.send({
         token: result.token,
@@ -131,7 +143,7 @@ export async function authRoutes(server) {
       setRefreshCookie(reply, result.rawRefreshToken);
 
       const redirectTo =
-        result.redirectTo || resolveRedirectPath(result.user, "/nexus");
+        result.redirectTo || resolveRedirectPath(result.user, "/dashboard");
 
       return reply.send({
         token: result.token,
@@ -187,7 +199,7 @@ export async function authRoutes(server) {
       }
 
       const userPayload = { ...user, createdAt: user.created_at, subscription };
-      const redirectTo = resolveRedirectPath(userPayload, "/nexus");
+      const redirectTo = resolveRedirectPath(userPayload, "/dashboard");
 
       return reply.send({ ...userPayload, user: userPayload, redirectTo });
     } catch (err) {
@@ -200,14 +212,14 @@ export async function authRoutes(server) {
 
   // CROSSBORDER ALIASES
   server.post("/crossborder/auth/register", async (req, reply) => {
-    const { email, password, company, organization } = req.body || {};
-    req.body = { email, accessKey: password, company, organization: organization || company };
+    const { email, password, company, organization, intent } = req.body || {};
+    req.body = { email, accessKey: password, company, organization: organization || company, intent };
 
     try {
       const result = await registerUser(req.body);
       setRefreshCookie(reply, result.rawRefreshToken);
 
-      const redirectTo = resolveRedirectPath(result.user, "/nexus");
+      const redirectTo = resolveRedirectPath(result.user, "/dashboard");
 
       return reply.send({
         token: result.token,
@@ -235,7 +247,7 @@ export async function authRoutes(server) {
       const result = await loginUser(req.body);
       setRefreshCookie(reply, result.rawRefreshToken);
 
-      const redirectTo = resolveRedirectPath(result.user, "/nexus");
+      const redirectTo = resolveRedirectPath(result.user, "/dashboard");
 
       return reply.send({
         token: result.token,
@@ -374,7 +386,7 @@ export async function authRoutes(server) {
     }
   });
 
-  // SUBSCRIPTION STATUS (Protected user lookup with fixed string ID query)
+  // SUBSCRIPTION STATUS
   server.get("/subscription", { preHandler: requireAuth }, async (req, reply) => {
     try {
       const user = await prisma.user.findUnique({

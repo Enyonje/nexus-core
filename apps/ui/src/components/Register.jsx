@@ -16,7 +16,7 @@ export default function Register() {
   const { addToast } = useToast();
   const { login } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
+  const useNavigateInstance = useNavigate();
 
   async function handleRegister(e) {
     e.preventDefault();
@@ -52,17 +52,17 @@ export default function Register() {
 
       addToast("Welcome to Nexus Core! 🎉", "success");
 
-      // Dynamic default path based on workspace intent
-      let targetPath = intent === "explore_agents" ? "/agents" : "/nexus";
+      // Dynamic default path based on workspace intent matching your routes
+      let targetPath = intent === "explore_agents" ? "/agents" : "/dashboard";
 
-      // Respect explicit redirect directives
+      // Respect explicit redirect directives or location state
       if (res.redirectTo && res.redirectTo !== "/") {
         targetPath = res.redirectTo;
       } else if (location.state?.from && location.state.from !== "/") {
         targetPath = location.state.from;
       }
 
-      navigate(targetPath, { replace: true });
+      useNavigateInstance(targetPath, { replace: true });
     } catch (err) {
       console.error("Register error:", err);
       addToast(err.message || "Registration failed. Please try again.", "error");
@@ -111,7 +111,7 @@ export default function Register() {
                   }`}
               >
                 <span>Launch Swarm</span>
-                <span className="text-[9px] opacity-75 font-normal">Orchestrate Fleet</span>
+                <span className="text-[9px] opacity-75 font-normal">To Dashboard</span>
               </button>
 
               <button

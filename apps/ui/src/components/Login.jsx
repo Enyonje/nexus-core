@@ -15,7 +15,8 @@ export default function Login() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const from = location.state?.from && location.state.from !== "/" ? location.state.from : "/nexus";
+  // Route fallback defaults to /dashboard instead of legacy /nexus
+  const from = location.state?.from && location.state.from !== "/" ? location.state.from : "/dashboard";
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -29,7 +30,7 @@ export default function Login() {
 
       addToast("Welcome back to Nexus Core 👋", "success");
 
-      let targetPath = "/nexus";
+      let targetPath = "/dashboard";
       if (res?.redirectTo && res.redirectTo !== "/") {
         targetPath = res.redirectTo;
       } else if (from && from !== "/") {
@@ -49,7 +50,7 @@ export default function Login() {
     }
   }
 
-  // Quick Demo Auto-fill Helper for smooth evaluation & journey
+  // Quick Demo Auto-fill Helper for smooth evaluation
   const fillDemoCredentials = () => {
     setEmail("developer@nexus.ai");
     setPassword("Password123!");
@@ -143,12 +144,12 @@ export default function Login() {
                 >
                   {showPassword ? (
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858-5.908A9.954 9.954 0 0112 3c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21M3 3l18 18" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                     </svg>
                   ) : (
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858-5.908A9.954 9.954 0 0112 3c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21M3 3l18 18" />
                     </svg>
                   )}
                 </button>
@@ -194,11 +195,11 @@ export default function Login() {
           </div>
         </form>
 
-        {/* User Satisfaction Footer Links */}
+        {/* User Footer Links */}
         <div className="mt-8 flex justify-center gap-6 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
           <Link to="/supportops" className="hover:text-slate-300 transition-colors">SupportOps</Link>
           <span>•</span>
-          <Link to="/nexus" className="hover:text-slate-300 transition-colors">Nexus Core</Link>
+          <Link to="/dashboard" className="hover:text-slate-300 transition-colors">Nexus Core</Link>
           <span>•</span>
           <Link to="/pricing" className="hover:text-slate-300 transition-colors">Pricing</Link>
         </div>
