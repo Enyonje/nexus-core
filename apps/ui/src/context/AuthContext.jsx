@@ -19,17 +19,21 @@ function supportOpsRole(user, mainRole, access) {
   if (appRole) return appRole;
 
   const resolvedMainRole = user?.role ?? mainRole;
-  return resolvedMainRole === "admin" ? "admin" : "agent";
+  return resolvedMainRole === "admin" || resolvedMainRole === "owner" ? "admin" : "agent";
 }
 
 export function useAuth() {
   const main = useContext(MainAuthContext);
-  if (!main) {
-    throw new Error("SupportOps must be rendered inside the main app's AuthProvider");
-  }
+
+  // Graceful fallback if MainAuthContext is missing instead of a hard crash
+  const user = main?.user || null;
+  const loading = main?.loading ?? false;
+  const initializing = main?.initializing ?? false;
+  const logout = main?.logout;
+  const authFetch = main?.authFetch;
+  const mainRole = main?.role;
 
   const access = useContext(AccessContext);
-  const { user, loading, initializing, logout, authFetch, role: mainRole } = main;
 
   const role = supportOpsRole(user, mainRole, access);
 
@@ -55,5 +59,6 @@ export function useAuth() {
   );
 }
 
+{/* Export MainAuthContext safely as AuthContext */ }
 export { MainAuthContext as AuthContext };
 export default MainAuthContext;

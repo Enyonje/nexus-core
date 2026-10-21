@@ -1,3 +1,4 @@
+// src/components/Navbar.jsx
 import React from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth"; // ✅ import the hook
@@ -12,13 +13,14 @@ export default function Navbar({ onToggleTheme, isDark, theme }) {
       justifyContent: "space-between",
       alignItems: "center",
       padding: "0.75rem 1.5rem",
-      backgroundColor: theme.colors.surface,
-      borderBottom: `1px solid ${theme.colors.divider}`,
+      backgroundColor: theme?.colors?.surface || "#0f172a",
+      borderBottom: `1px solid ${theme?.colors?.divider || "#1e293b"}`,
     },
     brand: {
       fontWeight: "700",
       fontSize: "1.25rem",
-      color: theme.colors.primary,
+      color: theme?.colors?.primary || "#38bdf8",
+      textDecoration: "none",
     },
     actions: {
       display: "flex",
@@ -28,29 +30,50 @@ export default function Navbar({ onToggleTheme, isDark, theme }) {
     button: {
       padding: "0.5rem 1rem",
       borderRadius: "6px",
-      border: `1px solid ${theme.colors.divider}`,
-      backgroundColor: theme.colors.background,
-      color: theme.colors.text.primary,
+      border: `1px solid ${theme?.colors?.divider || "#334155"}`,
+      backgroundColor: theme?.colors?.background || "#1e293b",
+      color: theme?.colors?.text?.primary || "#f8fafc",
       cursor: "pointer",
       fontSize: "0.9rem",
       fontWeight: "500",
       textDecoration: "none",
     },
+    specialAgentBtn: {
+      padding: "0.5rem 1rem",
+      borderRadius: "6px",
+      border: "1px solid rgba(168, 85, 247, 0.4)",
+      backgroundColor: "rgba(168, 85, 247, 0.1)",
+      color: "#c084fc",
+      cursor: "pointer",
+      fontSize: "0.9rem",
+      fontWeight: "600",
+      textDecoration: "none",
+    },
   };
+
+  // Safely resolve subscription tier string if it's an object or string
+  const subTier = typeof subscription === "string"
+    ? subscription.toLowerCase()
+    : (subscription?.tier || subscription?.plan_id || "").toLowerCase();
 
   return (
     <nav style={styles.wrapper}>
-      <div style={styles.brand}>Nexus Core</div>
+      <Link to="/" style={styles.brand}>Nexus Core</Link>
       <div style={styles.actions}>
+        {/* Special Agent Directory Link available universally */}
+        <Link to="/agents" style={styles.specialAgentBtn}>
+          🤖 Special Agent
+        </Link>
+
         {user ? (
           <>
             <Link to="/dashboard" style={styles.button}>Dashboard</Link>
 
-            {subscription === "pro" && (
+            {subTier === "pro" && (
               <Link to="/executions" style={styles.button}>Executions</Link>
             )}
 
-            {subscription === "enterprise" && (
+            {subTier === "enterprise" && (
               <>
                 <Link to="/executions" style={styles.button}>Streams</Link>
                 <Link to="/executions" style={styles.button}>Audit</Link>

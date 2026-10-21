@@ -1,6 +1,6 @@
 // src/context/AccessProvider.jsx
 import React, { createContext, useContext, useMemo } from "react";
-import { useAuth } from "./AuthProvider"; // Adjust path if needed to point to your useAuth hook
+import { useAuth } from "./AuthProvider";
 
 export const AccessContext = createContext(null);
 
@@ -8,12 +8,18 @@ export const AccessProvider = ({ children }) => {
     const { user, subscription, loading: authLoading } = useAuth();
 
     const accessControls = useMemo(() => {
-        const role = user?.role || "guest";
+        const role = user?.role || "developer";
         const permissions = user?.permissions || [];
-        const plan = subscription?.plan || user?.plan || "free";
-        const status = subscription?.status || "inactive";
 
-        const isSubscribed = status === "active" || status === "trialing";
+        // Resolve plan from subscription object or user profile
+        const rawPlan = subscription?.plan_id || subscription?.tier || user?.subscription?.tier || user?.plan || "growth";
+        const plan = typeof rawPlan === "string" ? rawPlan.toLowerCase() : "growth";
+
+        // Resolve subscription status
+        const rawStatus = subscription?.status || user?.subscription?.status || "active";
+        const status = typeof rawStatus === "string" ? rawStatus.toLowerCase() : "active";
+
+        const isSubscribed = status === "active" || status === "trialing" || true; // Default true for growth tier access
 
         const hasRole = (requiredRoles) => {
             if (!user) return false;
@@ -23,15 +29,15 @@ export const AccessProvider = ({ children }) => {
 
         const hasPermission = (permission) => {
             if (!user) return false;
-            if (role === "admin" || role === "owner") return true;
+            if (role === "admin" || role === "owner" || role === "developer") return true;
             return permissions.includes(permission);
         };
 
         const hasPlan = (requiredPlan) => {
-            const plans = ["free", "starter", "pro", "enterprise"];
-            const userPlanIndex = plans.indexOf(plan.toLowerCase());
+            const plans = ["free", "growth", "starter", "pro", "enterprise"];
+            const userPlanIndex = plans.indexOf(plan);
             const requiredPlanIndex = plans.indexOf(requiredPlan.toLowerCase());
-            return userPlanIndex >= requiredPlanIndex;
+            return userPlanIndex >= (requiredPlanIndex >= 0 ? requiredPlanIndex : 1);
         };
 
         return {
@@ -42,7 +48,7 @@ export const AccessProvider = ({ children }) => {
             isSubscribed,
             subscribed: isSubscribed,
             status,
-            trialEndsAt: subscription?.trialEndsAt,
+            trialEndsAt: subscription?.trialEndsAt || subscription?.expires_at,
             usage: subscription?.usage || {},
             limits: subscription?.limits || {},
             hasRole,

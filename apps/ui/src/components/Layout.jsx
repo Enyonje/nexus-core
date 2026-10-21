@@ -1,5 +1,5 @@
 // src/components/Layout.jsx
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 
@@ -18,8 +18,14 @@ export default function Layout({ theme }) {
     { name: "Admin Panel", path: "/admin", allowed: ["admin"] },
   ];
 
-  const currentTier = subscription || "free";
-  const currentRole = role || "user";
+  // Safely resolve tier string whether subscription is an object or string
+  const currentTier = useMemo(() => {
+    if (!subscription) return "free";
+    if (typeof subscription === "string") return subscription.toLowerCase();
+    return (subscription.tier || subscription.plan_id || "free").toLowerCase();
+  }, [subscription]);
+
+  const currentRole = role || user?.role || "user";
 
   const filteredNav = navItems.filter(
     (item) => item.allowed.includes(currentTier) || item.allowed.includes(currentRole)

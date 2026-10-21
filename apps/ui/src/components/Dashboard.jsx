@@ -12,7 +12,14 @@ export default function Dashboard() {
   const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const isFreeUser = useMemo(() => subscription === "free", [subscription]);
+  // Safely resolve tier string whether subscription is an object or string
+  const subscriptionTier = useMemo(() => {
+    if (!subscription) return "free";
+    if (typeof subscription === "string") return subscription.toLowerCase();
+    return (subscription.tier || subscription.plan_id || "free").toLowerCase();
+  }, [subscription]);
+
+  const isFreeUser = useMemo(() => subscriptionTier === "free", [subscriptionTier]);
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
@@ -71,7 +78,8 @@ export default function Dashboard() {
             </div>
             <div className="flex items-center gap-3">
               <p className="text-slate-400 font-mono font-bold text-[10px] uppercase tracking-widest">
-                Clearance Tier: <span className="text-cyan-400">{subscription || "Guest"}</span>
+                {/* FIXED: Render subscriptionTier property string instead of full subscription object */}
+                Clearance Tier: <span className="text-cyan-400 uppercase">{subscriptionTier}</span>
               </p>
               {user?.role === "superadmin" && (
                 <Link
