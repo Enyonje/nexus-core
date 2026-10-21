@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Allow: /agents
+Allow: /pricing
+Allow: /supportops
+
+# Disallow protected app routes from search engine indexing
+Disallow: /dashboard
+Disallow: /executions
+Disallow: /goals
+Disallow: /admin
+
+Sitemap: https://nexus-core-a0px.onrender.com/sitemap.xml

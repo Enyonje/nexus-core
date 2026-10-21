@@ -1,38 +1,67 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="https://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+
+  <!-- Core Landing & Public Pages -->
   <url>
-    <loc>https://nexusthecore.com/</loc>
+    <loc>https://nexus-core-a0px.onrender.com/</loc>
+    <lastmod>2026-10-21</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://nexusthecore.com/features</loc>
+    <loc>https://nexus-core-a0px.onrender.com/pricing</loc>
+    <lastmod>2026-10-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
+
+  <!-- Public Support & Agent Directory (Unauthenticated Access) -->
   <url>
-    <loc>https://nexusthecore.com/pricing</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
+    <loc>https://nexus-core-a0px.onrender.com/agents</loc>
+    <lastmod>2026-10-21</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://nexusthecore.com/docs</loc>
+    <loc>https://nexus-core-a0px.onrender.com/supportops</loc>
+    <lastmod>2026-10-21</lastmod>
     <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Authentication Portals -->
+  <url>
+    <loc>https://nexus-core-a0px.onrender.com/login</loc>
+    <lastmod>2026-10-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://nexus-core-a0px.onrender.com/register</loc>
+    <lastmod>2026-10-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <!-- Protected Core Workspaces (Indexed for internal authority, noindex recommended if restricted) -->
+  <url>
+    <loc>https://nexus-core-a0px.onrender.com/dashboard</loc>
+    <lastmod>2026-10-21</lastmod>
+    <changefreq>always</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://nexusthecore.com/blog</loc>
+    <loc>https://nexus-core-a0px.onrender.com/goals</loc>
+    <lastmod>2026-10-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://nexusthecore.com/about</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
-  </url>
-  <url>
-    <loc>https://nexusthecore.com/contact</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
+    <loc>https://nexus-core-a0px.onrender.com/executions</loc>
+    <lastmod>2026-10-21</lastmod>
+    <changefreq>always</changefreq>
+    <priority>0.6</priority>
   </url>
 </urlset>
