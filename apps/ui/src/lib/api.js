@@ -52,23 +52,26 @@ export const apiFetch = async (endpoint, options = {}) => {
     cleanEndpoint = `/api${cleanEndpoint}`;
   }
 
-  // Safely parse JSON strings passed to body
-  let data = options.body;
-  if (typeof data === "string") {
+  // Handle body / data mapping safely
+  let requestData = options.body !== undefined ? options.body : options.data;
+  if (typeof requestData === "string") {
     try {
-      data = JSON.parse(data);
+      requestData = JSON.parse(requestData);
     } catch {
-      // Keep original string if not valid JSON
+      // Leave as string if not JSON
     }
   }
 
   const config = {
     url: cleanEndpoint,
     method,
-    data,
+    data: requestData,
     params: options.params,
     timeout: options.timeout || 45000,
-    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
   };
 
   return apiClient(config);

@@ -10,7 +10,6 @@ export const p = (path = "") => `${BASE}${path.startsWith("/") ? path : `/${path
 // Prefer a SupportOps-specific URL, fall back to the shared one. Trailing slash stripped.
 const envUrl = import.meta.env.VITE_SUPPORTOPS_API_URL || import.meta.env.VITE_API_URL;
 
-// In production a missing URL must be loud, never a silent fallback to localhost
 if (!envUrl && import.meta.env.PROD) {
     console.error("VITE_API_URL is not set for this build. API calls will fail.");
 }
@@ -20,7 +19,7 @@ const API_BASE_URL = (envUrl || "http://localhost:8000").replace(/\/$/, "");
 // Backend URL helper: api("/api/v1/x") -> "http://host/api/v1/x"
 export const api = (path = "") => `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 
-// Build a query string, skipping empty values: qs({ a: 1, b: "" }) -> "?a=1"
+// Build a query string, skipping empty values
 const qs = (params = {}) => {
     const q = new URLSearchParams(
         Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "")
@@ -28,12 +27,10 @@ const qs = (params = {}) => {
     return q ? `?${q}` : "";
 };
 
-// Mirrors the prefixes registered in the Fastify server
 const V1 = "/api/v1";
 const SUPPORTOPS = `${V1}/supportops`;
-const AUTH_PREFIX = import.meta.env.VITE_AUTH_PREFIX || `${V1}/auth`; // where authRoutes is registered
+const AUTH_PREFIX = import.meta.env.VITE_AUTH_PREFIX || `${V1}/auth`;
 
-// Joins a router prefix with a sub-path: group("/ai")("/x") -> api("/api/v1/supportops/ai/x")
 const group = (prefix) => {
     const root = `${SUPPORTOPS}${prefix}`;
     const fn = (path = "", params) =>
@@ -42,35 +39,32 @@ const group = (prefix) => {
     return fn;
 };
 
-// One builder per registered router
+// Builder per registered router
 export const SUPPORTOPS_API = {
-    ai: group("/ai"),                    // prefix: /api/v1/supportops/ai
-    aiReview: group("/ai-review"),      // prefix: /api/v1/supportops/ai-review
-    incidents: group("/incidents"),   // prefix: /api/v1/supportops/incidents
-    analytics: group("/analytics"),   // prefix: /api/v1/supportops/analytics
-    tickets: group("/tickets"),       // prefix: /api/v1/supportops/tickets
+    ai: group("/ai"),
+    aiReview: group("/ai-review"),
+    incidents: group("/incidents"),
+    analytics: group("/analytics"),
+    tickets: group("/tickets"),
     users: group("/users"),
-    chat: group("/chat"),             // prefix: /api/v1/supportops/chat
-    invites: group("/invites"),       // prefix: /api/v1/supportops/invites
-    readiness: group("/readiness"), // prefix: /api/v1/supportops/readiness
+    chat: group("/chat"),
+    invites: group("/invites"),
+    readiness: group("/readiness"),
 };
 
 // Named backend API endpoints
 export const API_ENDPOINTS = {
-    // Fastify: app.get("/api/v1/dashboard/metrics")
     metrics: (timeframe = "30d") => api(`${V1}/dashboard/metrics${qs({ timeframe })}`),
     health: api(`${V1}/system/health`),
-
-    // Fixed: Aligned with server.js mountBoth("stream", streamRoutesMod, "stream")
     activityStream: api(`${V1}/stream/agents/activity/stream`),
 
-    // SupportOps routers
     ai: SUPPORTOPS_API.ai,
     aiReview: SUPPORTOPS_API.aiReview,
     incidents: SUPPORTOPS_API.incidents,
     analytics: SUPPORTOPS_API.analytics,
     tickets: SUPPORTOPS_API.tickets,
     users: SUPPORTOPS_API.users,
+    invites: SUPPORTOPS_API.invites,
 
     billing: {
         plans: (app = "supportops") => api(`${V1}/billing/plans?app=${app}`),
@@ -99,7 +93,7 @@ export const ROUTES = {
     cancel: p("/cancel"),
     success: p("/success"),
     pricing: p("/pricing"),
-    join: p("/join"),
+    join: p("/join"), // User invite acceptance route
 
     agent: {
         root: p("/agent"),
@@ -120,13 +114,18 @@ export const ROUTES = {
         analytics: p("/admin/analytics"),
         incidents: p("/admin/incidents"),
         channels: p("/admin/channels"),
-        team: p("/admin/team"),
+        team: p("/admin/team"),        // Team invites & management
+        account: p("/admin/account"),  // Admin account settings
     },
 
     investor: p("/investor"),
 };
 
-// Role landing redirect helper
+/**
+ * Resolves default landing route based on authenticated role.
+ * Admins/Management -> Admin Executive View
+ * Agents/Users -> Agent Dashboard
+ */
 export function homeForRole(role) {
     switch (role) {
         case "admin":

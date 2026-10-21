@@ -15,7 +15,7 @@ export default function Login() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Route fallback defaults to /dashboard instead of legacy /nexus
+  // Route fallback defaults to /dashboard
   const from = location.state?.from && location.state.from !== "/" ? location.state.from : "/dashboard";
 
   async function handleLogin(e) {
@@ -23,9 +23,19 @@ export default function Login() {
     setLoading(true);
 
     try {
+      const cleanEmail = email.trim();
+      const cleanPassword = password.trim();
+
+      if (!cleanEmail || !cleanPassword) {
+        throw new Error("Both email and password/accessKey are required.");
+      }
+
+      // Call the AuthProvider login action
       const res = await login({
-        email: email.trim(),
-        password: password,
+        email: cleanEmail,
+        username: cleanEmail,
+        password: cleanPassword,
+        accessKey: cleanPassword,
       });
 
       addToast("Welcome back to Nexus Core 👋", "success");
@@ -41,7 +51,7 @@ export default function Login() {
     } catch (err) {
       console.error("Login error:", err);
       let errMsg = err.message || "Login failed";
-      if (errMsg === "AUTH_MISSING_FIELDS") {
+      if (errMsg === "AUTH_MISSING_FIELDS" || errMsg.includes("Both email")) {
         errMsg = "Please enter both email and access key.";
       }
       addToast(errMsg, "error");
@@ -180,10 +190,10 @@ export default function Login() {
           {/* User Journey Navigation Bar */}
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-between text-xs font-medium text-slate-400 gap-2 border-t border-slate-800/60 mt-4 pt-4">
             <Link
-              to="/pricing"
+              to="/agents"
               className="hover:text-blue-400 transition-colors uppercase tracking-widest text-[10px]"
             >
-              Explore Plans
+              Agent Directory (Support)
             </Link>
             <Link
               to="/register"
@@ -197,7 +207,7 @@ export default function Login() {
 
         {/* User Footer Links */}
         <div className="mt-8 flex justify-center gap-6 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-          <Link to="/supportops" className="hover:text-slate-300 transition-colors">SupportOps</Link>
+          <Link to="/agents" className="hover:text-slate-300 transition-colors">Support Directory</Link>
           <span>•</span>
           <Link to="/dashboard" className="hover:text-slate-300 transition-colors">Nexus Core</Link>
           <span>•</span>

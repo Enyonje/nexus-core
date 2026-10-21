@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect } from "react";
 
 const API_BASE_URL =
   import.meta.env.VITE_BACKEND_API_URL ||
-  "https://supportops-ai.onrender.com/api/v1";
+  "https://nexus-core-a0px.onrender.com/api/v1";
 
 const AuthContext = createContext(null);
 

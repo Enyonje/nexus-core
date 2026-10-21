@@ -6,7 +6,6 @@ import { useToast } from "./ToastContext.jsx";
 import { useAuth } from "../hooks/useAuth";
 
 export default function Register() {
-  const [intent, setIntent] = useState("launch_swarm"); // "launch_swarm" | "explore_agents"
   const [email, setEmail] = useState("");
   const [organization, setOrganization] = useState("");
   const [password, setPassword] = useState("");
@@ -16,7 +15,7 @@ export default function Register() {
   const { addToast } = useToast();
   const { login } = useAuth();
   const location = useLocation();
-  const useNavigateInstance = useNavigate();
+  const navigate = useNavigate();
 
   async function handleRegister(e) {
     e.preventDefault();
@@ -31,7 +30,6 @@ export default function Register() {
           password: password,
           accessKey: password,
           organization: organization.trim(),
-          intent,
         }),
       });
 
@@ -52,17 +50,17 @@ export default function Register() {
 
       addToast("Welcome to Nexus Core! 🎉", "success");
 
-      // Dynamic default path based on workspace intent matching your routes
-      let targetPath = intent === "explore_agents" ? "/agents" : "/dashboard";
+      // Default target route is always /dashboard
+      let targetPath = "/dashboard";
 
-      // Respect explicit redirect directives or location state
+      // Respect explicit redirect directives or location state if provided
       if (res.redirectTo && res.redirectTo !== "/") {
         targetPath = res.redirectTo;
       } else if (location.state?.from && location.state.from !== "/") {
         targetPath = location.state.from;
       }
 
-      useNavigateInstance(targetPath, { replace: true });
+      navigate(targetPath, { replace: true });
     } catch (err) {
       console.error("Register error:", err);
       addToast(err.message || "Registration failed. Please try again.", "error");
@@ -91,41 +89,9 @@ export default function Register() {
           onSubmit={handleRegister}
           className="bg-slate-900/60 backdrop-blur-2xl rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-8 space-y-5 border border-slate-800/50"
         >
-          <div className="space-y-1">
-            <h2 className="text-2xl font-bold text-white tracking-tight">Join the Workforce</h2>
-            <p className="text-sm text-slate-400">Select your entry goal to configure your workspace.</p>
-          </div>
-
-          {/* Intent Switcher: Launch Swarm vs Explore Agents */}
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
-              Primary Objective
-            </label>
-            <div className="grid grid-cols-2 gap-2 bg-slate-950/70 p-1.5 rounded-2xl border border-slate-800/60">
-              <button
-                type="button"
-                onClick={() => setIntent("launch_swarm")}
-                className={`py-2.5 px-3 rounded-xl text-xs font-semibold transition-all flex flex-col items-center justify-center gap-1 ${intent === "launch_swarm"
-                  ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/40"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50"
-                  }`}
-              >
-                <span>Launch Swarm</span>
-                <span className="text-[9px] opacity-75 font-normal">To Dashboard</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIntent("explore_agents")}
-                className={`py-2.5 px-3 rounded-xl text-xs font-semibold transition-all flex flex-col items-center justify-center gap-1 ${intent === "explore_agents"
-                  ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-900/40"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50"
-                  }`}
-              >
-                <span>Explore Agents</span>
-                <span className="text-[9px] opacity-75 font-normal">Browse Directory</span>
-              </button>
-            </div>
+          <div className="space-y-1 text-center">
+            <h2 className="text-2xl font-bold text-white tracking-tight">Create Workspace</h2>
+            <p className="text-sm text-slate-400">Sign up to access your Nexus Dashboard.</p>
           </div>
 
           <div className="space-y-4">
@@ -199,35 +165,38 @@ export default function Register() {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full relative overflow-hidden group py-3.5 rounded-xl font-bold transition-all shadow-lg active:scale-95 disabled:opacity-70 text-white ${intent === "explore_agents"
-              ? "bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-purple-900/30"
-              : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-900/30"
-              }`}
+            className="w-full relative overflow-hidden group py-3.5 rounded-xl font-bold transition-all shadow-lg active:scale-95 disabled:opacity-70 text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-900/30"
           >
             <span className="relative z-10 flex items-center justify-center gap-2">
               {loading ? (
                 <>
                   <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Initializing Workspace...
+                  Initializing Dashboard...
                 </>
-              ) : intent === "explore_agents" ? (
-                "Continue to Agent Directory"
               ) : (
-                "Launch Swarm Environment"
+                "Enter Dashboard"
               )}
             </span>
           </button>
 
-          <div className="text-center">
+          {/* Secondary Options */}
+          <div className="flex flex-col gap-2 text-center pt-2">
             <Link
               to="/login"
               state={{ from: location.state?.from }}
               className="text-xs font-semibold text-slate-500 hover:text-blue-400 transition-colors uppercase tracking-widest"
             >
               Already Registered? <span className="text-blue-500">Sign In</span>
+            </Link>
+
+            <Link
+              to="/agents"
+              className="text-xs font-semibold text-purple-400/80 hover:text-purple-300 transition-colors"
+            >
+              Looking for Support? Browse Agent Directory &rarr;
             </Link>
           </div>
         </form>

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Bot, User, Shield, Clock } from "lucide-react";
 import toast from "react-hot-toast";
 
-const API_BASE_URL = "https://supportops-ai.onrender.com";
+const API_BASE_URL = "https://nexus-core-a0px.onrender.com";
 
 const ACTOR_META = {
   AI: {

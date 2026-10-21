@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Bot, Sparkles } from "lucide-react";
 import toast from "react-hot-toast";
 
-const API_BASE_URL = "https://supportops-ai.onrender.com";
+const API_BASE_URL = "https://nexus-core-a0px.onrender.com";
 
 export default function AIAssistantPanel({ ticket }) {
   const [loading, setLoading] = useState(false);

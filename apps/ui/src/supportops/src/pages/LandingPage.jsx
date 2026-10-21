@@ -50,7 +50,7 @@ export default function LandingPage() {
   };
 
   const goLogin = () => {
-    rememberReturn(ROUTES.agent.dashboard);
+    rememberReturn(ROUTES.auth);
     navigate(ROUTES.login);
   };
 

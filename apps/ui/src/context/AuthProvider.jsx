@@ -63,17 +63,37 @@ export function AuthProvider({ children }) {
   }, [fetchSessionData]);
 
   const login = async (credentials) => {
+    // Normalize credentials to ensure both email/username and password/accessKey are present
+    const identifier = credentials.email || credentials.username;
+    const secret = credentials.password || credentials.accessKey;
+
+    const payload = {
+      ...credentials,
+      email: identifier,
+      username: identifier,
+      password: secret,
+      accessKey: secret,
+    };
+
     const res = await apiFetch("/auth/login", {
       method: "POST",
-      body: JSON.stringify(credentials),
+      body: JSON.stringify(payload),
     });
 
-    if (res?.token) {
-      localStorage.setItem("token", res.token);
-      localStorage.setItem("authToken", res.token);
-      if (res.user) {
-        localStorage.setItem("user", JSON.stringify(res.user));
-        setUser(res.user);
+    const token = res?.token || res?.accessToken || res?.data?.token;
+    const userData = res?.user || res?.data?.user;
+
+    if (token) {
+      localStorage.setItem("token", token);
+      localStorage.setItem("authToken", token);
+      if (userData) {
+        localStorage.setItem("user", JSON.stringify(userData));
+        setUser(userData);
+      } else if (res) {
+        // Fallback user object if nested user key is missing
+        const fallbackUser = { email: identifier, ...res };
+        localStorage.setItem("user", JSON.stringify(fallbackUser));
+        setUser(fallbackUser);
       }
     }
 
@@ -90,18 +110,36 @@ export function AuthProvider({ children }) {
     return res;
   };
 
-  const register = async (payload) => {
+  const register = async (credentials) => {
+    const identifier = credentials.email || credentials.username;
+    const secret = credentials.password || credentials.accessKey;
+
+    const payload = {
+      ...credentials,
+      email: identifier,
+      username: identifier,
+      password: secret,
+      accessKey: secret,
+    };
+
     const res = await apiFetch("/auth/register", {
       method: "POST",
       body: JSON.stringify(payload),
     });
 
-    if (res?.token) {
-      localStorage.setItem("token", res.token);
-      localStorage.setItem("authToken", res.token);
-      if (res.user) {
-        localStorage.setItem("user", JSON.stringify(res.user));
-        setUser(res.user);
+    const token = res?.token || res?.accessToken || res?.data?.token;
+    const userData = res?.user || res?.data?.user;
+
+    if (token) {
+      localStorage.setItem("token", token);
+      localStorage.setItem("authToken", token);
+      if (userData) {
+        localStorage.setItem("user", JSON.stringify(userData));
+        setUser(userData);
+      } else if (res) {
+        const fallbackUser = { email: identifier, ...res };
+        localStorage.setItem("user", JSON.stringify(fallbackUser));
+        setUser(fallbackUser);
       }
     }
 
