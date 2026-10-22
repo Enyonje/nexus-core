@@ -31,9 +31,22 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+    const url = error.config?.url || "";
+
+    // Routes where 401/403 are expected for guest or free-tier users and should NOT trigger forced logout
+    const isGuestExemptRoute =
+      url.includes("/health") ||
+      url.includes("/goals") ||
+      url.includes("/dashboard") ||
+      url.includes("/supportops") ||
+      url.includes("/stream") ||
+      url.includes("/executions");
+
+    if (status === 401 && !isGuestExemptRoute) {
       window.dispatchEvent(new Event("auth:unauthorized"));
     }
+
     const message =
       error.response?.data?.message ||
       error.response?.data?.error ||

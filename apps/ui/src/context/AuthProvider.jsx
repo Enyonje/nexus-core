@@ -1,25 +1,27 @@
-// src/context/AuthProvider.jsx
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { apiFetch } from "../lib/api";
 
 export const AuthContext = createContext(null);
 
+const DEFAULT_GUEST_USER = { id: null, email: null, role: "guest", isGuest: true };
+const DEFAULT_GUEST_SUBSCRIPTION = { tier: "free", status: "active" };
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     try {
       const cached = localStorage.getItem("user");
-      return cached ? JSON.parse(cached) : null;
+      return cached ? JSON.parse(cached) : DEFAULT_GUEST_USER;
     } catch {
-      return null;
+      return DEFAULT_GUEST_USER;
     }
   });
 
   const [subscription, setSubscription] = useState(() => {
     try {
       const cached = localStorage.getItem("subscription");
-      return cached ? JSON.parse(cached) : { tier: "growth", status: "active" };
+      return cached ? JSON.parse(cached) : DEFAULT_GUEST_SUBSCRIPTION;
     } catch {
-      return { tier: "growth", status: "active" };
+      return DEFAULT_GUEST_SUBSCRIPTION;
     }
   });
 
@@ -28,6 +30,8 @@ export function AuthProvider({ children }) {
   const fetchSessionData = useCallback(async () => {
     const token = localStorage.getItem("token") || localStorage.getItem("authToken");
     if (!token) {
+      setUser(DEFAULT_GUEST_USER);
+      setSubscription(DEFAULT_GUEST_SUBSCRIPTION);
       setLoading(false);
       return;
     }
@@ -151,9 +155,9 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("authToken");
     localStorage.removeItem("user");
     localStorage.removeItem("subscription");
-    setUser(null);
-    setSubscription({ tier: "growth", status: "active" });
-    window.location.href = "/login";
+    setUser(DEFAULT_GUEST_USER);
+    setSubscription(DEFAULT_GUEST_SUBSCRIPTION);
+    window.location.href = "/";
   };
 
   return (
@@ -161,6 +165,7 @@ export function AuthProvider({ children }) {
       value={{
         user,
         subscription,
+        isGuest: !user || Boolean(user.isGuest),
         loading,
         login,
         register,

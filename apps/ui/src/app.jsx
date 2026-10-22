@@ -96,7 +96,7 @@ export default function App() {
           transition={{ duration: 0.15 }}
         >
           <Routes location={location}>
-            {/* PUBLIC ROUTES */}
+            {/* PUBLIC & GUEST-FIRST LANDING ROUTES */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/docs" element={<SEOPillarPage />} />
             <Route path="/architecture" element={<ArchitecturePage />} />
@@ -128,29 +128,50 @@ export default function App() {
               element={<SupportOpsRoutes />}
             />
 
-            {/* PROTECTED MAIN APP ROUTES */}
-            <Route
-              element={
-                <ProtectedRoute allowed={["free", "pro", "enterprise", "admin"]}>
-                  <Layout theme={theme} />
-                </ProtectedRoute>
-              }
-            >
+            {/* MAIN APP WORKSPACE (GUESTS CAN ACCESSS FREE ROUTES) */}
+            <Route element={<Layout theme={theme} />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/goals" element={<Goals />} />
+
+              {/* ADVANCED FEATURES (PAID TIER REQUIRED) */}
               <Route
                 path="/executions"
-                element={<ExecutionList setSelectedExecutionId={setSelectedExecutionId} />}
+                element={
+                  <ProtectedRoute requiredTier="pro">
+                    <ExecutionList setSelectedExecutionId={setSelectedExecutionId} />
+                  </ProtectedRoute>
+                }
               />
-              <Route path="/executions/:id" element={<ExecutionDetail />} />
-              <Route path="/executions/:executionId/stream" element={<Streams />} />
-              <Route path="/executions/:executionId/audit" element={<Audit />} />
+              <Route
+                path="/executions/:id"
+                element={
+                  <ProtectedRoute requiredTier="pro">
+                    <ExecutionDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/executions/:executionId/stream"
+                element={
+                  <ProtectedRoute requiredTier="pro">
+                    <Streams />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/executions/:executionId/audit"
+                element={
+                  <ProtectedRoute requiredTier="pro">
+                    <Audit />
+                  </ProtectedRoute>
+                }
+              />
 
-              {/* ADMIN ONLY */}
+              {/* ADMIN PANEL (MUST BE AUTHENTICATED ADMIN) */}
               <Route
                 path="/admin"
                 element={
-                  <ProtectedRoute allowed={["admin"]}>
+                  <ProtectedRoute requireAuth={true} requiredTier="enterprise">
                     <AdminDashboard />
                   </ProtectedRoute>
                 }

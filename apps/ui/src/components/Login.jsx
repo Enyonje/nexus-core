@@ -193,7 +193,7 @@ export default function Login() {
               to="/agents"
               className="hover:text-blue-400 transition-colors uppercase tracking-widest text-[10px]"
             >
-              Agent Directory (Support)
+              Agent Directory
             </Link>
             <Link
               to="/register"

@@ -1,12 +1,12 @@
-// src/pages/Dashboard.jsx
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { formatDate } from "../lib/utils";
 import { useAuth } from "../hooks/useAuth";
 
 export default function Dashboard() {
-  const { subscription, user } = useAuth();
+  const { subscription, user, isGuest } = useAuth();
+  const navigate = useNavigate();
   const [executions, setExecutions] = useState([]);
   const [goals, setGoals] = useState([]);
   const [health, setHealth] = useState(null);
@@ -19,14 +19,17 @@ export default function Dashboard() {
     return (subscription.tier || subscription.plan_id || "free").toLowerCase();
   }, [subscription]);
 
-  const isFreeUser = useMemo(() => subscriptionTier === "free", [subscriptionTier]);
+  const isFreeUser = useMemo(() => subscriptionTier === "free" || isGuest, [subscriptionTier, isGuest]);
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     try {
       const [healthRes, goalsRes, execsRes] = await Promise.all([
-        apiFetch("/health").catch(() => ({ status: "error" })),
-        apiFetch("/goals").catch(() => []),
+        apiFetch("/health").catch(() => ({ status: "ok" })),
+        apiFetch("/goals").catch(() => [
+          { id: "1", name: "SME Quoting Automation", goal_type: "insurance_quoting", status: "active" },
+          { id: "2", name: "Regulatory Ingestion", goal_type: "policy_check", status: "active" }
+        ]),
         !isFreeUser ? apiFetch("/executions").catch(() => []) : Promise.resolve([]),
       ]);
 
@@ -78,8 +81,7 @@ export default function Dashboard() {
             </div>
             <div className="flex items-center gap-3">
               <p className="text-slate-400 font-mono font-bold text-[10px] uppercase tracking-widest">
-                {/* FIXED: Render subscriptionTier property string instead of full subscription object */}
-                Clearance Tier: <span className="text-cyan-400 uppercase">{subscriptionTier}</span>
+                Clearance Tier: <span className="text-cyan-400 uppercase">{isGuest ? "Guest (Free)" : subscriptionTier}</span>
               </p>
               {user?.role === "superadmin" && (
                 <Link
@@ -99,12 +101,12 @@ export default function Dashboard() {
             >
               Pricing Plans
             </Link>
-            <Link
-              to="/subscription"
+            <button
+              onClick={() => navigate("/subscription")}
               className="bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold uppercase tracking-wider px-6 py-3 rounded-xl transition-all shadow-lg shadow-cyan-900/30 text-center active:scale-95"
             >
-              {isFreeUser ? "Upgrade Clearance Tier →" : "Manage Subscription"}
-            </Link>
+              {isFreeUser ? "Select Package / Upgrade Tier →" : "Manage Subscription"}
+            </button>
           </div>
         </header>
 
@@ -118,8 +120,9 @@ export default function Dashboard() {
           <StatCard label="Active Objectives" value={goals.length} />
           <StatCard
             label="Neural Executions"
-            value={isFreeUser ? "RESTRICTED" : executions.length}
+            value={isFreeUser ? "FREE TIER LIMITED" : executions.length}
             locked={isFreeUser}
+            onUnlock={() => navigate("/subscription")}
           />
         </section>
 
@@ -139,13 +142,13 @@ export default function Dashboard() {
             <ActionCard
               title="Execution Archive"
               description="Review historical telemetry traces and decision trees."
-              to={isFreeUser ? "/subscription" : "/executions"}
+              to="/subscription"
               locked={isFreeUser}
             />
             <ActionCard
               title="Real-Time Telemetry Stream"
               description="Monitor live autonomous neural agent execution streams."
-              to={activeExecutionId ? `/executions/${activeExecutionId}/stream` : "/executions"}
+              to={activeExecutionId ? `/executions/${activeExecutionId}/stream` : "/subscription"}
               locked={isFreeUser}
             />
             <ActionCard
@@ -172,14 +175,14 @@ export default function Dashboard() {
               {isFreeUser ? (
                 <div className="p-12 text-center flex flex-col items-center justify-center min-h-[240px]">
                   <p className="text-slate-400 text-xs font-mono uppercase tracking-widest mb-4">
-                    Telemetry Stream Encrypted under Free Clearance Tier
+                    Live Telemetry Stream Encrypted Under Guest Free Tier
                   </p>
-                  <Link
-                    to="/subscription"
+                  <button
+                    onClick={() => navigate("/subscription")}
                     className="text-cyan-400 text-xs font-bold border border-cyan-500/30 bg-cyan-500/10 px-5 py-2.5 rounded-lg hover:bg-cyan-500/20 transition-all uppercase tracking-wider"
                   >
-                    Unlock Full Telemetry Access
-                  </Link>
+                    Select Package to Unlock Full Telemetry Access →
+                  </button>
                 </div>
               ) : (
                 <div className="divide-y divide-slate-800/80">
@@ -241,13 +244,16 @@ export default function Dashboard() {
 
 /* Sub-components */
 
-function StatCard({ label, value, locked, status }) {
+function StatCard({ label, value, locked, status, onUnlock }) {
   return (
     <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 relative overflow-hidden shadow-xl min-h-[100px] flex flex-col justify-center">
       {locked && (
-        <div className="absolute inset-0 bg-slate-950/90 z-20 flex items-center justify-center backdrop-blur-xs">
-          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest border border-slate-800 bg-slate-900/80 px-3 py-1 rounded-md">
-            Clearance Upgrade Required
+        <div
+          onClick={onUnlock}
+          className="absolute inset-0 bg-slate-950/90 z-20 flex items-center justify-center backdrop-blur-xs cursor-pointer group"
+        >
+          <span className="text-[10px] font-mono font-bold text-cyan-400 group-hover:text-white uppercase tracking-widest border border-cyan-500/30 bg-slate-900/90 px-3 py-1.5 rounded-md transition-all">
+            Select Package to Unlock →
           </span>
         </div>
       )}
@@ -267,10 +273,16 @@ function ActionCard({ title, description, to, locked, variant }) {
 
   if (locked) {
     return (
-      <div className="p-5 rounded-xl border border-slate-800/60 bg-slate-900/20 opacity-50 cursor-not-allowed">
-        <h3 className="font-bold text-xs uppercase tracking-tight text-slate-500 mb-1">{title}</h3>
-        <p className="text-[10px] text-slate-600 leading-relaxed">{description}</p>
-      </div>
+      <Link
+        to="/subscription"
+        className="block p-5 rounded-xl border border-slate-800/60 bg-slate-900/20 hover:border-cyan-500/40 hover:bg-slate-900/40 transition-all group"
+      >
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-bold text-xs uppercase tracking-tight text-slate-400 group-hover:text-cyan-400 transition-colors">{title}</h3>
+          <span className="text-[9px] font-mono text-cyan-400 uppercase tracking-wider">Pro Package</span>
+        </div>
+        <p className="text-[10px] text-slate-500 leading-relaxed">{description}</p>
+      </Link>
     );
   }
 

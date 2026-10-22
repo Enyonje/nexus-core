@@ -79,13 +79,21 @@ export default function LandingPage() {
           <Link to="/architecture" className="hover:text-blue-400 transition-colors">Architecture</Link>
         </div>
 
-        <Link
-          to="/login"
-          state={{ from: location.pathname }}
-          className="px-6 py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all text-[11px] font-black uppercase tracking-widest backdrop-blur-md shadow-sm"
-        >
-          Client Login
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/dashboard"
+            className="px-5 py-2.5 rounded-xl bg-blue-600/20 border border-blue-500/40 text-blue-400 hover:bg-blue-600/30 transition-all text-[11px] font-black uppercase tracking-widest backdrop-blur-md shadow-sm"
+          >
+            Launch Core →
+          </Link>
+          <Link
+            to="/login"
+            state={{ from: location.pathname }}
+            className="px-5 py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all text-[11px] font-black uppercase tracking-widest backdrop-blur-md shadow-sm text-slate-300"
+          >
+            Login
+          </Link>
+        </div>
       </nav>
 
       {/* 3. HERO SECTION */}
@@ -118,12 +126,13 @@ export default function LandingPage() {
             >
               Explore Agents <ArrowRight className="w-4 h-4" />
             </Link>
+
+            {/* DIRECT TO DASHBOARD (NO MANDATORY REGISTRATION) */}
             <Link
-              to="/register"
-              state={{ from: location.pathname }}
-              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-slate-900/80 border border-white/10 hover:border-blue-500/50 text-white text-xs font-black uppercase tracking-widest transition-all backdrop-blur-md"
+              to="/dashboard"
+              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-slate-900/80 border border-blue-500/30 hover:border-blue-400 text-white text-xs font-black uppercase tracking-widest transition-all backdrop-blur-md shadow-lg flex items-center justify-center gap-2 group"
             >
-              Launch Generic Swarm
+              Launch Generic Swarm <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform text-blue-400" />
             </Link>
           </div>
         </motion.div>
@@ -306,11 +315,10 @@ export default function LandingPage() {
               Join enterprise teams orchestrating AI agent swarms on Nexus Core.
             </p>
             <Link
-              to="/register"
-              state={{ from: location.pathname }}
+              to="/dashboard"
               className="inline-flex items-center gap-2 px-10 py-4 rounded-xl bg-white text-slate-950 text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-all shadow-xl"
             >
-              Initiate Free Trial <ArrowRight className="w-4 h-4" />
+              Enter Neural Workspace <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
         </div>
