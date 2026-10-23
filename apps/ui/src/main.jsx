@@ -21,3 +21,6 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     </BrowserRouter>
   </React.StrictMode>
 );
+
+// Signal to Vite Prerenderer that client hydration is complete for SEO static snapshot generation
+document.dispatchEvent(new Event("custom-post-render-event"));

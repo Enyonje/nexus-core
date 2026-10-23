@@ -41,6 +41,7 @@ apiClient.interceptors.response.use(
       url.includes("/dashboard") ||
       url.includes("/supportops") ||
       url.includes("/stream") ||
+      url.includes("/subscription") ||
       url.includes("/executions");
 
     if (status === 401 && !isGuestExemptRoute) {

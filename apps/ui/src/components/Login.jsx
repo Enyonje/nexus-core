@@ -1,4 +1,3 @@
-// src/pages/Login.jsx
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useToast } from "./ToastContext.jsx";
@@ -15,8 +14,9 @@ export default function Login() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Route fallback defaults to /dashboard
-  const from = location.state?.from && location.state.from !== "/" ? location.state.from : "/dashboard";
+  // Route fallback explicitly defaults to /dashboard, overriding landing page ("/") redirects
+  const rawFrom = location.state?.from;
+  const from = rawFrom && rawFrom !== "/" ? rawFrom : "/dashboard";
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -40,6 +40,7 @@ export default function Login() {
 
       addToast("Welcome back to Nexus Core 👋", "success");
 
+      // Ensure successful login always directs to /dashboard unless specifically navigating to a sub-route (e.g. /executions)
       let targetPath = "/dashboard";
       if (res?.redirectTo && res.redirectTo !== "/") {
         targetPath = res.redirectTo;

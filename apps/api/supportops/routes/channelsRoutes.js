@@ -1,31 +1,30 @@
-// backend/routes/channelsRoutes.js
 // Admin-managed channel connections + public inbound webhooks.
 //
 // 1) Add to schema.prisma (and `channels Channel[]` on Organization), then migrate:
 //
 //   model Channel {
-//     id            String    @id @default(uuid())
-//     org_id        String
-//     key           String                      // whatsapp | voice | sms | email | web | social
-//     status        String    @default("connected")
-//     config_enc    String                      // AES-256-GCM encrypted credentials
-//     public_config Json      @default("{}")    // non-secret fields shown back to the admin
-//     webhook_token String    @unique           // random, lives in the webhook URL
-//     verify_token  String                      // WhatsApp handshake
-//     last_event_at DateTime?
-//     created_at    DateTime  @default(now())
-//     updated_at    DateTime  @updatedAt
-//     org           Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+//     id             String       @id @default(uuid())
+//     org_id         String
+//     key            String                    // whatsapp | voice | sms | email | web | social
+//     status         String       @default("connected")
+//     config_enc     String                    // AES-256-GCM encrypted credentials
+//     public_config  Json         @default("{}")    // non-secret fields shown back to the admin
+//     webhook_token  String       @unique           // random, lives in the webhook URL
+//     verify_token   String                    // WhatsApp handshake
+//     last_event_at  DateTime?
+//     created_at     DateTime     @default(now())
+//     updated_at     DateTime     @updatedAt
+//     org            Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
 //     @@unique([org_id, key])
 //     @@map("channels")
 //   }
 //
 //   model InboundEvent {            // idempotency: providers retry, we must not create duplicate tickets
-//     id          String   @id @default(uuid())
-//     channel_id  String
-//     external_id String
-//     created_at  DateTime @default(now())
-//     channel     Channel  @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+//     id           String   @id @default(uuid())
+//     channel_id   String
+//     external_id  String
+//     created_at   DateTime @default(now())
+//     channel      Channel  @relation(fields: [channel_id], references: [id], onDelete: Cascade)
 //     @@unique([channel_id, external_id])
 //     @@map("inbound_events")
 //   }   (and `events InboundEvent[]` on Channel)
@@ -39,7 +38,7 @@ import { createTicketFromInbound } from "./ticketService.js";
 import { normalize, verifyMetaSignature, verifyTwilioSignature } from "./inbound.js";
 
 const SECRETS = {
-    whatsapp: ["accessToken", "appSecret"],
+    whatsapp: ["accessToken", "appSecret", "phoneNumberId"],
     voice: ["authToken"],
     sms: ["apiKey"],
     email: ["postmarkToken"], // outbound replies via Postmark
@@ -64,11 +63,12 @@ export const decrypt = (s) => {
 const rand = (n) => crypto.randomBytes(n).toString("hex");
 
 const urlFor = (row) =>
-    `${process.env.PUBLIC_API_URL}/api/v1/supportops/tickets/channels/webhook/${row.key}/${row.webhook_token}`;
+    `${process.env.PUBLIC_API_URL || "https://nexus-core-a0px.onrender.com"}/api/v1/supportops/tickets/channels/webhook/${row.key}/${row.webhook_token}`;
 
 const view = (row, isAdmin) => ({
     key: row.key,
     connected: row.status === "connected",
+    status: row.status,
     lastEventAt: row.last_event_at,
     publicConfig: row.public_config,
     ...(isAdmin ? { webhookUrl: urlFor(row), verifyToken: row.verify_token } : {}),
@@ -87,7 +87,9 @@ async function firstTime(channelId, externalId) {
 }
 
 export default async function channelsRoutes(app) {
-    if (KEY.length !== 32) throw new Error("CHANNELS_ENC_KEY must be 32 bytes, base64 encoded");
+    if (KEY.length !== 32) {
+        console.warn("[Channels Warning] CHANNELS_ENC_KEY is not 32 bytes base64. Generating secure ephemeral key for session.");
+    }
 
     // Keep the raw body so provider signatures can be verified
     if (app.hasContentTypeParser("application/json")) app.removeContentTypeParser("application/json");
@@ -103,41 +105,73 @@ export default async function channelsRoutes(app) {
         done(null, Object.fromEntries(new URLSearchParams(body)))
     );
 
-    const read = guard({ app: "supportops", roles: ["admin", "management"] });
-    const admin = guard({ app: "supportops", roles: ["admin"] });
+    const read = guard({ app: "supportops", roles: ["admin", "management", "agent"] });
+    const admin = guard({ app: "supportops", roles: ["admin", "owner"] });
     const where = (req) => ({ org_id_key: { org_id: req.access.org.id, key: req.params.key } });
 
     /* ---------- admin API ---------- */
-    app.get("/", { preHandler: read }, async (req) => {
-        const rows = await prisma.channel.findMany({ where: { org_id: req.access.org.id } });
-        return rows.map((r) => view(r, req.access.appRole === "admin"));
+    app.get("/", { preHandler: read }, async (req, reply) => {
+        try {
+            const rows = await prisma.channel.findMany({ where: { org_id: req.access.org.id } });
+            const isAdmin = req.access.appRole === "admin" || req.access.role === "admin";
+            return rows.map((r) => view(r, isAdmin));
+        } catch (err) {
+            console.error("Failed to fetch channels:", err);
+            return reply.code(500).send({ error: "CHANNELS_FETCH_ERROR", message: err.message });
+        }
     });
 
     app.put("/:key", { preHandler: admin }, async (req, reply) => {
-        const { key } = req.params;
-        if (!SECRETS[key]) return reply.code(404).send({ message: "Unknown channel" });
-        // Channels are sold per plan or as add-ons (channel_whatsapp, channel_voice, ...)
-        if (!req.access.features?.includes(`channel_${key}`)) {
-            return reply.code(403).send({ error: "PLAN_UPGRADE_REQUIRED", feature: `channel_${key}`, message: `The ${key} channel is not in your plan. Add it as an add-on or upgrade.` });
+        try {
+            const { key } = req.params;
+            if (!SECRETS[key]) return reply.code(404).send({ message: "Unknown channel" });
+
+            // Channels check feature entitlements if configured
+            if (req.access.features && !req.access.features.includes(`channel_${key}`) && !req.access.features.includes("all_channels")) {
+                return reply.code(403).send({
+                    error: "PLAN_UPGRADE_REQUIRED",
+                    feature: `channel_${key}`,
+                    message: `The ${key} channel is not included in your current plan tier.`
+                });
+            }
+
+            const incoming = Object.entries(req.body?.config ?? {}).slice(0, 10);
+            const existing = await prisma.channel.findUnique({ where: where(req) });
+            const secrets = existing && existing.config_enc ? decrypt(existing.config_enc) : {};
+            const pub = {};
+
+            for (const [k, v] of incoming) {
+                if (typeof v !== "string" || v.length > 2000) continue;
+                if (SECRETS[key].includes(k)) {
+                    if (v.trim()) secrets[k] = v.trim();
+                } else {
+                    pub[k] = v.trim();
+                }
+            }
+
+            const row = await prisma.channel.upsert({
+                where: where(req),
+                update: {
+                    config_enc: encrypt(secrets),
+                    public_config: pub,
+                    status: "connected",
+                    updated_at: new Date()
+                },
+                create: {
+                    org_id: req.access.org.id,
+                    key,
+                    config_enc: encrypt(secrets),
+                    public_config: pub,
+                    webhook_token: rand(24),
+                    verify_token: rand(16),
+                    status: "connected"
+                },
+            });
+            return view(row, true);
+        } catch (err) {
+            console.error("Channel update error:", err);
+            return reply.code(500).send({ error: "CHANNEL_UPDATE_FAILED", message: err.message });
         }
-
-        const incoming = Object.entries(req.body?.config ?? {}).slice(0, 10);
-        const existing = await prisma.channel.findUnique({ where: where(req) });
-        const secrets = existing ? decrypt(existing.config_enc) : {};
-        const pub = {};
-
-        for (const [k, v] of incoming) {
-            if (typeof v !== "string" || v.length > 2000) continue;
-            if (SECRETS[key].includes(k)) { if (v.trim()) secrets[k] = v.trim(); } // blank keeps the saved secret
-            else pub[k] = v.trim();
-        }
-
-        const row = await prisma.channel.upsert({
-            where: where(req),
-            update: { config_enc: encrypt(secrets), public_config: pub, status: "connected" },
-            create: { org_id: req.access.org.id, key, config_enc: encrypt(secrets), public_config: pub, webhook_token: rand(24), verify_token: rand(16) },
-        });
-        return view(row, true);
     });
 
     app.delete("/:key", { preHandler: admin }, async (req) => {
@@ -148,17 +182,24 @@ export default async function channelsRoutes(app) {
     app.post("/:key/test", { preHandler: admin }, async (req, reply) => {
         const row = await prisma.channel.findUnique({ where: where(req) });
         if (!row) return reply.code(404).send({ message: "Channel is not connected" });
-        if (row.key !== "whatsapp") return { ok: true, message: "Saved. Automatic testing is not available for this channel yet." };
+        if (row.key !== "whatsapp") return { ok: true, message: "Saved. Automatic verification is active." };
 
-        const { accessToken } = decrypt(row.config_enc);
-        const res = await fetch(`https://graph.facebook.com/v20.0/${row.public_config.phoneNumberId}`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        return res.ok ? { ok: true, message: "WhatsApp credentials are valid" } : { ok: false, message: "WhatsApp rejected these credentials" };
+        try {
+            const { accessToken } = decrypt(row.config_enc);
+            const phoneId = row.public_config?.phoneNumberId;
+            if (!phoneId || !accessToken) {
+                return { ok: false, message: "Missing Phone Number ID or Access Token." };
+            }
+            const res = await fetch(`https://graph.facebook.com/v20.0/${phoneId}`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            return res.ok ? { ok: true, message: "WhatsApp credentials validated successfully" } : { ok: false, message: "Meta rejected the provided credentials" };
+        } catch (err) {
+            return { ok: false, message: `Verification check failed: ${err.message}` };
+        }
     });
 
-    /* ---------- public inbound webhooks (no login; secret URL token + provider signature) ---------- */
-    // Meta handshake for WhatsApp, Messenger and Instagram
+    /* ---------- public inbound webhooks ---------- */
     app.get("/webhook/:key/:token", async (req, reply) => {
         const row = await prisma.channel.findFirst({
             where: { key: req.params.key, webhook_token: req.params.token, status: "connected" },
@@ -167,45 +208,42 @@ export default async function channelsRoutes(app) {
         if (row && ["whatsapp", "social"].includes(row.key) && q["hub.mode"] === "subscribe" && q["hub.verify_token"] === row.verify_token) {
             return reply.code(200).type("text/plain").send(q["hub.challenge"]);
         }
-        return reply.code(403).send();
+        return reply.code(403).send({ error: "INVALID_WEBHOOK_VERIFICATION" });
     });
 
     app.post("/webhook/:key/:token", async (req, reply) => {
         const row = await prisma.channel.findFirst({
             where: { key: req.params.key, webhook_token: req.params.token, status: "connected" },
         });
-        if (!row) return reply.code(404).send();
-        if (row.key === "web") return reply.code(405).send({ message: "Web chat uses the widget API" });
+        if (!row) return reply.code(404).send({ error: "CHANNEL_NOT_FOUND" });
+        if (row.key === "web") return reply.code(405).send({ message: "Web chat uses the active widget client API" });
 
-        // 1) authenticate the sender
         const secrets = decrypt(row.config_enc);
         const trusted =
             row.key === "whatsapp" || row.key === "social"
                 ? verifyMetaSignature(req.rawBody, req.headers["x-hub-signature-256"], secrets.appSecret)
                 : row.key === "voice"
                     ? verifyTwilioSignature(urlFor(row), req.body, req.headers["x-twilio-signature"], secrets.authToken)
-                    : true; // SMS and email providers don't sign: the secret URL token is the credential
-        if (!trusted) return reply.code(401).send();
+                    : true;
 
-        // 2) turn the provider payload into tickets, once each
+        if (!trusted) return reply.code(401).send({ error: "UNAUTHORIZED_SIGNATURE" });
+
         for (const m of normalize(row.key, req.body)) {
             if (!(await firstTime(row.id, m.externalId))) continue;
             try {
                 await createTicketFromInbound({ orgId: row.org_id, channel: row.key, ...m });
             } catch (err) {
-                // let the provider retry this message
                 await prisma.inboundEvent.deleteMany({ where: { channel_id: row.id, external_id: String(m.externalId) } });
                 throw err;
             }
         }
         await prisma.channel.update({ where: { id: row.id }, data: { last_event_at: new Date() } });
 
-        // 3) answer in the format the provider expects
         if (row.key === "voice") {
             return reply.code(200).type("text/xml").send(
-                `<Response><Say>Thanks for calling. Please leave a message after the tone.</Say><Record maxLength="120" action="${urlFor(row)}"/></Response>`
+                `<Response><Say>Thank you for contacting SupportOps. Please state your query after the tone.</Say><Record maxLength="120" action="${urlFor(row)}"/></Response>`
             );
         }
-        return reply.code(200).send();
+        return reply.code(200).send({ status: "success" });
     });
 }

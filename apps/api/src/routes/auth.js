@@ -1,3 +1,4 @@
+// src/routes/auth.js (or backend equivalent)
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { requireAuth } from "../security/authMiddleware.js";
@@ -30,16 +31,20 @@ function setRefreshCookie(reply, token) {
  * Resolves the appropriate redirect destination based on user context,
  * intent, product tier, or explicitly assigned platform metadata.
  */
-function resolveRedirectPath(user, defaultPath = "/dashboard") {
-  if (!user) return defaultPath;
-
-  // Honor explicit UI/UX registration or login intent
-  if (user.intent === "explore_agents") {
+function resolveRedirectPath(user, defaultPath = "/dashboard", requestIntent = null) {
+  // Honor explicit request intent or user profile intent first
+  const activeIntent = requestIntent || user?.intent;
+  if (activeIntent === "explore_agents" || activeIntent === "agents") {
     return "/agents";
   }
-  if (user.intent === "launch_swarm") {
+  if (activeIntent === "launch_swarm" || activeIntent === "dashboard") {
     return "/dashboard";
   }
+  if (activeIntent === "supportops") {
+    return "/supportops";
+  }
+
+  if (!user) return defaultPath;
 
   const rawProduct = typeof user.product === "string" ? user.product : user.product?.name || user.product?.slug || "";
   const product = rawProduct.toLowerCase();
@@ -96,7 +101,7 @@ export async function authRoutes(server) {
       }
 
       const redirectTo =
-        result.redirectTo || resolveRedirectPath(result.user, "/dashboard");
+        result.redirectTo || resolveRedirectPath(result.user, "/dashboard", payload.intent);
 
       return reply.send({
         token: result.token,
@@ -123,6 +128,7 @@ export async function authRoutes(server) {
       const body = req.body || {};
       const identifier = body.email || body.username;
       const secret = body.password || body.accessKey;
+      const clientIntent = body.intent; // Capture optional navigation intent from client
 
       if (!identifier || !secret) {
         return reply.code(400).send({
@@ -143,7 +149,7 @@ export async function authRoutes(server) {
       setRefreshCookie(reply, result.rawRefreshToken);
 
       const redirectTo =
-        result.redirectTo || resolveRedirectPath(result.user, "/dashboard");
+        result.redirectTo || resolveRedirectPath(result.user, "/dashboard", clientIntent);
 
       return reply.send({
         token: result.token,
@@ -219,7 +225,7 @@ export async function authRoutes(server) {
       const result = await registerUser(req.body);
       setRefreshCookie(reply, result.rawRefreshToken);
 
-      const redirectTo = resolveRedirectPath(result.user, "/dashboard");
+      const redirectTo = resolveRedirectPath(result.user, "/dashboard", intent);
 
       return reply.send({
         token: result.token,
@@ -240,14 +246,14 @@ export async function authRoutes(server) {
   });
 
   server.post("/crossborder/auth/login", async (req, reply) => {
-    const { email, password, mfaCode } = req.body || {};
+    const { email, password, mfaCode, intent } = req.body || {};
     req.body = { email, accessKey: password, mfaCode };
 
     try {
       const result = await loginUser(req.body);
       setRefreshCookie(reply, result.rawRefreshToken);
 
-      const redirectTo = resolveRedirectPath(result.user, "/dashboard");
+      const redirectTo = resolveRedirectPath(result.user, "/dashboard", intent);
 
       return reply.send({
         token: result.token,

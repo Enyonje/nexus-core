@@ -38,11 +38,29 @@ const SAMPLE = [
   { id: "T-1037", subject: "Cannot reset password", customer: "Joy M.", channel: "web", priority: "normal", slaMins: 55 },
 ];
 
+/* ---------- backend base URL resolution ---------- */
+const API_BASE_URL = (
+  import.meta.env.VITE_BACKEND_API_URL ||
+  import.meta.env.VITE_API_URL ||
+  "https://nexus-core-a0px.onrender.com"
+).replace(/\/api\/?$/, "");
+
 /* ---------- helpers ---------- */
 async function getJSON(url, signal) {
   const token = localStorage.getItem("authToken") || localStorage.getItem("token");
   const org = localStorage.getItem("activeOrgId") || localStorage.getItem("orgId");
-  const res = await fetch(url, {
+
+  // Ensure relative endpoints correctly resolve to backend API base URL
+  let fullUrl = url;
+  if (url && url.startsWith("/")) {
+    let cleanEndpoint = url;
+    if (!cleanEndpoint.startsWith("/api")) {
+      cleanEndpoint = `/api${cleanEndpoint}`;
+    }
+    fullUrl = `${API_BASE_URL}${cleanEndpoint}`;
+  }
+
+  const res = await fetch(fullUrl, {
     signal,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -53,6 +71,7 @@ async function getJSON(url, signal) {
   if (!res.ok) throw new Error(String(res.status));
   return res.json();
 }
+
 const toList = (d) => (Array.isArray(d) ? d : d?.items ?? d?.tickets ?? []);
 const val = (v, fmt = (x) => x) => (v === undefined || v === null ? "—" : fmt(v));
 const slaMins = (t) => (typeof t.slaMins === "number" ? t.slaMins : t.slaDueAt ? Math.round((new Date(t.slaDueAt) - Date.now()) / 60000) : null);

@@ -1,4 +1,3 @@
-// src/pages/Register.jsx
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
@@ -15,7 +14,10 @@ export default function Register() {
   const { addToast } = useToast();
   const { login } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
+  const useNavigateInstance = useNavigate();
+
+  // Capture optional selected tier if user came from pricing/subscription page
+  const selectedTier = location.state?.selectedTier || "free";
 
   async function handleRegister(e) {
     e.preventDefault();
@@ -30,6 +32,7 @@ export default function Register() {
           password: password,
           accessKey: password,
           organization: organization.trim(),
+          tier: selectedTier,
         }),
       });
 
@@ -43,24 +46,26 @@ export default function Register() {
       localStorage.setItem("user", JSON.stringify(res.user));
 
       // Trigger AuthProvider state update
-      login({
-        user: res.user,
-        token: res.token,
-      });
-
-      addToast("Welcome to Nexus Core! 🎉", "success");
-
-      // Default target route is always /dashboard
-      let targetPath = "/dashboard";
-
-      // Respect explicit redirect directives or location state if provided
-      if (res.redirectTo && res.redirectTo !== "/") {
-        targetPath = res.redirectTo;
-      } else if (location.state?.from && location.state.from !== "/") {
-        targetPath = location.state.from;
+      if (typeof login === "function") {
+        await login({
+          email: cleanEmail,
+          password: password,
+        }).catch(() => { });
       }
 
-      navigate(targetPath, { replace: true });
+      addToast("Workspace created successfully! Welcome to Nexus Core 🎉", "success");
+
+      // Default target route is always /dashboard, bypassing landing page ("/")
+      let targetPath = "/dashboard";
+      const rawFrom = location.state?.from;
+
+      if (res.redirectTo && res.redirectTo !== "/") {
+        targetPath = res.redirectTo;
+      } else if (rawFrom && rawFrom !== "/") {
+        targetPath = rawFrom;
+      }
+
+      useNavigateInstance(targetPath, { replace: true });
     } catch (err) {
       console.error("Register error:", err);
       addToast(err.message || "Registration failed. Please try again.", "error");
@@ -78,10 +83,17 @@ export default function Register() {
       <div className="relative z-10 w-full max-w-md animate-in fade-in zoom-in duration-500">
         {/* Branding */}
         <div className="text-center mb-6">
-          <div className="text-4xl font-black tracking-tighter bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
-            NEXUS CORE
-          </div>
+          <Link to="/" className="inline-block group">
+            <div className="text-4xl font-black tracking-tighter bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
+              NEXUS CORE
+            </div>
+          </Link>
           <div className="h-1 w-12 bg-blue-500 mx-auto mt-2 rounded-full shadow-[0_0_10px_#3b82f6]" />
+          {selectedTier !== "free" && (
+            <span className="inline-block mt-3 text-[10px] font-mono font-bold uppercase tracking-widest px-3 py-1 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+              Selected Package: {selectedTier.toUpperCase()}
+            </span>
+          )}
         </div>
 
         {/* The Form */}
