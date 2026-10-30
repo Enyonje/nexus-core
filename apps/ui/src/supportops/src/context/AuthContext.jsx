@@ -1,57 +1,134 @@
 // supportops/src/context/AuthContext.jsx
-// SupportOps has NO login of its own. It reads the signed-in user from the main app's AuthProvider.
-// Unauthenticated users are allowed guest access so they can view the Pricing page and subscribe.
+//
+// SupportOps uses the main application's AuthProvider.
+// Public visitors can browse without signing in.
+// Protected routes must enforce authentication and authorization separately.
+
 import { useContext, useMemo } from "react";
-import { AuthContext as MainAuthContext } from "../../../context/AuthProvider"; // apps/ui/src/context/AuthProvider.jsx
+
+import { AuthContext as MainAuthContext } from "../../../context/AuthProvider";
 import { AccessContext } from "../../../context/AccessProvider";
 
 /**
- * Determines the user's role inside SupportOps.
+ * Resolve the user's SupportOps role.
+ *
  * Priority:
- * 1. App-specific role: `access.apps.supportops.role`
- * 2. Main platform role fallback: "admin" if user/main role is "admin", "agent" if logged in, else "guest"
+ * 1. Explicit SupportOps app role.
+ * 2. Main platform administrator role.
+ * 3. Authenticated users default to "agent".
+ * 4. Unauthenticated visitors default to "guest".
+ *
+ * The backend must independently enforce authorization
+ * for every protected operation.
  */
 function supportOpsRole(user, mainRole, access) {
-  if (!user) return "guest";
-
-  const appRole = access?.apps?.supportops?.role;
-  if (appRole) return appRole;
-
-  const resolvedMainRole = user?.role ?? mainRole;
-  return resolvedMainRole === "admin" ? "admin" : "agent";
-}
-
-export function useAuth() {
-  const main = useContext(MainAuthContext);
-  if (!main) {
-    throw new Error("SupportOps must be rendered inside the main app's AuthProvider");
+  if (!user) {
+    return "guest";
   }
 
+  const appRole = access?.apps?.supportops?.role;
+
+  if (typeof appRole === "string" && appRole.trim()) {
+    return appRole.trim().toLowerCase();
+  }
+
+  const resolvedMainRole = String(
+    user?.role ?? mainRole ?? ""
+  )
+    .trim()
+    .toLowerCase();
+
+  if (resolvedMainRole === "admin") {
+    return "admin";
+  }
+
+  return "agent";
+}
+
+/**
+ * SupportOps authentication hook.
+ *
+ * Reuses authentication from the main application rather
+ * than creating a separate authentication system.
+ */
+export function useAuth() {
+  const main = useContext(MainAuthContext);
   const access = useContext(AccessContext);
-  const { user, loading, initializing, logout, authFetch, role: mainRole } = main;
+
+  if (main === null || main === undefined) {
+    throw new Error(
+      "SupportOps must be rendered inside the main app's AuthProvider."
+    );
+  }
+
+  const {
+    user,
+    loading,
+    initializing,
+    logout,
+    authFetch,
+    role: mainRole,
+  } = main;
+
+  const isAuthenticated = Boolean(user);
 
   const role = supportOpsRole(user, mainRole, access);
 
-  // If no token/user exists, don't hold guest users in an auth loading state
-  const isAccessLoading = Boolean(user && access?.loading);
-  const isAuthLoading = Boolean((loading || initializing) && user) || isAccessLoading;
+  // Only authenticated users need to wait for app permissions.
+  const isAccessLoading = Boolean(
+    isAuthenticated && access?.loading
+  );
+
+  const isAuthLoading = Boolean(
+    isAuthenticated && (loading || initializing)
+  );
+
+  const isLoading = isAuthLoading || isAccessLoading;
+
+  const resolvedUser = useMemo(() => {
+    if (!user) {
+      return {
+        id: null,
+        email: null,
+        role: "guest",
+        isGuest: true,
+      };
+    }
+
+    return {
+      ...user,
+      role,
+      isGuest: false,
+    };
+  }, [user, role]);
 
   return useMemo(
     () => ({
-      // Provide a baseline guest profile when no token is present so Pricing/Subscription components don't crash on user property reads
-      user: user
-        ? { ...user, role }
-        : { id: null, email: null, role: "guest", isGuest: true },
+      user: resolvedUser,
       role,
-      loading: isAuthLoading,
-      isAuth: Boolean(user),
-      isGuest: !user,
+
+      // Authentication state
+      isAuth: isAuthenticated,
+      isAuthenticated,
+      isGuest: !isAuthenticated,
+      loading: isLoading,
+
+      // Main application authentication helpers
       logout,
       authFetch,
     }),
-    [user, role, isAuthLoading, logout, authFetch]
+    [
+      resolvedUser,
+      role,
+      isAuthenticated,
+      isLoading,
+      logout,
+      authFetch,
+    ]
   );
 }
 
+// Expose the main application's contexts for compatibility.
 export { MainAuthContext as AuthContext };
+
 export default MainAuthContext;

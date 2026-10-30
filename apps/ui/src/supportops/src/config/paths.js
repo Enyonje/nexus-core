@@ -127,15 +127,15 @@ export const ROUTES = {
  * Agents/Users -> Agent Dashboard
  */
 export function homeForRole(role) {
-    switch (role) {
+    switch ((role || "").toLowerCase()) {
         case "admin":
         case "management":
-            return ROUTES.admin.executive;
+            return ROUTES.admin.dashboard;   // Admin lands on dashboard
         case "investor":
             return ROUTES.investor;
         case "agent":
         case "user":
         default:
-            return ROUTES.agent.dashboard;
+            return ROUTES.agent.dashboard;   // Agents land on their own dashboard
     }
-}                            
+}

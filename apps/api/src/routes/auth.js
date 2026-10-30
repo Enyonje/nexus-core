@@ -170,6 +170,22 @@ export async function authRoutes(server) {
     }
   });
 
+  // LOGOUT
+  server.post("/logout", async (req, reply) => {
+    try {
+      reply.clearCookie("refreshToken", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        path: "/",
+      });
+      return reply.send({ success: true, message: "Logged out successfully" });
+    } catch (err) {
+      console.error("Logout error:", err);
+      return reply.code(500).send({ error: "AUTH_LOGOUT_ERROR", message: "Logout failed" });
+    }
+  });
+
   // CURRENT USER SESSION DECODE/VERIFY
   server.get("/me", { preHandler: requireAuth }, async (req, reply) => {
     try {

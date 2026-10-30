@@ -1,0 +1,26 @@
+{
+    "name": "Nexus Core",
+    "short_name": "NexusCore",
+    "description": "Autonomous AI Agent Execution Engine & SupportOps Platform",
+    "icons": [
+        {
+            "src": "/favicon.ico",
+            "sizes": "32x32 16x16",
+            "type": "image/x-icon"
+        },
+        {
+            "src": "/logo.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "/apple-touch-icon.png",
+            "sizes": "180x180",
+            "type": "image/png"
+        }
+    ],
+    "theme_color": "#020617",
+    "background_color": "#020617",
+    "display": "standalone",
+    "start_url": "/dashboard"
+}

@@ -1,178 +1,375 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+// src/context/AuthProvider.jsx
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from "react";
+
 import { apiFetch } from "../lib/api";
 
 export const AuthContext = createContext(null);
 
-const DEFAULT_GUEST_USER = { id: null, email: null, role: "guest", isGuest: true };
-const DEFAULT_GUEST_SUBSCRIPTION = { tier: "free", status: "active" };
+const DEFAULT_GUEST_USER = {
+  id: null,
+  email: null,
+  role: "guest",
+  isGuest: true,
+};
+
+const DEFAULT_GUEST_SUBSCRIPTION = {
+  tier: "free",
+  status: "active",
+};
+
+function getToken() {
+  return (
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("access_token")
+  );
+}
+
+function normalizeUser(response) {
+  const user = response?.user || response;
+
+  if (!user || !user.id) {
+    return null;
+  }
+
+  return {
+    ...user,
+    role: user.role || "user",
+    isGuest: false,
+  };
+}
+
+function normalizeSubscription(response) {
+  if (!response) {
+    return DEFAULT_GUEST_SUBSCRIPTION;
+  }
+
+  return {
+    ...response,
+    tier:
+      response.tier ||
+      response.plan_id ||
+      response.plan?.key ||
+      "free",
+    status: response.status || "active",
+  };
+}
+
+function saveSessionUser(user) {
+  if (user) {
+    localStorage.setItem("user", JSON.stringify(user));
+  } else {
+    localStorage.removeItem("user");
+  }
+}
+
+function saveSubscription(subscription) {
+  if (subscription) {
+    localStorage.setItem(
+      "subscription",
+      JSON.stringify(subscription)
+    );
+  } else {
+    localStorage.removeItem("subscription");
+  }
+}
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try {
-      const cached = localStorage.getItem("user");
-      return cached ? JSON.parse(cached) : DEFAULT_GUEST_USER;
-    } catch {
-      return DEFAULT_GUEST_USER;
-    }
-  });
+  const [user, setUser] = useState(DEFAULT_GUEST_USER);
 
-  const [subscription, setSubscription] = useState(() => {
-    try {
-      const cached = localStorage.getItem("subscription");
-      return cached ? JSON.parse(cached) : DEFAULT_GUEST_SUBSCRIPTION;
-    } catch {
-      return DEFAULT_GUEST_SUBSCRIPTION;
-    }
-  });
+  const [subscription, setSubscription] = useState(
+    DEFAULT_GUEST_SUBSCRIPTION
+  );
 
   const [loading, setLoading] = useState(true);
 
-  const fetchSessionData = useCallback(async () => {
-    const token = localStorage.getItem("token") || localStorage.getItem("authToken");
-    if (!token) {
-      setUser(DEFAULT_GUEST_USER);
-      setSubscription(DEFAULT_GUEST_SUBSCRIPTION);
-      setLoading(false);
-      return;
-    }
+  const mountedRef = useRef(true);
+  const requestIdRef = useRef(0);
 
-    try {
-      const userRes = await apiFetch("/auth/me").catch(() => null);
-      if (userRes) {
-        const resolvedUser = userRes.user || userRes;
-        setUser(resolvedUser);
-        localStorage.setItem("user", JSON.stringify(resolvedUser));
-      }
+  const applyGuestSession = useCallback(() => {
+    setUser(DEFAULT_GUEST_USER);
+    setSubscription(DEFAULT_GUEST_SUBSCRIPTION);
 
-      const subRes = await apiFetch("/auth/subscription").catch(() => null);
-      if (subRes) {
-        setSubscription(subRes);
-        localStorage.setItem("subscription", JSON.stringify(subRes));
-      }
-    } catch (err) {
-      console.warn("[AuthProvider] Session sync warning:", err.message);
-    } finally {
-      setLoading(false);
-    }
+    saveSessionUser(null);
+    saveSubscription(null);
   }, []);
 
+  const fetchSessionData = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    const token = getToken();
+
+    if (!token) {
+      applyGuestSession();
+      setLoading(false);
+      return null;
+    }
+
+    setLoading(true);
+
+    try {
+      const userResponse = await apiFetch("/auth/me");
+
+      if (requestId !== requestIdRef.current) {
+        return null;
+      }
+
+      const resolvedUser = normalizeUser(userResponse);
+
+      if (!resolvedUser) {
+        throw new Error(
+          "The session endpoint returned an invalid user"
+        );
+      }
+
+      setUser(resolvedUser);
+      saveSessionUser(resolvedUser);
+
+      // Subscription information is secondary to authentication.
+      try {
+        const subscriptionResponse = await apiFetch(
+          "/auth/subscription"
+        );
+
+        if (requestId === requestIdRef.current) {
+          const resolvedSubscription =
+            normalizeSubscription(subscriptionResponse);
+
+          setSubscription(resolvedSubscription);
+          saveSubscription(resolvedSubscription);
+        }
+      } catch (subscriptionError) {
+        console.warn(
+          "[AuthProvider] Subscription sync failed:",
+          subscriptionError.message
+        );
+
+        // Do not discard a valid authenticated session just because
+        // subscription data could not be fetched.
+      }
+
+      return resolvedUser;
+    } catch (error) {
+      if (requestId !== requestIdRef.current) {
+        return null;
+      }
+
+      console.warn(
+        "[AuthProvider] Session validation failed:",
+        error.message
+      );
+
+      applyGuestSession();
+
+      localStorage.removeItem("token");
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("access_token");
+
+      return null;
+    } finally {
+      if (
+        mountedRef.current &&
+        requestId === requestIdRef.current
+      ) {
+        setLoading(false);
+      }
+    }
+  }, [applyGuestSession]);
+
   useEffect(() => {
+    mountedRef.current = true;
+
     fetchSessionData();
 
     const handleUnauthorized = () => {
-      logout();
-    };
-    window.addEventListener("auth:unauthorized", handleUnauthorized);
-    return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
-  }, [fetchSessionData]);
-
-  const login = async (credentials) => {
-    // Normalize credentials to ensure both email/username and password/accessKey are present
-    const identifier = credentials.email || credentials.username;
-    const secret = credentials.password || credentials.accessKey;
-
-    const payload = {
-      ...credentials,
-      email: identifier,
-      username: identifier,
-      password: secret,
-      accessKey: secret,
+      requestIdRef.current += 1;
+      applyGuestSession();
+      setLoading(false);
     };
 
-    const res = await apiFetch("/auth/login", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    window.addEventListener(
+      "auth:unauthorized",
+      handleUnauthorized
+    );
 
-    const token = res?.token || res?.accessToken || res?.data?.token;
-    const userData = res?.user || res?.data?.user;
+    return () => {
+      mountedRef.current = false;
 
-    if (token) {
-      localStorage.setItem("token", token);
-      localStorage.setItem("authToken", token);
-      if (userData) {
-        localStorage.setItem("user", JSON.stringify(userData));
-        setUser(userData);
-      } else if (res) {
-        // Fallback user object if nested user key is missing
-        const fallbackUser = { email: identifier, ...res };
-        localStorage.setItem("user", JSON.stringify(fallbackUser));
-        setUser(fallbackUser);
-      }
+      window.removeEventListener(
+        "auth:unauthorized",
+        handleUnauthorized
+      );
+    };
+  }, [fetchSessionData, applyGuestSession]);
+
+  const login = useCallback(async (credentials) => {
+    const identifier =
+      credentials.email || credentials.username;
+
+    const secret =
+      credentials.password || credentials.accessKey;
+
+    if (!identifier || !secret) {
+      throw new Error(
+        "Both email and password are required."
+      );
     }
 
+    const response = await apiFetch("/auth/login", {
+      method: "POST",
+      body: {
+        ...credentials,
+        email: identifier,
+        username: identifier,
+        password: secret,
+        accessKey: secret,
+      },
+    });
+
+    const token =
+      response?.token ||
+      response?.accessToken ||
+      response?.data?.token;
+
+    const resolvedUser = normalizeUser(response);
+
+    if (!token || !resolvedUser) {
+      throw new Error(
+        "Login succeeded without a valid token and user response."
+      );
+    }
+
+    // Invalidate any in-flight session restoration.
+    requestIdRef.current += 1;
+
+    localStorage.setItem("token", token);
+    localStorage.setItem("authToken", token);
+
+    setUser(resolvedUser);
+    saveSessionUser(resolvedUser);
+
+    setLoading(false);
+
+    // Retrieve subscription information separately.
     try {
-      const subRes = await apiFetch("/auth/subscription").catch(() => null);
-      if (subRes) {
-        setSubscription(subRes);
-        localStorage.setItem("subscription", JSON.stringify(subRes));
-      }
-    } catch {
-      // Ignore sub sync failure during login flow
+      const subscriptionResponse = await apiFetch(
+        "/auth/subscription"
+      );
+
+      const resolvedSubscription =
+        normalizeSubscription(subscriptionResponse);
+
+      setSubscription(resolvedSubscription);
+      saveSubscription(resolvedSubscription);
+    } catch (error) {
+      console.warn(
+        "[AuthProvider] Subscription lookup failed:",
+        error.message
+      );
+
+      // Do not turn successful authentication into a failed login.
     }
 
-    return res;
-  };
+    return response;
+  }, []);
 
-  const register = async (credentials) => {
-    const identifier = credentials.email || credentials.username;
-    const secret = credentials.password || credentials.accessKey;
+  const register = useCallback(async (credentials) => {
+    const identifier =
+      credentials.email || credentials.username;
 
-    const payload = {
-      ...credentials,
-      email: identifier,
-      username: identifier,
-      password: secret,
-      accessKey: secret,
-    };
+    const secret =
+      credentials.password || credentials.accessKey;
 
-    const res = await apiFetch("/auth/register", {
+    if (!identifier || !secret) {
+      throw new Error(
+        "Both email and password are required."
+      );
+    }
+
+    const response = await apiFetch("/auth/register", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: {
+        ...credentials,
+        email: identifier,
+        username: identifier,
+        password: secret,
+        accessKey: secret,
+      },
     });
 
-    const token = res?.token || res?.accessToken || res?.data?.token;
-    const userData = res?.user || res?.data?.user;
+    const token =
+      response?.token ||
+      response?.accessToken ||
+      response?.data?.token;
 
-    if (token) {
-      localStorage.setItem("token", token);
-      localStorage.setItem("authToken", token);
-      if (userData) {
-        localStorage.setItem("user", JSON.stringify(userData));
-        setUser(userData);
-      } else if (res) {
-        const fallbackUser = { email: identifier, ...res };
-        localStorage.setItem("user", JSON.stringify(fallbackUser));
-        setUser(fallbackUser);
-      }
+    const resolvedUser = normalizeUser(response);
+
+    if (!token || !resolvedUser) {
+      throw new Error(
+        "Registration did not return a valid authenticated session."
+      );
     }
 
-    return res;
-  };
+    requestIdRef.current += 1;
 
-  const logout = () => {
+    localStorage.setItem("token", token);
+    localStorage.setItem("authToken", token);
+
+    setUser(resolvedUser);
+    saveSessionUser(resolvedUser);
+
+    setSubscription(DEFAULT_GUEST_SUBSCRIPTION);
+    saveSubscription(DEFAULT_GUEST_SUBSCRIPTION);
+
+    setLoading(false);
+
+    return response;
+  }, []);
+
+  const logout = useCallback(async () => {
+    requestIdRef.current += 1;
+
+    // Clear client-side authentication immediately.
+    applyGuestSession();
+
     localStorage.removeItem("token");
     localStorage.removeItem("authToken");
-    localStorage.removeItem("user");
-    localStorage.removeItem("subscription");
-    setUser(DEFAULT_GUEST_USER);
-    setSubscription(DEFAULT_GUEST_SUBSCRIPTION);
-    window.location.href = "/";
+    localStorage.removeItem("access_token");
+
+    try {
+      await apiFetch("/auth/logout", {
+        method: "POST",
+      });
+    } catch (error) {
+      console.warn(
+        "[AuthProvider] Server logout failed:",
+        error.message
+      );
+    } finally {
+      window.location.assign("/");
+    }
+  }, [applyGuestSession]);
+
+  const value = {
+    user,
+    subscription,
+    isGuest: !user || Boolean(user.isGuest),
+    isAuthenticated: Boolean(user?.id && !user?.isGuest),
+    loading,
+    login,
+    register,
+    logout,
+    refreshSession: fetchSessionData,
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        subscription,
-        isGuest: !user || Boolean(user.isGuest),
-        loading,
-        login,
-        register,
-        logout,
-        refreshSession: fetchSessionData,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
@@ -180,13 +377,16 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
+
   if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
+    throw new Error(
+      "useAuth must be used within an AuthProvider"
+    );
   }
+
   return context;
 }
 
-// Named alias exports for robust cross-module resolution
 export const useAuthContext = useAuth;
 export const useMainAuth = useAuth;
 

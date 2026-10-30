@@ -137,7 +137,7 @@ export default function Subscription() {
           disabled={tier === "pro" || checkoutLoading}
           onClick={() => handleUpgrade("pro")}
         >
-          {checkoutLoading ? "Processing…" : tier === "pro" ? "Pro Active" : "Upgrade to Pro ($49/mo)"}
+          {checkoutLoading ? "Processing…" : tier === "pro" ? "Pro Active" : "Upgrade to Pro ($19/mo)"}
         </button>
 
         <button
@@ -145,7 +145,7 @@ export default function Subscription() {
           disabled={tier === "enterprise" || checkoutLoading}
           onClick={() => handleUpgrade("enterprise")}
         >
-          {checkoutLoading ? "Processing…" : tier === "enterprise" ? "Enterprise Active" : "Upgrade Enterprise ($199/mo)"}
+          {checkoutLoading ? "Processing…" : tier === "enterprise" ? "Enterprise Active" : "Upgrade Enterprise ($89/mo)"}
         </button>
       </div>
     </div>

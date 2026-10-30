@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { formatDate } from "../lib/utils";
 import { useAuth } from "../hooks/useAuth";
+import OnboardingBanner from "./OnboardingBanner";
 
 export default function Dashboard() {
   const { subscription, user, isGuest } = useAuth();
@@ -12,6 +13,14 @@ export default function Dashboard() {
   const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Dynamic stateful mock data for live animated simulation
+  const [mockFreeExecutions, setMockFreeExecutions] = useState([
+    { id: "mock-1", goal_type: "sme_quoting_engine", status: "running", started_at: new Date(Date.now() - 45000).toISOString() },
+    { id: "mock-2", goal_type: "regulatory_policy_check", status: "completed", started_at: new Date(Date.now() - 1800000).toISOString() },
+    { id: "mock-3", goal_type: "claims_triage_swarm", status: "completed", started_at: new Date(Date.now() - 3600000).toISOString() },
+    { id: "mock-4", goal_type: "underwriting_validation", status: "pending", started_at: new Date(Date.now() - 7200000).toISOString() },
+  ]);
+
   // Safely resolve tier string whether subscription is an object or string
   const subscriptionTier = useMemo(() => {
     if (!subscription) return "free";
@@ -20,6 +29,33 @@ export default function Dashboard() {
   }, [subscription]);
 
   const isFreeUser = useMemo(() => subscriptionTier === "free" || isGuest, [subscriptionTier, isGuest]);
+
+  // Automatic live simulation timer for free tier preview
+  useEffect(() => {
+    if (!isFreeUser) return;
+
+    const interval = setInterval(() => {
+      setMockFreeExecutions((prev) => {
+        const statuses = ["running", "completed", "pending", "failed"];
+        return prev.map((item, index) => {
+          // Dynamically cycle statuses periodically to simulate live telemetry
+          if (index === 0) {
+            return {
+              ...item,
+              status: item.status === "running" ? "completed" : "running",
+              started_at: new Date().toISOString(),
+            };
+          }
+          if (index === 3 && item.status === "pending") {
+            return { ...item, status: "running" };
+          }
+          return item;
+        });
+      });
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isFreeUser]);
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
@@ -60,12 +96,15 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-200 py-12 px-6 relative overflow-hidden font-sans">
+    <div className="min-h-screen bg-[#020617] text-slate-200 py-8 px-6 relative overflow-hidden font-sans">
       <div className="absolute top-[-10%] right-[-10%] w-[600px] h-[600px] bg-cyan-600/5 blur-[120px] rounded-full pointer-events-none" />
 
-      <div className="max-w-6xl mx-auto space-y-10 relative z-10">
+      <div className="max-w-6xl mx-auto space-y-8 relative z-10">
+        {/* Progressive Onboarding Banner */}
+        <OnboardingBanner user={user} />
+
         {/* Header Section */}
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-8 border-b border-slate-800/80">
+        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-slate-800/80">
           <div className="space-y-2">
             <div className="flex items-center gap-3">
               <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white">
@@ -161,9 +200,16 @@ export default function Dashboard() {
           {/* Activity Feed */}
           <section className="lg:col-span-8 flex flex-col gap-4">
             <div className="flex items-center justify-between ml-1">
-              <h2 className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest">
-                Recent Execution Traces
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest">
+                  Recent Execution Traces
+                </h2>
+                {isFreeUser && (
+                  <span className="text-[9px] font-mono font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">
+                    Live Simulation
+                  </span>
+                )}
+              </div>
               {!isFreeUser && (
                 <Link to="/executions" className="text-[10px] font-bold text-cyan-400 hover:underline uppercase tracking-wider">
                   View All Traces
@@ -171,18 +217,49 @@ export default function Dashboard() {
               )}
             </div>
 
-            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden backdrop-blur-md min-h-[240px]">
+            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden backdrop-blur-md min-h-[260px] relative">
               {isFreeUser ? (
-                <div className="p-12 text-center flex flex-col items-center justify-center min-h-[240px]">
-                  <p className="text-slate-400 text-xs font-mono uppercase tracking-widest mb-4">
-                    Live Telemetry Stream Encrypted Under Guest Free Tier
-                  </p>
-                  <button
-                    onClick={() => navigate("/subscription")}
-                    className="text-cyan-400 text-xs font-bold border border-cyan-500/30 bg-cyan-500/10 px-5 py-2.5 rounded-lg hover:bg-cyan-500/20 transition-all uppercase tracking-wider"
-                  >
-                    Select Package to Unlock Full Telemetry Access →
-                  </button>
+                <div className="relative w-full h-full min-h-[260px]">
+                  {/* Blurred Animated Mock Simulation Layer */}
+                  <div className="absolute inset-0 filter blur-[2.5px] opacity-35 pointer-events-none divide-y divide-slate-800/80 p-2 select-none transition-all duration-500">
+                    {mockFreeExecutions.map((e) => (
+                      <div key={e.id} className="p-4 flex items-center justify-between transition-all duration-300">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-2 h-2 rounded-full ${e.status === "running" ? "bg-cyan-400 animate-ping" : "bg-slate-600"
+                              }`}
+                          />
+                          <div>
+                            <p className="text-xs font-bold text-slate-200 uppercase">{e.goal_type.replaceAll("_", " ")}</p>
+                            <p className="text-[10px] font-mono text-slate-500 mt-0.5">{formatDate(e.started_at)}</p>
+                          </div>
+                        </div>
+                        <StatusBadge status={e.status} />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Upgrade Overlay Prompt */}
+                  <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center p-8 text-center z-20">
+                    <div className="inline-flex items-center gap-2 mb-3 bg-cyan-500/10 border border-cyan-500/20 px-3 py-1 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+                      <span className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-widest">
+                        Live Simulation Active
+                      </span>
+                    </div>
+                    <p className="text-slate-300 text-xs font-mono uppercase tracking-widest mb-1 font-semibold">
+                      Telemetry Stream Locked
+                    </p>
+                    <p className="text-slate-400 text-[11px] max-w-sm mb-5 leading-relaxed">
+                      Upgrade to unlock real-time streaming, automated decision trees, and complete execution audit traces.
+                    </p>
+                    <button
+                      onClick={() => navigate("/subscription")}
+                      className="text-cyan-400 text-xs font-bold border border-cyan-500/30 bg-cyan-500/10 px-6 py-2.5 rounded-lg hover:bg-cyan-500/20 transition-all uppercase tracking-wider shadow-lg shadow-cyan-950/50 hover:scale-105 active:scale-95"
+                    >
+                      Select Package to Unlock Full Access →
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="divide-y divide-slate-800/80">

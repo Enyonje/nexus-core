@@ -50,6 +50,23 @@ export async function requireAuth(req, reply) {
   }
 }
 
+// Middleware or Route Guard logic
+export function devBypassGuard(req, res, next) {
+  // STRICT CHECK: Ensure this code path NEVER runs in production
+  if (process.env.NODE_ENV === "development" && process.env.ENABLE_DEV_BYPASS_AUTH === "true") {
+    req.user = {
+      id: "dev-admin-id",
+      email: "dev-admin@local.test",
+      role: "admin",
+      permissions: ["*"]
+    };
+    return next();
+  }
+
+  // Normal authentication pipeline for staging/production
+  return requireAuth(req, res, next);
+}
+
 export function requireRole(role) {
   return async (req, reply) => {
     if (!req.user || req.user.role !== role) {
