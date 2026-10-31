@@ -99,7 +99,7 @@ enum InviteStatus {
 }
 
 // ============================================================
-// MODELS
+// USERS
 // ============================================================
 
 model User {
@@ -124,21 +124,34 @@ model User {
   executions_count      Int              @default(0)
   is_platform_admin     Boolean          @default(false)
 
-  // Relations
-  authAudits     AuthAudit[]
-  executionSteps ExecutionStep[]
-  executions     Execution[]
-  goals          Goal[]
-  adminAudits    AdminAudit[]
-  organization   Organization?   @relation(fields: [org_id], references: [id])
-  memberships    Membership[]
-  appAccess      AppAccess[]
-  sessions       Session[]
+  // Existing relations
+  authAudits      AuthAudit[]
+  executionSteps  ExecutionStep[]
+  executions      Execution[]
+  goals           Goal[]
+  adminAudits     AdminAudit[]
+
+  organization Organization? @relation(
+    fields: [org_id],
+    references: [id]
+  )
+
+  memberships Membership[]
+  appAccess   AppAccess[]
+  sessions    Session[]
+
+  // SupportOps assignment relations
+  assignedConversations Conversation[] @relation("ConversationAssignee")
+  assignedTickets       SupportTicket[] @relation("TicketAssignee")
 
   @@index([org_id])
   @@index([created_at])
   @@map("users")
 }
+
+// ============================================================
+// ORGANIZATIONS
+// ============================================================
 
 model Organization {
   id                 String    @id @default(uuid())
@@ -149,7 +162,6 @@ model Organization {
   created_at         DateTime  @default(now())
   deleted_at         DateTime?
 
-  // Relations
   users            User[]
   subscriptions    Subscription[]
   memberships      Membership[]
@@ -165,6 +177,137 @@ model Organization {
   @@map("organizations")
 }
 
+// ============================================================
+// ORGANIZATION MEMBERSHIP
+// ============================================================
+
+model Membership {
+  org_id     String
+  user_id    String
+  org_role   OrgRole  @default(member)
+  created_at DateTime @default(now())
+
+  org  Organization @relation(
+    fields: [org_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  user User @relation(
+    fields: [user_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@id([org_id, user_id])
+  @@index([user_id])
+  @@map("memberships")
+}
+
+// ============================================================
+// APPLICATIONS
+// ============================================================
+
+model App {
+  id           String   @id @default(uuid())
+  slug         String   @unique
+  name         String
+  roles        String[]
+  default_role String
+  active       Boolean  @default(true)
+  created_at   DateTime @default(now())
+
+  plans         Plan[]
+  addons        Addon[]
+  subscriptions Subscription[]
+  appAccess     AppAccess[]
+  invites       Invite[]
+  usage         UsageRecord[]
+
+  @@map("apps")
+}
+
+// ============================================================
+// APPLICATION ACCESS
+//
+// RECOMMENDATION A
+//
+// SupportOps roles are stored here.
+//
+// Example:
+// app_role = "admin"
+// app_role = "agent"
+//
+// Do not use User.role to determine SupportOps permissions.
+// ============================================================
+
+model AppAccess {
+  org_id     String
+  user_id    String
+  app_id     String
+  app_role   String
+  created_at DateTime @default(now())
+
+  org Organization @relation(
+    fields: [org_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  user User @relation(
+    fields: [user_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  app App @relation(
+    fields: [app_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@id([org_id, user_id, app_id])
+  @@index([user_id])
+  @@index([org_id, app_id, app_role])
+  @@map("app_access")
+}
+
+// ============================================================
+// INVITATIONS
+// ============================================================
+
+model Invite {
+  id         String       @id @default(uuid())
+  org_id     String
+  email      String
+  org_role   OrgRole      @default(member)
+  app_id     String?
+  app_role   String?
+  token_hash String       @unique
+  status     InviteStatus @default(pending)
+  invited_by String
+  expires_at DateTime
+  created_at DateTime     @default(now())
+
+  org Organization @relation(
+    fields: [org_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  app App? @relation(
+    fields: [app_id],
+    references: [id]
+  )
+
+  @@index([email])
+  @@map("invites")
+}
+
+// ============================================================
+// GOALS
+// ============================================================
+
 model Goal {
   id           String     @id @default(uuid())
   user_id      String
@@ -177,7 +320,6 @@ model Goal {
   org_id       String?
   deleted_at   DateTime?
 
-  // Relations
   executions Execution[]
   user       User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
   objectives Objective[]
@@ -187,6 +329,10 @@ model Goal {
   @@index([created_at])
   @@map("goals")
 }
+
+// ============================================================
+// OBJECTIVES
+// ============================================================
 
 model Objective {
   id           String    @id @default(uuid())
@@ -198,14 +344,22 @@ model Objective {
   goal_payload Json?
   deleted_at   DateTime?
 
-  // Relations
   executions Execution[]
-  goal       Goal        @relation(fields: [goal_id], references: [id], onDelete: Cascade)
+
+  goal Goal @relation(
+    fields: [goal_id],
+    references: [id],
+    onDelete: Cascade
+  )
 
   @@index([goal_id])
   @@index([created_at])
   @@map("objectives")
 }
+
+// ============================================================
+// EXECUTIONS
+// ============================================================
 
 model Execution {
   id           String          @id @default(uuid())
@@ -229,12 +383,25 @@ model Execution {
   error        String?
   deleted_at   DateTime?
 
-  // Relations
   executionAudits ExecutionAudit[]
   executionSteps  ExecutionStep[]
-  user            User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  goal            Goal             @relation(fields: [goal_id], references: [id])
-  objective       Objective?       @relation(fields: [objective_id], references: [id], onDelete: Restrict)
+
+  user User @relation(
+    fields: [user_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  goal Goal @relation(
+    fields: [goal_id],
+    references: [id]
+  )
+
+  objective Objective? @relation(
+    fields: [objective_id],
+    references: [id],
+    onDelete: Restrict
+  )
 
   @@unique([goal_id, user_id, created_at])
   @@index([user_id])
@@ -245,18 +412,31 @@ model Execution {
   @@map("executions")
 }
 
+// ============================================================
+// AUTH AUDIT
+// ============================================================
+
 model AuthAudit {
   id         String   @id @default(uuid())
   user_id    String
   action     String
   details    Json?
   created_at DateTime @default(now())
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  user User @relation(
+    fields: [user_id],
+    references: [id],
+    onDelete: Cascade
+  )
 
   @@index([user_id])
   @@index([created_at])
   @@map("audit")
 }
+
+// ============================================================
+// EXECUTION AUDIT
+// ============================================================
 
 model ExecutionAudit {
   id           String    @id @default(uuid())
@@ -265,54 +445,51 @@ model ExecutionAudit {
   meta         Json?
   created_at   DateTime  @default(now())
   event        String    @default("unknown")
-  execution    Execution @relation(fields: [execution_id], references: [id], onDelete: Cascade)
+
+  execution Execution @relation(
+    fields: [execution_id],
+    references: [id],
+    onDelete: Cascade
+  )
 
   @@index([execution_id])
   @@index([created_at])
   @@map("execution_audit")
 }
 
-model App {
-  id           String   @id @default(uuid())
-  slug         String   @unique // "supportops", "compliance"
-  name         String
-  roles        String[] // roles this app understands
-  default_role String // role given to a new owner
-  active       Boolean  @default(true)
-  created_at   DateTime @default(now())
-
-  // Relations
-  plans         Plan[]
-  addons        Addon[]
-  subscriptions Subscription[]
-  appAccess     AppAccess[]
-  invites       Invite[]
-  usage         UsageRecord[]
-
-  @@map("apps")
-}
+// ============================================================
+// PLANS
+// ============================================================
 
 model Plan {
   id              String       @id @default(uuid())
   app_id          String
-  key             String // "free" | "pro" | "enterprise"
+  key             String
   name            String
   audience        PlanAudience @default(BOTH)
   billing_model   BillingModel @default(FLAT)
-  features        String[] // "ai_review", "revenue_forecast", ...
-  limits          Json         @default("{}") // { "seats": 5, "ai_calls": 1000 }
+  features        String[]
+  limits          Json         @default("{}")
   price_cents     Int?
   currency        String       @default("usd")
   stripe_price_id String?      @unique
   active          Boolean      @default(true)
 
-  // Relations
-  app           App            @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  app App @relation(
+    fields: [app_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
   subscriptions Subscription[]
 
   @@unique([app_id, key])
   @@map("plans")
 }
+
+// ============================================================
+// SUBSCRIPTIONS
+// ============================================================
 
 model Subscription {
   id                     String             @id @default(uuid())
@@ -320,19 +497,31 @@ model Subscription {
   app_id                 String
   plan_id                String
   status                 SubscriptionStatus @default(active)
-  quantity               Int                @default(1) // seats billed (PER_SEAT plans)
+  quantity               Int                @default(1)
   current_period_end     DateTime?
   trial_ends_at          DateTime?
   cancel_at_period_end   Boolean            @default(false)
-  limit_overrides        Json? // trial caps, e.g. { "ai_resolutions": 100 }
+  limit_overrides        Json?
   stripe_subscription_id String?            @unique
   created_at             DateTime           @default(now())
   updated_at             DateTime           @updatedAt
 
-  // Relations
-  org    Organization        @relation(fields: [org_id], references: [id], onDelete: Cascade)
-  app    App                 @relation(fields: [app_id], references: [id])
-  plan   Plan                @relation(fields: [plan_id], references: [id])
+  org Organization @relation(
+    fields: [org_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  app App @relation(
+    fields: [app_id],
+    references: [id]
+  )
+
+  plan Plan @relation(
+    fields: [plan_id],
+    references: [id]
+  )
+
   addons SubscriptionAddon[]
 
   @@unique([org_id, app_id])
@@ -340,55 +529,9 @@ model Subscription {
   @@map("subscriptions")
 }
 
-model Membership {
-  org_id     String
-  user_id    String
-  org_role   OrgRole  @default(member)
-  created_at DateTime @default(now())
-
-  org  Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
-  user User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@id([org_id, user_id])
-  @@index([user_id])
-  @@map("memberships")
-}
-
-model AppAccess {
-  org_id     String
-  user_id    String
-  app_id     String
-  app_role   String // validated against App.roles
-  created_at DateTime @default(now())
-
-  org  Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
-  user User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  app  App          @relation(fields: [app_id], references: [id], onDelete: Cascade)
-
-  @@id([org_id, user_id, app_id])
-  @@index([user_id])
-  @@map("app_access")
-}
-
-model Invite {
-  id         String       @id @default(uuid())
-  org_id     String
-  email      String
-  org_role   OrgRole      @default(member)
-  app_id     String?
-  app_role   String?
-  token_hash String       @unique
-  status     InviteStatus @default(pending)
-  invited_by String
-  expires_at DateTime
-  created_at DateTime     @default(now())
-
-  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
-  app App?         @relation(fields: [app_id], references: [id])
-
-  @@index([email])
-  @@map("invites")
-}
+// ============================================================
+// USAGE
+// ============================================================
 
 model UsageRecord {
   id     String @id @default(uuid())
@@ -398,20 +541,25 @@ model UsageRecord {
   period String
   count  Int    @default(0)
 
-  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
-  app App          @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  org Organization @relation(
+    fields: [org_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  app App @relation(
+    fields: [app_id],
+    references: [id],
+    onDelete: Cascade
+  )
 
   @@unique([org_id, app_id, metric, period])
   @@map("usage_records")
 }
 
-model StripeEvent {
-  id           String   @id // Stripe's event id
-  type         String
-  processed_at DateTime @default(now())
-
-  @@map("stripe_events")
-}
+// ============================================================
+// ADDONS
+// ============================================================
 
 model Addon {
   id              String   @id @default(uuid())
@@ -422,7 +570,12 @@ model Addon {
   price_cents     Int?
   stripe_price_id String?  @unique
 
-  app           App                 @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  app App @relation(
+    fields: [app_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
   subscriptions SubscriptionAddon[]
 
   @@unique([app_id, key])
@@ -434,23 +587,56 @@ model SubscriptionAddon {
   addon_id        String
   created_at      DateTime @default(now())
 
-  subscription Subscription @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
-  addon        Addon        @relation(fields: [addon_id], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(
+    fields: [subscription_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  addon Addon @relation(
+    fields: [addon_id],
+    references: [id],
+    onDelete: Cascade
+  )
 
   @@id([subscription_id, addon_id])
   @@map("subscription_addons")
 }
 
+// ============================================================
+// STRIPE EVENTS
+// ============================================================
+
+model StripeEvent {
+  id           String   @id
+  type         String
+  processed_at DateTime @default(now())
+
+  @@map("stripe_events")
+}
+
+// ============================================================
+// SESSIONS
+// ============================================================
+
 model Session {
   id        String    @id @default(uuid())
   userId    String
   tokenHash String    @unique
-  familyId  String // detects refresh-token reuse
+  familyId  String
   expiresAt DateTime
   revokedAt DateTime?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(
+    fields: [userId],
+    references: [id],
+    onDelete: Cascade
+  )
 }
+
+// ============================================================
+// EXECUTION STEPS
+// ============================================================
 
 model ExecutionStep {
   id           String    @id @default(uuid())
@@ -468,14 +654,27 @@ model ExecutionStep {
   error        String?
   deleted_at   DateTime?
 
-  execution Execution @relation(fields: [execution_id], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  execution Execution @relation(
+    fields: [execution_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  user User @relation(
+    fields: [user_id],
+    references: [id],
+    onDelete: Cascade
+  )
 
   @@index([execution_id])
   @@index([user_id])
   @@index([created_at])
   @@map("execution_steps")
 }
+
+// ============================================================
+// ADMIN AUDIT
+// ============================================================
 
 model AdminAudit {
   id         String   @id @default(uuid())
@@ -485,13 +684,221 @@ model AdminAudit {
   meta       Json?
   created_at DateTime @default(now())
 
-  admin User @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+  admin User @relation(
+    fields: [admin_id],
+    references: [id],
+    onDelete: Cascade
+  )
 }
+
+// ============================================================
+// SUPPORTOPS: CHANNELS
+// ============================================================
+
+model Channel {
+  id            String    @id @default(uuid())
+  org_id        String
+  key           String
+  status        String    @default("connected")
+  config_enc    String    @db.Text
+  public_config Json      @default("{}")
+  webhook_token String    @unique
+  verify_token  String
+  last_event_at DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  org Organization @relation(
+    fields: [org_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  events InboundEvent[]
+
+  @@unique([org_id, key])
+  @@map("channels")
+}
+
+// ============================================================
+// INBOUND EVENTS
+// ============================================================
+
+model InboundEvent {
+  id          String   @id @default(uuid())
+  channel_id  String
+  external_id String
+  created_at  DateTime @default(now())
+
+  channel Channel @relation(
+    fields: [channel_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@unique([channel_id, external_id])
+  @@map("inbound_events")
+}
+
+// ============================================================
+// SUPPORTOPS: CONVERSATIONS
+// ============================================================
+
+model Conversation {
+  id                  String   @id @default(uuid())
+  org_id              String
+  channel_key         String   @default("web")
+  visitor_secret_hash String
+  visitor_name        String?
+  status              String   @default("open")
+  assignee_id         String?
+  created_at          DateTime @default(now())
+  last_message_at     DateTime @default(now())
+
+  org Organization @relation(
+    fields: [org_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  assignee User? @relation(
+    "ConversationAssignee",
+    fields: [assignee_id],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  messages Message[]
+
+  @@index([org_id, status, last_message_at])
+  @@index([org_id, assignee_id])
+  @@map("conversations")
+}
+
+// ============================================================
+// SUPPORTOPS: MESSAGES
+// ============================================================
+
+model Message {
+  id              String   @id @default(uuid())
+  conversation_id String
+  sender          String
+  sender_id       String?
+  body            String   @db.Text
+  created_at      DateTime @default(now())
+
+  conversation Conversation @relation(
+    fields: [conversation_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@index([conversation_id, created_at])
+  @@map("messages")
+}
+
+// ============================================================
+// SUPPORTOPS: CUSTOMERS
+// ============================================================
+
+model SupportCustomer {
+  id           String   @id @default(uuid())
+  org_id       String
+  channel      String
+  external_ref String
+  name         String?
+  created_at   DateTime @default(now())
+
+  org Organization @relation(
+    fields: [org_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  tickets SupportTicket[]
+
+  @@unique([org_id, channel, external_ref])
+  @@map("support_customers")
+}
+
+// ============================================================
+// SUPPORTOPS: TICKETS
+// ============================================================
+
+model SupportTicket {
+  id                String    @id @default(uuid())
+  org_id            String
+  number            Int
+  customer_id       String
+  channel           String
+  subject           String
+  status            String    @default("open")
+  priority          String    @default("normal")
+  assignee_id       String?
+  sla_due_at        DateTime?
+  first_response_at DateTime?
+  resolved_at       DateTime?
+  last_message_at   DateTime  @default(now())
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  org Organization @relation(
+    fields: [org_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  customer SupportCustomer @relation(
+    fields: [customer_id],
+    references: [id]
+  )
+
+  assignee User? @relation(
+    "TicketAssignee",
+    fields: [assignee_id],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  messages SupportTicketMessage[]
+
+  @@unique([org_id, number])
+  @@index([org_id, status])
+  @@index([org_id, assignee_id])
+  @@map("support_tickets")
+}
+
+// ============================================================
+// SUPPORTOPS: TICKET MESSAGES
+// ============================================================
+
+model SupportTicketMessage {
+  id         String   @id @default(uuid())
+  ticket_id  String
+  direction  String
+  channel    String
+  author_id  String?
+  body       String   @db.Text
+  created_at DateTime @default(now())
+
+  ticket SupportTicket @relation(
+    fields: [ticket_id],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@index([ticket_id, created_at])
+  @@map("support_ticket_messages")
+}
+
+// ============================================================
+// CARGO DECLARATIONS
+// ============================================================
 
 model CargoDeclaration {
   id              String @id @default(uuid())
   importerName    String
-  importerTaxId   String // e.g. KRA PIN "KE-0519283741"
+  importerTaxId   String
   exporterName    String
   originCountry   String @default("UG")
   portOfDischarge String @default("Nairobi ICD")
@@ -503,7 +910,6 @@ model CargoDeclaration {
 
   pipelineStage PipelineStage @default(IDLE)
 
-  // Relations
   items      CargoItem[]
   auditFlags AuditFlag[]
   assessment DutyAssessment?
@@ -513,35 +919,62 @@ model CargoDeclaration {
   updatedAt DateTime @updatedAt
 }
 
+// ============================================================
+// CARGO ITEMS
+// ============================================================
+
 model CargoItem {
   id                 String           @id @default(uuid())
   cargoDeclarationId String
-  cargoDeclaration   CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
+
+  cargoDeclaration CargoDeclaration @relation(
+    fields: [cargoDeclarationId],
+    references: [id],
+    onDelete: Cascade
+  )
 
   description   String
   hsCode        String
   totalPriceUsd Float
-  cetRate       Float // Tariff rate (e.g. 0.25 for 25%)
+  cetRate       Float
 
   createdAt DateTime @default(now())
 }
 
+// ============================================================
+// AUDIT FLAGS
+// ============================================================
+
 model AuditFlag {
   id                 String           @id @default(uuid())
   cargoDeclarationId String
-  cargoDeclaration   CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
+
+  cargoDeclaration CargoDeclaration @relation(
+    fields: [cargoDeclarationId],
+    references: [id],
+    onDelete: Cascade
+  )
 
   severity DiscrepancySeverity @default(WARNING)
-  field    String // e.g. "grossWeightKg"
+  field    String
   message  String
 
   createdAt DateTime @default(now())
 }
 
+// ============================================================
+// DUTY ASSESSMENT
+// ============================================================
+
 model DutyAssessment {
-  id                 String           @id @default(uuid())
-  cargoDeclarationId String           @unique
-  cargoDeclaration   CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
+  id                 String @id @default(uuid())
+  cargoDeclarationId String @unique
+
+  cargoDeclaration CargoDeclaration @relation(
+    fields: [cargoDeclarationId],
+    references: [id],
+    onDelete: Cascade
+  )
 
   cifValueUsd        Float
   cifValueKes        Float
@@ -551,22 +984,29 @@ model DutyAssessment {
   vatKes             Float
   totalCustomsTaxKes Float
 
-  // Generated iCMS IM4 Declaration payload string
   generatedXml String? @db.Text
 
   createdAt DateTime @default(now())
 }
 
-model MpesaTransaction {
-  id                 String           @id @default(uuid())
-  cargoDeclarationId String           @unique
-  cargoDeclaration   CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
+// ============================================================
+// MPESA TRANSACTIONS
+// ============================================================
 
-  phoneNumber      String // Format: 2547XXXXXXXX
+model MpesaTransaction {
+  id                 String @id @default(uuid())
+  cargoDeclarationId String @unique
+
+  cargoDeclaration CargoDeclaration @relation(
+    fields: [cargoDeclarationId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  phoneNumber      String
   amount           Float
   accountReference String @default("KRA-DUTY-DECL")
 
-  // Daraja STK Push Tracker Keys
   checkoutRequestId  String? @unique
   merchantRequestId  String?
   mpesaReceiptNumber String? @unique
@@ -576,134 +1016,4 @@ model MpesaTransaction {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
-
-// ============================================================
-// SUPPORTOPS TABLES: paste at the END of schema.prisma
-// (your schema already has App, Plan, Subscription, Membership, AppAccess, Invite,
-//  UsageRecord, StripeEvent, Addon, SubscriptionAddon and Session)
-// ============================================================
-
-// Channels the admin connects (WhatsApp, phone, SMS, email, web chat, social)
-model Channel {
-  id            String    @id @default(uuid())
-  org_id        String
-  key           String // whatsapp | voice | sms | email | web | social
-  status        String    @default("connected")
-  config_enc    String    @db.Text // AES-256-GCM encrypted credentials
-  public_config Json      @default("{}") // non-secret fields shown back to the admin
-  webhook_token String    @unique // random, lives in the webhook URL
-  verify_token  String // WhatsApp / Meta handshake
-  last_event_at DateTime?
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
-
-  org    Organization   @relation(fields: [org_id], references: [id], onDelete: Cascade)
-  events InboundEvent[]
-
-  @@unique([org_id, key])
-  @@map("channels")
-}
-
-// Idempotency: providers retry webhooks, we must not create duplicate tickets
-model InboundEvent {
-  id          String   @id @default(uuid())
-  channel_id  String
-  external_id String
-  created_at  DateTime @default(now())
-
-  channel Channel @relation(fields: [channel_id], references: [id], onDelete: Cascade)
-
-  @@unique([channel_id, external_id])
-  @@map("inbound_events")
-}
-
-// In-app live chat
-model Conversation {
-  id                  String   @id @default(uuid())
-  org_id              String
-  channel_key         String   @default("web")
-  visitor_secret_hash String
-  visitor_name        String?
-  status              String   @default("open") // open | closed
-  assignee_id         String?
-  created_at          DateTime @default(now())
-  last_message_at     DateTime @default(now())
-
-  org      Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
-  messages Message[]
-
-  @@index([org_id, status, last_message_at])
-  @@map("conversations")
-}
-
-model Message {
-  id              String   @id @default(uuid())
-  conversation_id String
-  sender          String // visitor | agent | system
-  sender_id       String?
-  body            String   @db.Text
-  created_at      DateTime @default(now())
-
-  conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
-
-  @@index([conversation_id, created_at])
-  @@map("messages")
-}
-
-// Tickets
-model SupportCustomer {
-  id           String   @id @default(uuid())
-  org_id       String
-  channel      String
-  external_ref String // phone, email, Meta user id, chat conversation id
-  name         String?
-  created_at   DateTime @default(now())
-
-  org     Organization    @relation(fields: [org_id], references: [id], onDelete: Cascade)
-  tickets SupportTicket[]
-
-  @@unique([org_id, channel, external_ref])
-  @@map("support_customers")
-}
-
-model SupportTicket {
-  id                String    @id @default(uuid())
-  org_id            String
-  number            Int
-  customer_id       String
-  channel           String
-  subject           String
-  status            String    @default("open") // open | pending | solved | closed
-  priority          String    @default("normal") // low | normal | high | urgent
-  assignee_id       String?
-  sla_due_at        DateTime?
-  first_response_at DateTime?
-  resolved_at       DateTime?
-  last_message_at   DateTime  @default(now())
-  created_at        DateTime  @default(now())
-  updated_at        DateTime  @updatedAt
-
-  org      Organization           @relation(fields: [org_id], references: [id], onDelete: Cascade)
-  customer SupportCustomer        @relation(fields: [customer_id], references: [id])
-  messages SupportTicketMessage[]
-
-  @@unique([org_id, number])
-  @@index([org_id, status])
-  @@map("support_tickets")
-}
-
-model SupportTicketMessage {
-  id         String   @id @default(uuid())
-  ticket_id  String
-  direction  String // in | out | note
-  channel    String
-  author_id  String?
-  body       String   @db.Text
-  created_at DateTime @default(now())
-
-  ticket SupportTicket @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
-
-  @@index([ticket_id, created_at])
-  @@map("support_ticket_messages")
 }
