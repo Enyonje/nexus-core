@@ -10,7 +10,7 @@
       ]
     },
     {
-      "source": "/(executions|goals|admin|subscription|dashboard)(.*)",
+      "source": "/(executions|goals|admin|subscription|dashboard|login|register|forgot-password|reset-password)(.*)",
       "headers": [
         {
           "key": "X-Robots-Tag",

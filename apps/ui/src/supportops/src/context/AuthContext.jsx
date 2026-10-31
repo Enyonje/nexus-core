@@ -1,92 +1,128 @@
 // supportops/src/context/AuthContext.jsx
-//
-// SupportOps uses the main application's AuthProvider.
-// Public visitors can browse without signing in.
-// Protected routes must enforce authentication and authorization separately.
 
-import { useContext, useMemo } from "react";
+import {
+  useContext,
+  useMemo,
+  useCallback,
+} from "react";
 
-import { AuthContext as MainAuthContext } from "../../../context/AuthProvider";
-import { AccessContext } from "../../../context/AccessProvider";
+import {
+  AuthContext as MainAuthContext,
+} from "../../../context/AuthProvider";
+
+import {
+  AccessContext,
+} from "../../../context/AccessProvider";
 
 /**
- * Resolve the user's SupportOps role.
- *
- * Priority:
- * 1. Explicit SupportOps app role.
- * 2. Main platform administrator role.
- * 3. Authenticated users default to "agent".
- * 4. Unauthenticated visitors default to "guest".
- *
- * The backend must independently enforce authorization
- * for every protected operation.
- */
-function supportOpsRole(user, mainRole, access) {
-  if (!user) {
+* ============================================================
+* SUPPORTOPS AUTHENTICATION
+* ============================================================
+*
+* Uses the main application's AuthProvider.
+*
+* PUBLIC:
+* - Landing
+* - Features
+* - Pricing
+* - Login
+* - Registration
+*
+* PROTECTED:
+* - Admin workspace
+* - Agent workspace
+* - Investor workspace
+*/
+
+// ============================================================
+// ROLE RESOLUTION
+// ============================================================
+
+function supportOpsRole(user, access) {
+  if (!user || user.isGuest) {
     return "guest";
   }
 
-  const appRole = access?.apps?.supportops?.role;
+  const appRole =
+    access?.apps?.supportops?.role;
 
-  if (typeof appRole === "string" && appRole.trim()) {
-    return appRole.trim().toLowerCase();
-  }
+  const metadataRole =
+    user?.app_metadata?.role ||
+    user?.user_metadata?.role;
 
-  const resolvedMainRole = String(
-    user?.role ?? mainRole ?? ""
-  )
+  const resolvedRole =
+    appRole ||
+    metadataRole ||
+    user?.role;
+
+  const role = String(resolvedRole || "")
     .trim()
     .toLowerCase();
 
-  if (resolvedMainRole === "admin") {
-    return "admin";
+  const supportedRoles = [
+    "admin",
+    "management",
+    "agent",
+    "user",
+    "investor",
+  ];
+
+  if (supportedRoles.includes(role)) {
+    return role;
   }
 
   return "agent";
 }
 
-/**
- * SupportOps authentication hook.
- *
- * Reuses authentication from the main application rather
- * than creating a separate authentication system.
- */
+// ============================================================
+// SUPPORTOPS AUTH HOOK
+// ============================================================
+
 export function useAuth() {
   const main = useContext(MainAuthContext);
+
   const access = useContext(AccessContext);
 
-  if (main === null || main === undefined) {
+  if (!main) {
     throw new Error(
-      "SupportOps must be rendered inside the main app's AuthProvider."
+      "SupportOps must be rendered inside the main AuthProvider."
     );
   }
 
   const {
     user,
+    subscription,
     loading,
-    initializing,
-    logout,
-    authFetch,
-    role: mainRole,
+    login,
+    register: mainRegister,
+    logout: mainLogout,
+    refreshSession,
   } = main;
 
-  const isAuthenticated = Boolean(user);
+  // ========================================================
+  // AUTHENTICATION STATE
+  // ========================================================
 
-  const role = supportOpsRole(user, mainRole, access);
+  const isAuthenticated = Boolean(
+    user?.id && !user?.isGuest
+  );
 
-  // Only authenticated users need to wait for app permissions.
+  const role = supportOpsRole(user, access);
+
   const isAccessLoading = Boolean(
     isAuthenticated && access?.loading
   );
 
-  const isAuthLoading = Boolean(
-    isAuthenticated && (loading || initializing)
+  const isLoading = Boolean(
+    loading || isAccessLoading
   );
 
-  const isLoading = isAuthLoading || isAccessLoading;
+  // ========================================================
+  // NORMALIZED USER
+  // ========================================================
 
   const resolvedUser = useMemo(() => {
-    if (!user) {
+    if (!isAuthenticated) {
       return {
         id: null,
         email: null,
@@ -100,10 +136,119 @@ export function useAuth() {
       role,
       isGuest: false,
     };
-  }, [user, role]);
+  }, [user, role, isAuthenticated]);
+
+  // ========================================================
+  // LOGIN
+  // ========================================================
+
+  const handleLogin = useCallback(
+    async (credentials) => {
+      if (typeof login !== "function") {
+        throw new Error(
+          "Login is not available in the main AuthProvider."
+        );
+      }
+
+      return await login(credentials);
+    },
+    [login]
+  );
+
+  // ========================================================
+  // REGISTRATION
+  // ========================================================
+
+  /**
+   * Compatible with AdminRegisterPage.jsx.
+   *
+   * The main AuthProvider expects one credentials object.
+   *
+   * Example:
+   * signUp(email, password, { fullName })
+   */
+
+  const signUp = useCallback(
+    async (email, password, metadata = {}) => {
+      if (typeof mainRegister !== "function") {
+        throw new Error(
+          "Registration is unavailable in the main AuthProvider."
+        );
+      }
+
+      if (!email || !password) {
+        throw new Error(
+          "Email and password are required."
+        );
+      }
+
+      return await mainRegister({
+        email: email.trim(),
+        password,
+        fullName: metadata.fullName || "",
+        name: metadata.fullName || "",
+      });
+    },
+    [mainRegister]
+  );
+
+  const register = signUp;
+
+  // ========================================================
+  // LOGOUT
+  // ========================================================
+
+  const handleLogout = useCallback(
+    async () => {
+      if (typeof mainLogout !== "function") {
+        throw new Error(
+          "Logout is unavailable in the main AuthProvider."
+        );
+      }
+
+      return await mainLogout();
+    },
+    [mainLogout]
+  );
+
+  // ========================================================
+  // SESSION REFRESH
+  // ========================================================
+
+  const refetchAuth = useCallback(
+    async () => {
+      if (typeof refreshSession !== "function") {
+        throw new Error(
+          "Session refresh is unavailable."
+        );
+      }
+
+      return await refreshSession();
+    },
+    [refreshSession]
+  );
+
+  // ========================================================
+  // AUTHENTICATION FETCH
+  // ========================================================
+
+  /**
+   * Uses the application's API helper.
+   *
+   * This is exposed for compatibility with existing
+   * SupportOps components.
+   *
+   * Import directly if other components need custom
+   * authenticated API requests.
+   */
+
+  // ========================================================
+  // RETURN CONTEXT
+  // ========================================================
 
   return useMemo(
     () => ({
+      // User
       user: resolvedUser,
       role,
 
@@ -112,23 +257,49 @@ export function useAuth() {
       isAuthenticated,
       isGuest: !isAuthenticated,
       loading: isLoading,
+      initializing: loading,
 
-      // Main application authentication helpers
-      logout,
-      authFetch,
+      // Authentication methods
+      login: handleLogin,
+      signUp,
+      register,
+      logout: handleLogout,
+
+      // Session
+      refetchAuth,
+
+      // Subscription
+      subscription:
+        subscription ||
+        access?.apps?.supportops?.subscription ||
+        null,
+
+      // Application access
+      access,
     }),
     [
       resolvedUser,
       role,
       isAuthenticated,
       isLoading,
-      logout,
-      authFetch,
+      loading,
+      handleLogin,
+      signUp,
+      register,
+      handleLogout,
+      refetchAuth,
+      subscription,
+      access,
     ]
   );
 }
 
-// Expose the main application's contexts for compatibility.
-export { MainAuthContext as AuthContext };
+// ============================================================
+// COMPATIBILITY EXPORTS
+// ============================================================
+
+export {
+  MainAuthContext as AuthContext,
+};
 
 export default MainAuthContext;

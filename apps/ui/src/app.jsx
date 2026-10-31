@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Link, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { Toaster } from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
@@ -37,6 +37,24 @@ import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
 import { lightTheme, darkTheme } from "./theme";
 
+// Pages that sit inside the workspace layout. They share one animation key so the layout and the auth
+// guard stay mounted while the user moves between them (a per-path key remounts both on every click).
+const WORKSPACE_PREFIXES = ["/dashboard", "/goals", "/executions", "/admin"];
+
+function NotFound() {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center px-6 text-slate-200">
+      <div className="text-center">
+        <h1 className="text-3xl font-bold text-white">Page not found</h1>
+        <p className="mt-3 text-sm text-slate-400">That address does not exist or has moved.</p>
+        <Link to="/" className="mt-6 inline-block text-sm text-cyan-400 hover:underline">
+          Go to the homepage
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 /**
  * NOTE: BrowserRouter, AuthProvider and ToastProvider are already supplied by
  * main.jsx. Do NOT wrap them again here, or you get duplicate auth state.
@@ -46,17 +64,16 @@ export default function App() {
   const [selectedExecutionId, setSelectedExecutionId] = useState(null);
 
   const location = useLocation();
-
-  // Dynamically resolve theme based on state
   const theme = isDark ? darkTheme : lightTheme;
 
-  // Specify routes where the top Navbar should NOT render
   const hideNavbarRoutes = ["/", "/agents"];
   const isSupportOps = location.pathname.startsWith("/supportops");
   const showNavbar = !isSupportOps && !hideNavbarRoutes.includes(location.pathname);
 
-  // Key for page transition animation
-  const animationKey = location.pathname;
+  const inWorkspace = WORKSPACE_PREFIXES.some(
+    (p) => location.pathname === p || location.pathname.startsWith(`${p}/`)
+  );
+  const animationKey = inWorkspace ? "workspace" : location.pathname;
 
   return (
     <div
@@ -69,21 +86,13 @@ export default function App() {
       }}
     >
       {showNavbar && (
-        <Navbar
-          onToggleTheme={() => setIsDark((prev) => !prev)}
-          isDark={isDark}
-          theme={theme}
-        />
+        <Navbar onToggleTheme={() => setIsDark((prev) => !prev)} isDark={isDark} theme={theme} />
       )}
 
       <Toaster
         position="top-right"
         toastOptions={{
-          style: {
-            background: "#0f172a",
-            color: "#fff",
-            border: "1px solid rgba(255,255,255,0.1)",
-          },
+          style: { background: "#0f172a", color: "#fff", border: "1px solid rgba(255,255,255,0.1)" },
         }}
       />
 
@@ -96,94 +105,65 @@ export default function App() {
           transition={{ duration: 0.15 }}
         >
           <Routes location={location}>
-            {/* PUBLIC & GUEST-FIRST LANDING ROUTES */}
+            {/* ================= PUBLIC: never ask for authentication =================
+                Nothing rendered here may call a protected API endpoint. */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/docs" element={<SEOPillarPage />} />
             <Route path="/architecture" element={<ArchitecturePage />} />
             <Route path="/careers" element={<CareersPage />} />
             <Route path="/contact" element={<ContactPage />} />
+            <Route path="/pricing" element={<PricingGrid />} />
+            <Route path="/agents" element={<AgentsDirectory />} />
+            <Route path="/compliance" element={<CrossBorderCompliance />} />
+            <Route path="/agents/cross-border-compliance" element={<CrossBorderCompliance />} />
+
+            {/* Sign-in flow */}
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/pricing" element={<PricingGrid />} />
-            <Route path="/subscription" element={<Subscription />} />
-            <Route path="/agents" element={<AgentsDirectory />} />
 
-            {/* COMPLIANCE */}
-            <Route path="/compliance" element={<CrossBorderCompliance />} />
-            <Route
-              path="/agents/cross-border-compliance"
-              element={<CrossBorderCompliance />}
-            />
-
-            {/* TOOLS */}
+            {/* Free public tools */}
             <Route path="/tools" element={<ToolsIndex />} />
             <Route path="/tools/webhook-validator" element={<WebhookValidator />} />
             <Route path="/tools/auditloganalyzer" element={<AuditLogAnalyzer />} />
 
-            {/* SUPPORTOPS EMBEDDED MODULE */}
-            <Route
-              path="/supportops/*"
-              element={<SupportOpsRoutes />}
-            />
+            {/* SupportOps has its own auth context and its own guards inside */}
+            <Route path="/supportops/*" element={<SupportOpsRoutes />} />
 
-            {/* MAIN APP WORKSPACE (GUESTS CAN ACCESSS FREE ROUTES) */}
-            <Route element={<Layout theme={theme} />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/goals" element={<Goals />} />
+            {/* ================= PROTECTED: sign-in required ================= */}
+            <Route element={<ProtectedRoute />}>
+              <Route path="/subscription" element={<Subscription />} />
 
-              {/* ADVANCED FEATURES (PAID TIER REQUIRED) */}
-              <Route
-                path="/executions"
-                element={
-                  <ProtectedRoute requiredTier="pro">
-                    <ExecutionList setSelectedExecutionId={setSelectedExecutionId} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/executions/:id"
-                element={
-                  <ProtectedRoute requiredTier="pro">
-                    <ExecutionDetail />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/executions/:executionId/stream"
-                element={
-                  <ProtectedRoute requiredTier="pro">
-                    <Streams />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/executions/:executionId/audit"
-                element={
-                  <ProtectedRoute requiredTier="pro">
-                    <Audit />
-                  </ProtectedRoute>
-                }
-              />
+              <Route element={<Layout theme={theme} />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/goals" element={<Goals />} />
 
-              {/* ADMIN PANEL (MUST BE AUTHENTICATED ADMIN) */}
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute requireAuth={true} requiredTier="enterprise">
-                    <AdminDashboard />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Paid tier */}
+                <Route element={<ProtectedRoute requiredTier="pro" />}>
+                  <Route
+                    path="/executions"
+                    element={<ExecutionList setSelectedExecutionId={setSelectedExecutionId} />}
+                  />
+                  <Route path="/executions/:id" element={<ExecutionDetail />} />
+                  <Route path="/executions/:executionId/stream" element={<Streams />} />
+                  <Route path="/executions/:executionId/audit" element={<Audit />} />
+                </Route>
+
+                {/* Admins only. This is a ROLE check. The old version used requiredTier="enterprise", so any enterprise
+                    customer could open the admin panel. */}
+                <Route element={<ProtectedRoute requiredRole="admin" />}>
+                  <Route path="/admin" element={<AdminDashboard />} />
+                </Route>
+              </Route>
             </Route>
 
-            <Route path="*" element={<Navigate to="/" replace />} />
+            {/* A real "not found" page instead of silently redirecting every bad URL to the homepage */}
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </motion.div>
       </AnimatePresence>
 
-      {/* Execution log modal */}
       <AnimatePresence>
         {selectedExecutionId ? (
           <ExecutionLogsStreamModal

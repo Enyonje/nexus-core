@@ -1,6 +1,8 @@
+
 // supportops/src/components/Access.jsx
 
 import React from "react";
+
 import {
     Link,
     Navigate,
@@ -19,51 +21,363 @@ import { useApp } from "../context/AccessProvider";
 import { useAuth } from "../context/AuthContext";
 
 /**
- * Public SupportOps routes do not use these guards.
+ * ============================================================
+ * SUPPORTOPS ACCESS CONTROL
+ * ============================================================
  *
- * RequireSignIn protects routes that need authentication.
- * RequireApp protects routes that require an active subscription.
- * RequireFeature protects individual subscription features.
+ * PUBLIC ROUTES:
+ * - Landing
+ * - Features
+ * - Pricing
+ * - Admin Login
+ * - Admin Registration
+ * - Authentication Callback
+ *
+ * PROTECTED ROUTES:
+ * - Admin Workspace
+ * - Agent Workspace
+ * - Investor Workspace
+ *
+ * AUTHENTICATION:
+ * Required only when entering protected routes.
+ *
+ * WORKSPACE PERMISSIONS:
+ *
+ * ADMIN:
+ * - Admin Workspace
+ * - Agent Workspace
+ * - Investor Workspace
+ *
+ * MANAGEMENT:
+ * - Admin Workspace
+ *
+ * AGENT:
+ * - Agent Workspace
+ *
+ * USER:
+ * - Agent Workspace
+ *
+ * INVESTOR:
+ * - Investor Workspace
+ *
+ * IMPORTANT:
+ * Backend APIs must enforce these permissions independently.
  */
 
+// ============================================================
+// ROUTE CONSTANTS
+// ============================================================
+
+const SUPPORTOPS_HOME = "/supportops";
 const SUPPORTOPS_LOGIN = "/supportops/login";
+const SUPPORTOPS_REGISTER = "/supportops/register";
 const SUPPORTOPS_PRICING = "/supportops/pricing";
 
+const ADMIN_HOME = "/supportops/admin/executive";
+const AGENT_HOME = "/supportops/agent/dashboard";
+const INVESTOR_HOME = "/supportops/investor";
+
+// ============================================================
+// ROLE NORMALIZATION
+// ============================================================
+
 /**
- * Save the destination to return to after successful authentication.
+ * Normalize authenticated user role.
  */
-export const rememberReturn = (path) => {
+export function normalizeRole(user) {
+    return String(
+        user?.role ||
+        user?.user_metadata?.role ||
+        user?.app_metadata?.role ||
+        ""
+    )
+        .trim()
+        .toLowerCase();
+}
+
+// ============================================================
+// SAFE REDIRECT VALIDATION
+// ============================================================
+
+/**
+ * Safely validates internal redirect destinations.
+ *
+ * Prevents:
+ * - External redirects
+ * - Protocol-relative URLs
+ * - Backslash-based URL manipulation
+ * - Malformed URLs
+ */
+export function safeNext(value, fallback = ADMIN_HOME) {
     if (
-        typeof window === "undefined" ||
-        typeof path !== "string" ||
-        !path.startsWith("/") ||
-        path.startsWith("//")
+        typeof value !== "string" ||
+        !value.trim()
     ) {
-        return;
+        return fallback;
     }
 
-    window.sessionStorage.setItem("postAuthRedirect", path);
+    const next = value.trim();
+
+    if (
+        !next.startsWith("/") ||
+        next.startsWith("//") ||
+        next.includes("\\") ||
+        /[\r\n]/.test(next)
+    ) {
+        return fallback;
+    }
+
+    try {
+        const base = "https://internal.invalid";
+
+        const parsed = new URL(next, base);
+
+        if (
+            parsed.origin !== base ||
+            parsed.username ||
+            parsed.password
+        ) {
+            return fallback;
+        }
+
+        return (
+            parsed.pathname +
+            parsed.search +
+            parsed.hash
+        );
+    } catch {
+        return fallback;
+    }
+}
+
+// ============================================================
+// WORKSPACE PERMISSIONS
+// ============================================================
+
+/**
+ * Central SupportOps workspace permission map.
+ *
+ * ADMIN:
+ * Full control across all workspaces.
+ *
+ * MANAGEMENT:
+ * Administrative workspace only.
+ *
+ * AGENT:
+ * Agent workspace only.
+ *
+ * INVESTOR:
+ * Investor workspace only.
+ */
+const WORKSPACE_PERMISSIONS = {
+    admin: [
+        "admin",
+        "agent",
+        "investor",
+    ],
+
+    management: [
+        "admin",
+    ],
+
+    agent: [
+        "agent",
+    ],
+
+    user: [
+        "agent",
+    ],
+
+    investor: [
+        "investor",
+    ],
 };
 
 /**
- * Redirect unauthenticated visitors to login.
+ * Check whether a user can access a workspace.
+ */
+export function canAccessWorkspace(user, workspace) {
+    const role = normalizeRole(user);
+
+    return (
+        WORKSPACE_PERMISSIONS[role]?.includes(workspace) ??
+        false
+    );
+}
+
+// ============================================================
+// DEFAULT WORKSPACE
+// ============================================================
+
+/**
+ * Determine the default workspace after authentication.
+ *
+ * Administrators always land in the Executive Dashboard.
+ */
+export function getDefaultWorkspace(user) {
+    const role = normalizeRole(user);
+
+    switch (role) {
+        case "admin":
+        case "management":
+            return ADMIN_HOME;
+
+        case "agent":
+        case "user":
+            return AGENT_HOME;
+
+        case "investor":
+            return INVESTOR_HOME;
+
+        default:
+            return SUPPORTOPS_LOGIN;
+    }
+}
+
+// ============================================================
+// POST-AUTHENTICATION REDIRECT
+// ============================================================
+
+/**
+ * Determine the correct destination after login.
+ *
+ * Preserves valid requested destinations only when
+ * the authenticated user has permission to access them.
+ */
+export function getPostLoginDestination(
+    user,
+    requestedPath
+) {
+    const role = normalizeRole(user);
+
+    const defaultDestination =
+        getDefaultWorkspace(user);
+
+    if (
+        !WORKSPACE_PERMISSIONS[role]
+    ) {
+        return SUPPORTOPS_LOGIN;
+    }
+
+    const requested = safeNext(
+        requestedPath,
+        defaultDestination
+    );
+
+    const workspaceRoutes = [
+        {
+            prefix: "/supportops/admin",
+            workspace: "admin",
+        },
+        {
+            prefix: "/supportops/agent",
+            workspace: "agent",
+        },
+        {
+            prefix: "/supportops/investor",
+            workspace: "investor",
+        },
+    ];
+
+    const matchedWorkspace = workspaceRoutes.find(
+        ({ prefix }) =>
+            requested === prefix ||
+            requested.startsWith(`${prefix}/`)
+    );
+
+    if (
+        matchedWorkspace &&
+        !canAccessWorkspace(
+            user,
+            matchedWorkspace.workspace
+        )
+    ) {
+        return defaultDestination;
+    }
+
+    return requested;
+}
+
+// ============================================================
+// REMEMBER RETURN DESTINATION
+// ============================================================
+
+/**
+ * Save the requested protected destination.
+ *
+ * Used after successful authentication.
+ */
+export const rememberReturn = (path) => {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    const safePath = safeNext(path, "");
+
+    if (!safePath) {
+        return;
+    }
+
+    window.sessionStorage.setItem(
+        "postAuthRedirect",
+        safePath
+    );
+};
+
+/**
+ * Retrieve and clear the saved destination.
+ */
+export function consumeReturn() {
+    if (typeof window === "undefined") {
+        return "";
+    }
+
+    const stored = window.sessionStorage.getItem(
+        "postAuthRedirect"
+    );
+
+    window.sessionStorage.removeItem(
+        "postAuthRedirect"
+    );
+
+    return safeNext(stored, "");
+}
+
+// ============================================================
+// REQUIRE SIGN IN
+// ============================================================
+
+/**
+ * Protect authenticated application routes.
+ *
+ * Public pages must NOT use this guard.
+ *
+ * Unauthenticated visitors are redirected to Admin Login.
  */
 export function RequireSignIn() {
     const { user, loading } = useAuth();
+
     const location = useLocation();
 
     if (loading) {
         return (
             <div className="flex min-h-screen items-center justify-center bg-slate-900 text-slate-300">
+
                 <RefreshCw className="mr-3 h-6 w-6 animate-spin text-cyan-400" />
-                <span>Checking your session...</span>
+
+                <span>
+                    Checking your session...
+                </span>
+
             </div>
         );
     }
 
     if (!user || user.isGuest) {
         const requestedPath =
-            location.pathname + location.search;
+            location.pathname +
+            location.search +
+            location.hash;
 
         rememberReturn(requestedPath);
 
@@ -73,7 +387,7 @@ export function RequireSignIn() {
                 replace
                 state={{
                     from: location,
-                    message: "Please sign in to access this page.",
+                    message: "Please sign in to access your workspace.",
                 }}
             />
         );
@@ -82,19 +396,32 @@ export function RequireSignIn() {
     return <Outlet />;
 }
 
+// ============================================================
+// REQUIRE APPLICATION SUBSCRIPTION
+// ============================================================
+
 /**
  * Require an active SupportOps subscription or trial.
+ *
+ * Authentication must already have succeeded.
  */
 export function RequireApp() {
     const app = useApp();
+
     const auth = useAuth();
+
     const location = useLocation();
 
     if (app.loading) {
         return (
             <div className="flex min-h-screen items-center justify-center bg-slate-900 text-slate-300">
+
                 <RefreshCw className="mr-3 h-6 w-6 animate-spin text-cyan-400" />
-                <span>Loading your workspace plan...</span>
+
+                <span>
+                    Loading your workspace plan...
+                </span>
+
             </div>
         );
     }
@@ -102,7 +429,9 @@ export function RequireApp() {
     if (app.error) {
         return (
             <div className="flex min-h-screen items-center justify-center bg-slate-900 px-6">
+
                 <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-slate-900/80 p-6 text-center">
+
                     <AlertTriangle className="mx-auto mb-3 h-8 w-8 text-red-400" />
 
                     <h2 className="font-semibold text-white">
@@ -116,7 +445,9 @@ export function RequireApp() {
                     <button
                         type="button"
                         onClick={() => {
-                            if (typeof app.refetch === "function") {
+                            if (
+                                typeof app.refetch === "function"
+                            ) {
                                 app.refetch();
                             } else if (
                                 typeof auth.refetchAuth === "function"
@@ -130,13 +461,17 @@ export function RequireApp() {
                     >
                         Try again
                     </button>
+
                 </div>
+
             </div>
         );
     }
 
     const isSubscribed =
-        app.isSubscribed ?? app.subscribed ?? false;
+        app.isSubscribed ??
+        app.subscribed ??
+        false;
 
     if (!isSubscribed) {
         return (
@@ -145,7 +480,7 @@ export function RequireApp() {
                 replace
                 state={{
                     from: location,
-                    message: "Choose a plan to access this workspace.",
+                    message: "Choose a plan to access your workspace.",
                 }}
             />
         );
@@ -154,10 +489,14 @@ export function RequireApp() {
     return <Outlet />;
 }
 
+// ============================================================
+// REQUIRE FEATURE
+// ============================================================
+
 /**
- * Protect an individual subscription feature.
+ * Protect individual subscription features.
  *
- * The backend must enforce the same permissions.
+ * Backend must enforce identical feature permissions.
  */
 export function RequireFeature({
     feature,
@@ -170,7 +509,9 @@ export function RequireFeature({
         ? app.can(feature)
         : Boolean(
             app.hasPermission?.(feature) ||
-            app.canAccess?.({ permission: feature })
+            app.canAccess?.({
+                permission: feature,
+            })
         );
 
     if (hasAccess) {
@@ -179,6 +520,7 @@ export function RequireFeature({
 
     return (
         <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-8 text-center">
+
             <Lock className="mx-auto mb-3 h-8 w-8 text-slate-500" />
 
             <h3 className="font-semibold text-white">
@@ -196,29 +538,41 @@ export function RequireFeature({
             >
                 See plans
             </Link>
+
         </div>
     );
 }
+
+// ============================================================
+// SUBSCRIPTION PLAN BANNER
+// ============================================================
 
 /**
  * Display subscription usage and billing notices.
  */
 export function PlanBanner() {
     const app = useApp();
+
     const { subscription } = useAuth();
 
     const isSubscribed =
-        app.isSubscribed ?? app.subscribed ?? false;
+        app.isSubscribed ??
+        app.subscribed ??
+        false;
 
     if (!isSubscribed) {
         return null;
     }
 
     const usage =
-        subscription?.usage || app.usage || {};
+        subscription?.usage ||
+        app.usage ||
+        {};
 
     const limits =
-        subscription?.limits || app.limits || {};
+        subscription?.limits ||
+        app.limits ||
+        {};
 
     const status =
         subscription?.status ||
@@ -229,19 +583,24 @@ export function PlanBanner() {
         subscription?.trialEndsAt ||
         app.trialEndsAt;
 
-    const used = usage.ai_resolutions ?? 0;
-    const limit = limits.ai_resolutions;
+    const used =
+        usage.ai_resolutions ?? 0;
 
-    const isTrial = status === "trialing";
+    const limit =
+        limits.ai_resolutions;
+
+    const isTrial =
+        status === "trialing";
 
     const daysRemaining =
         isTrial && trialEndsAt
             ? Math.max(
                 0,
                 Math.ceil(
-                    (new Date(trialEndsAt).getTime() -
-                        Date.now()) /
-                    86400000
+                    (
+                        new Date(trialEndsAt).getTime() -
+                        Date.now()
+                    ) / 86400000
                 )
             )
             : null;
@@ -256,9 +615,11 @@ export function PlanBanner() {
     if (status === "past_due") {
         message =
             "Your last payment failed. Update your payment details to keep access.";
+
     } else if (isTrial) {
         message =
             `Free trial: ${daysRemaining ?? 0} day${daysRemaining === 1 ? "" : "s"} left · ${used}/${limit ?? "∞"} AI resolutions used.`;
+
     } else if (nearLimit) {
         message =
             `${used}/${limit} AI resolutions used this month. Extra resolutions may be billed as overage.`;
@@ -270,7 +631,9 @@ export function PlanBanner() {
 
     return (
         <div className="mb-6 flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+
             <span className="flex items-center gap-2">
+
                 {status === "past_due" ? (
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                 ) : (
@@ -278,6 +641,7 @@ export function PlanBanner() {
                 )}
 
                 {message}
+
             </span>
 
             <Link
@@ -286,6 +650,7 @@ export function PlanBanner() {
             >
                 {isTrial ? "Choose a plan" : "Manage plan"}
             </Link>
+
         </div>
     );
 }

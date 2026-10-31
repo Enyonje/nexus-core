@@ -1,26 +1,25 @@
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 
-import { ROUTES } from "../config/paths";
 import RequireRole from "../components/RequireRole";
 import { RequireApp, RequireSignIn } from "../components/Access";
 
-// Public pages
+// Public Pages
 import LandingPage from "../pages/LandingPage";
 import LoginPage from "../pages/LoginPage";
+import AdminRegisterPage from "../pages/AdminRegisterPage";
 import PricingPage from "../pages/PricingPage";
 import FeaturesPage from "../pages/FeaturesPage";
 import CancelPage from "../pages/CancelPage";
 import SuccessPage from "../pages/SuccessPage";
 import AuthPage from "../pages/AuthPage";
-import JoinPage from "../pages/JoinPage";
 
 // Layouts
 import AgentLayout from "../layouts/AgentLayout";
 import AdminLayout from "../layouts/AdminLayout";
 import InvestorLayout from "../layouts/InvestorLayout";
 
-// Agent pages
+// Agent Pages
 import Dashboard from "../pages/Dashboard";
 import AnalyticsPage from "../pages/AnalyticsPage";
 import RevenueForecast from "../pages/RevenueForecast";
@@ -30,7 +29,7 @@ import Billing from "../pages/Billing";
 import TeamPage from "../pages/TeamPage";
 import Playbooks from "../pages/Playbooks";
 
-// Admin pages
+// Admin Pages
 import ExecutiveDashboard from "../pages/ExecutiveDashboard";
 import AdminAnalytics from "../pages/AdminAnalytics";
 import IncidentCommandCenter from "../pages/IncidentCommandCenter";
@@ -38,42 +37,53 @@ import ChannelsPage from "../pages/ChannelsPage";
 import LiveChatPage from "../pages/LiveChatPage";
 import TicketInboxPage from "../pages/TicketInboxPage";
 
-// Investor pages
+// Investor Pages
 import InvestorMode from "../pages/InvestorMode";
 
 /**
- * SupportOps routes.
+ * SUPPORTOPS APPLICATION ROUTING
  *
- * PUBLIC:
- *   /supportops
- *   /supportops/features
- *   /supportops/pricing
- *   /supportops/login
- *   /supportops/auth
- *   /supportops/cancel
- *   /supportops/success
+ * APPLICATION PHILOSOPHY:
  *
- * PROTECTED:
- *   /supportops/agent/*
- *   /supportops/admin/*
- *   /supportops/investor/*
+ * 1. Public discovery comes first.
+ * 2. Administrator authentication is the public entry point.
+ * 3. Authentication is required only when entering protected areas.
+ * 4. Administrators land in the Executive Dashboard.
+ * 5. Agents and investors have separate protected workspaces.
  *
- * IMPORTANT:
- * The parent application must NOT put the entire SupportOps route
- * tree behind a sign-in gate. Authentication is enforced only on
- * the protected routes below.
+ * PUBLIC ROUTES:
+ *
+ * /supportops
+ * /supportops/features
+ * /supportops/pricing
+ * /supportops/login
+ * /supportops/register
+ * /supportops/auth
+ * /supportops/cancel
+ * /supportops/success
+ *
+ * PROTECTED ROUTES:
+ *
+ * /supportops/admin/*
+ * /supportops/agent/*
+ * /supportops/investor/*
  */
+
 export default function SupportOpsRoutes() {
     const publicHome = "/supportops";
 
     return (
         <Routes>
-            {/* =====================================================
-          PUBLIC ROUTES
-          These pages must be accessible without signing in.
-         ===================================================== */}
 
-            <Route index element={<LandingPage />} />
+            {/* ================================================
+                PUBLIC ROUTES
+                No authentication required.
+            ================================================= */}
+
+            <Route
+                index
+                element={<LandingPage />}
+            />
 
             <Route
                 path="features"
@@ -85,15 +95,28 @@ export default function SupportOpsRoutes() {
                 element={<PricingPage />}
             />
 
+            {/* Administrator Login */}
+
             <Route
                 path="login"
                 element={<LoginPage />}
             />
 
+            {/* Administrator Registration */}
+
+            <Route
+                path="register"
+                element={<AdminRegisterPage />}
+            />
+
+            {/* Authentication Callback */}
+
             <Route
                 path="auth"
                 element={<AuthPage />}
             />
+
+            {/* Payment / Subscription Pages */}
 
             <Route
                 path="cancel"
@@ -105,17 +128,99 @@ export default function SupportOpsRoutes() {
                 element={<SuccessPage />}
             />
 
-            {/* =====================================================
-          PROTECTED ROUTES
-          Authentication and subscription checks apply here.
-         ===================================================== */}
+
+            {/* ================================================
+                PROTECTED APPLICATION ROUTES
+
+                Authentication is enforced only here.
+            ================================================= */}
 
             <Route element={<RequireSignIn />}>
                 <Route element={<RequireApp />}>
-                    {/* -------------------------------------------------
-              AGENT WORKSPACE
-              /supportops/agent/*
-             ------------------------------------------------- */}
+
+                    {/* ========================================
+                        ADMIN WORKSPACE
+
+                        Admin and management users.
+                        Primary application entry point.
+                    ======================================== */}
+
+                    <Route
+                        element={
+                            <RequireRole
+                                roles={["admin", "management"]}
+                            />
+                        }
+                    >
+
+                        <Route
+                            path="admin"
+                            element={<AdminLayout />}
+                        >
+
+                            {/* Default Admin Landing Page */}
+
+                            <Route
+                                index
+                                element={
+                                    <Navigate
+                                        to="/supportops/admin/executive"
+                                        replace
+                                    />
+                                }
+                            />
+
+                            {/* Executive Dashboard */}
+
+                            <Route
+                                path="executive"
+                                element={<ExecutiveDashboard />}
+                            />
+
+                            {/* Admin Analytics */}
+
+                            <Route
+                                path="analytics"
+                                element={<AdminAnalytics />}
+                            />
+
+                            {/* Incident Management */}
+
+                            <Route
+                                path="incidents"
+                                element={<IncidentCommandCenter />}
+                            />
+
+                            {/* Channel Management
+                                Restricted to administrators only.
+                            */}
+
+                            <Route
+                                element={
+                                    <RequireRole
+                                        roles={["admin"]}
+                                    />
+                                }
+                            >
+
+                                <Route
+                                    path="channels"
+                                    element={<ChannelsPage />}
+                                />
+
+                            </Route>
+
+                        </Route>
+
+                    </Route>
+
+
+                    {/* ========================================
+                        AGENT WORKSPACE
+
+                        Protected internal workspace.
+                        No public agent registration.
+                    ======================================== */}
 
                     <Route
                         element={
@@ -124,15 +229,19 @@ export default function SupportOpsRoutes() {
                             />
                         }
                     >
+
                         <Route
                             path="agent"
                             element={<AgentLayout />}
                         >
+
+                            {/* Default Agent Dashboard */}
+
                             <Route
                                 index
                                 element={
                                     <Navigate
-                                        to="dashboard"
+                                        to="/supportops/agent/dashboard"
                                         replace
                                     />
                                 }
@@ -179,11 +288,6 @@ export default function SupportOpsRoutes() {
                             />
 
                             <Route
-                                path="join"
-                                element={<JoinPage />}
-                            />
-
-                            <Route
                                 path="team"
                                 element={<TeamPage />}
                             />
@@ -192,68 +296,17 @@ export default function SupportOpsRoutes() {
                                 path="playbooks"
                                 element={<Playbooks />}
                             />
+
                         </Route>
+
                     </Route>
 
-                    {/* -------------------------------------------------
-              ADMIN WORKSPACE
-              /supportops/admin/*
-             ------------------------------------------------- */}
 
-                    <Route
-                        element={
-                            <RequireRole
-                                roles={["admin", "management"]}
-                            />
-                        }
-                    >
-                        <Route
-                            path="admin"
-                            element={<AdminLayout />}
-                        >
-                            <Route
-                                index
-                                element={
-                                    <Navigate
-                                        to="executive"
-                                        replace
-                                    />
-                                }
-                            />
+                    {/* ========================================
+                        INVESTOR WORKSPACE
 
-                            <Route
-                                path="executive"
-                                element={<ExecutiveDashboard />}
-                            />
-
-                            <Route
-                                path="analytics"
-                                element={<AdminAnalytics />}
-                            />
-
-                            <Route
-                                path="incidents"
-                                element={<IncidentCommandCenter />}
-                            />
-
-                            {/* Only administrators can access channels. */}
-                            <Route
-                                element={
-                                    <RequireRole roles={["admin"]} />
-                                }
-                            >
-                                <Route
-                                    path="channels"
-                                    element={<ChannelsPage />}
-                                />
-                            </Route>
-                        </Route>
-                    </Route>
-
-                    {/* -------------------------------------------------
-              INVESTOR WORKSPACE
-              /supportops/investor/*
-             ------------------------------------------------- */}
+                        Restricted investor access.
+                    ======================================== */}
 
                     <Route
                         element={
@@ -262,23 +315,30 @@ export default function SupportOpsRoutes() {
                             />
                         }
                     >
+
                         <Route
                             path="investor"
                             element={<InvestorLayout />}
                         >
+
                             <Route
                                 index
                                 element={<InvestorMode />}
                             />
+
                         </Route>
+
                     </Route>
+
                 </Route>
             </Route>
 
-            {/* =====================================================
-          UNKNOWN ROUTES
-          Return visitors to the public landing page.
-         ===================================================== */}
+
+            {/* ================================================
+                UNKNOWN ROUTES
+
+                Return visitors to public landing page.
+            ================================================= */}
 
             <Route
                 path="*"
@@ -289,6 +349,7 @@ export default function SupportOpsRoutes() {
                     />
                 }
             />
+
         </Routes>
     );
 }
