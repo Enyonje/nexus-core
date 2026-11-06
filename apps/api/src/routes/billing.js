@@ -18,22 +18,32 @@ const fail = (reply, e) =>
 // Only owner, admin or billing contacts can modify workspace billing
 async function billingOrg(req) {
   const orgId = req.headers["x-org-id"];
-  const m = await prisma.membership.findFirst({
+
+  const membership = await prisma.membership.findFirst({
     where: {
       user_id: req.user.id,
-      ...(orgId ? { org_id: orgId } : { org: { type: "PERSONAL" } }),
-      org_role: { in: ["owner", "admin", "billing"] },
+
+      // Use explicit workspace when supplied
+      ...(orgId ? { org_id: orgId } : {}),
+
+      org_role: {
+        in: ["owner", "admin", "billing"],
+      },
     },
-    include: { org: true },
+    include: {
+      org: true,
+    },
   });
-  if (!m) {
+
+  if (!membership) {
     throw new AccessError(
       403,
       "BILLING_FORBIDDEN",
       "Only an owner, admin or billing contact can change the plan"
     );
   }
-  return m.org;
+
+  return membership.org;
 }
 
 // Utility: get or create Stripe customer for a user/organization
