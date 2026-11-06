@@ -26,6 +26,7 @@ import Goals from "./components/Goals.jsx";
 import Streams from "./components/Streams.jsx";
 import Login from "./components/Login.jsx";
 import Register from "./components/Register.jsx";
+import BlogPage from "./components/BlogPage.jsx";
 import ForgotPassword from "./components/ForgotPassword.jsx";
 import ResetPassword from "./components/ResetPassword.jsx";
 import LandingPage from "./components/LandingPage.jsx";
@@ -105,12 +106,13 @@ export default function App() {
           transition={{ duration: 0.15 }}
         >
           <Routes location={location}>
-            {/* ================= PUBLIC: never ask for authentication =================
-                Nothing rendered here may call a protected API endpoint. */}
+            {/* ================= PUBLIC: never ask for authentication ================= */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/docs" element={<SEOPillarPage />} />
             <Route path="/architecture" element={<ArchitecturePage />} />
             <Route path="/careers" element={<CareersPage />} />
+            <Route path="/blog" element={<BlogPage />} />
+            <Route path="/blog/:slug" element={<BlogPage />} />
             <Route path="/contact" element={<ContactPage />} />
             <Route path="/pricing" element={<PricingGrid />} />
             <Route path="/agents" element={<AgentsDirectory />} />
@@ -128,7 +130,7 @@ export default function App() {
             <Route path="/tools/webhook-validator" element={<WebhookValidator />} />
             <Route path="/tools/auditloganalyzer" element={<AuditLogAnalyzer />} />
 
-            {/* SupportOps has its own auth context and its own guards inside */}
+            {/* SupportOps has its own auth context and guards */}
             <Route path="/supportops/*" element={<SupportOpsRoutes />} />
 
             {/* ================= PROTECTED: sign-in required ================= */}
@@ -150,15 +152,14 @@ export default function App() {
                   <Route path="/executions/:executionId/audit" element={<Audit />} />
                 </Route>
 
-                {/* Admins only. This is a ROLE check. The old version used requiredTier="enterprise", so any enterprise
-                    customer could open the admin panel. */}
+                {/* Admins only */}
                 <Route element={<ProtectedRoute requiredRole="admin" />}>
                   <Route path="/admin" element={<AdminDashboard />} />
                 </Route>
               </Route>
             </Route>
 
-            {/* A real "not found" page instead of silently redirecting every bad URL to the homepage */}
+            {/* Not found page */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </motion.div>

@@ -182,8 +182,13 @@ export default function PricingPage() {
                 const trialEndpoint = API_ENDPOINTS?.billing?.trial || "/api/billing/trial";
                 const res = await apiFetch(trialEndpoint, {
                     method: "POST",
-                    body: { app: "supportops" },
-                });
+                    headers: {
+                      "x-org-id": activeOrgId,
+                    },
+                    body: {
+                      app: "supportops",
+                    },
+                  });
 
                 if (res?.token) localStorage.setItem("authToken", res.token);
                 if (access?.refresh) await access.refresh();
