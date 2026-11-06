@@ -17,7 +17,6 @@ export const PRODUCTS = [
             },
         },
         features: [
-            "Up to 5 active agents",
             "10,000 execution credits/mo",
             "Standard support",
             "Basic analytics",
@@ -41,7 +40,7 @@ export const PRODUCTS = [
             },
         },
         features: [
-            "Unlimited active agents",
+            
             "100,000 execution credits/mo",
             "Priority webhooks & SSE stream",
             "Advanced audit logs",
