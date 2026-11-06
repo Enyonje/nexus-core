@@ -7,7 +7,7 @@ import { Router } from 'express';
  * Run this as part of your build process or via a cron job.
  */
 
-const BASE_URL = 'https://nexus-core.ai'; // Replace with your actual domain
+const BASE_URL = 'https://nexusthecore.com'; // Replace with your actual domain
 
 const staticPages = [
   { url: '/', changefreq: 'daily', priority: 1.0 },
@@ -15,7 +15,9 @@ const staticPages = [
   { url: '/architecture', changefreq: 'monthly', priority: 0.7 },
   { url: '/careers', changefreq: 'monthly', priority: 0.5 },
   { url: '/contact', changefreq: 'monthly', priority: 0.5 },
-  { url: '/neural-mesh', changefreq: 'weekly', priority: 0.9 },
+  { url: '/compliance', changefreq: 'weekly', priority: 0.9 },
+  { url: '/supportops', changefreq: 'weekly', priority: 0.9 },
+  { url: '/tools', changefreq: 'weekly', priority: 0.9 },
 ];
 
 const generateSitemap = () => {

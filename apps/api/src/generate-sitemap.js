@@ -7,6 +7,9 @@ async function buildSitemap() {
 
     // ✅ Important public routes
     sitemap.write({ url: '/', changefreq: 'daily', priority: 1.0 });
+    sitemap.write({ url: '/compliance', changefreq: 'daily', priority: 1.0 });
+    sitemap.write({ url: '/supportops', changefreq: 'daily', priority: 1.0 });
+    sitemap.write({ url: '/tools', changefreq: 'daily', priority: 1.0 });
     sitemap.write({ url: '/features', changefreq: 'weekly', priority: 0.8 });
     sitemap.write({ url: '/pricing', changefreq: 'monthly', priority: 0.7 });
     sitemap.write({ url: '/docs', changefreq: 'weekly', priority: 0.7 });
