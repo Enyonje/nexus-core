@@ -109,12 +109,14 @@ export default function App() {
             {/* ================= PUBLIC: never ask for authentication ================= */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/docs" element={<SEOPillarPage />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/goals" element={<Goals />} />
             <Route path="/architecture" element={<ArchitecturePage />} />
             <Route path="/careers" element={<CareersPage />} />
             <Route path="/blog" element={<BlogPage />} />
             <Route path="/blog/:slug" element={<BlogPage />} />
             <Route path="/contact" element={<ContactPage />} />
-            <Route path="/pricing" element={<PricingGrid />} />
+            <Route path="/pricing" element={<Subscription />} />
             <Route path="/agents" element={<AgentsDirectory />} />
             <Route path="/compliance" element={<CrossBorderCompliance />} />
             <Route path="/agents/cross-border-compliance" element={<CrossBorderCompliance />} />
@@ -138,8 +140,8 @@ export default function App() {
               <Route path="/subscription" element={<Subscription />} />
 
               <Route element={<Layout theme={theme} />}>
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/goals" element={<Goals />} />
+
+
 
                 {/* Paid tier */}
                 <Route element={<ProtectedRoute requiredTier="pro" />}>

@@ -127,7 +127,7 @@ export default function LandingPage() {
               Explore Agents <ArrowRight className="w-4 h-4" />
             </Link>
 
-            {/* DIRECT TO DASHBOARD (NO MANDATORY REGISTRATION) */}
+            {/* DIRECT LINK TO DASHBOARD */}
             <Link
               to="/dashboard"
               className="w-full sm:w-auto px-8 py-4 rounded-xl bg-slate-900/80 border border-blue-500/30 hover:border-blue-400 text-white text-xs font-black uppercase tracking-widest transition-all backdrop-blur-md shadow-lg flex items-center justify-center gap-2 group"
@@ -245,8 +245,7 @@ export default function LandingPage() {
                     layout
                     whileHover={{ y: -6 }}
                     onClick={() => setActiveTab(agent.id)}
-                    className={`relative cursor-pointer p-8 md:p-10 rounded-[28px] bg-gradient-to-b from-slate-900/80 to-slate-900/30 border transition-all overflow-hidden backdrop-blur-md ${activeTab === agent.id ? "border-blue-500/60 shadow-2xl shadow-blue-950/40" : "border-white/10 hover:border-white/20"
-                      }`}
+                    className={`relative cursor-pointer p-8 md:p-10 rounded-[28px] bg-gradient-to-b from-slate-900/80 to-slate-900/30 border transition-all overflow-hidden backdrop-blur-md ${activeTab === agent.id ? "border-blue-500/60 shadow-2xl shadow-blue-950/40" : "border-white/10 hover:border-white/20"}`}
                   >
                     <div className="flex justify-between items-start mb-6">
                       <div className="flex items-center gap-3">

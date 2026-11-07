@@ -5,56 +5,38 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- Core SEO: Title and description -->
+  <!-- Core: title and description are the two tags that most affect how the page appears in results -->
   <title>AI Agents for Workflow Automation | Nexus Core</title>
   <meta name="description"
     content="Nexus Core runs autonomous AI agents that plan, use tools and finish tasks, with approval gates, spend limits and a full audit trail." />
-  <link rel="canonical" href="https://nexusthecore.com/" />
-  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
-  <meta name="author" content="Nexus Core Inc." />
-  <meta name="application-name" content="Nexus Core" />
+  <!-- No canonical or og:url here on purpose. This file is the shell served for EVERY route, so a fixed canonical made
+         every page declare itself a duplicate of the homepage. scripts/prerender-head.mjs writes the right one per page. -->
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
 
-  <!-- Performance & DNS Prefetching for API & Assets -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="dns-prefetch" href="https://nexus-core-a0px.onrender.com" />
-
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-S0XWR5M389"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag() { dataLayer.push(arguments); }
-    gtag('js', new Date());
-
-    gtag('config', 'G-S0XWR5M389');
-  </script>
-
-  <!-- Search Console Verification -->
+  <!-- Search Console verification (kept from your current page) -->
   <meta name="google-site-verification" content="BCmRvM-OvMIK6UuqPgGUzRu6Z3mJBtE0cVrhJraO1Sc" />
 
-  <!-- Browser UI & Theme -->
+  <!-- Browser UI -->
   <meta name="theme-color" content="#020617" />
   <meta name="color-scheme" content="dark" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <link rel="icon" href="/logo.png" sizes="any" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg.png" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
 
-  <!-- Open Graph / Social Sharing (LinkedIn, Facebook, WhatsApp, Slack, Discord) -->
+  <!-- Open Graph (LinkedIn, Facebook, WhatsApp, Slack, Discord) -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Nexus Core" />
   <meta property="og:title" content="Nexus Core: AI agents you can trust with real work" />
   <meta property="og:description"
     content="Autonomous AI agents that plan, use tools and finish tasks, with approval gates, spend limits and a full audit trail." />
-  <meta property="og:url" content="https://nexusthecore.com/" />
   <meta property="og:image" content="https://nexusthecore.com/og-image.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="Nexus Core dashboard showing an AI agent run with live steps and approvals" />
   <meta property="og:locale" content="en_US" />
 
-  <!-- X / Twitter Card -->
+  <!-- X / Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Nexus Core: AI agents you can trust with real work" />
   <meta name="twitter:description"
@@ -62,55 +44,57 @@
   <meta name="twitter:image" content="https://nexusthecore.com/og-image.png" />
   <meta name="twitter:image:alt" content="Nexus Core dashboard showing an AI agent run with live steps and approvals" />
 
-  <!-- Structured Data / Schema.org -->
+  <!-- Structured data. Add "sameAs" (LinkedIn, X, GitHub, Product Hunt) to the Organization once those profiles exist.
+         Deliberately no price, rating or review fields: only add them when they are real and visible on the page. -->
   <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@graph": [
-        {
-          "@type": "Organization",
-          "@id": "https://nexusthecore.com/#organization",
-          "name": "Nexus Core",
-          "url": "https://nexusthecore.com/",
-          "logo": {
-            "@type": "ImageObject",
-            "url": "https://nexusthecore.com/logo.png",
-            "width": 512,
-            "height": 512
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://nexusthecore.com/#organization",
+            "name": "Nexus Core",
+            "url": "https://nexusthecore.com/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://nexusthecore.com/logo.png",
+              "width": 512,
+              "height": 512
+            }
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://nexusthecore.com/#website",
+            "url": "https://nexusthecore.com/",
+            "name": "Nexus Core",
+            "inLanguage": "en",
+            "publisher": { "@id": "https://nexusthecore.com/#organization" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://nexusthecore.com/#software",
+            "name": "Nexus Core",
+            "url": "https://nexusthecore.com/",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Web",
+            "description": "Autonomous AI agents that plan, use tools and finish tasks, with approval gates, spend limits, a governance layer and a full audit trail.",
+            "publisher": { "@id": "https://nexusthecore.com/#organization" }
           }
-        },
-        {
-          "@type": "WebSite",
-          "@id": "https://nexusthecore.com/#website",
-          "url": "https://nexusthecore.com/",
-          "name": "Nexus Core",
-          "inLanguage": "en",
-          "publisher": { "@id": "https://nexusthecore.com/#organization" }
-        },
-        {
-          "@type": "SoftwareApplication",
-          "@id": "https://nexusthecore.com/#software",
-          "name": "Nexus Core",
-          "url": "https://nexusthecore.com/",
-          "applicationCategory": "BusinessApplication",
-          "operatingSystem": "Web",
-          "description": "Autonomous AI agents that plan, use tools and finish tasks, with approval gates, spend limits, a governance layer and a full audit trail.",
-          "publisher": { "@id": "https://nexusthecore.com/#organization" }
-        }
-      ]
-    }
-  </script>
+        ]
+      }
+    </script>
 </head>
 
-<body class="bg-[#020617] text-white antialiased selection:bg-blue-500/30">
+<body>
   <div id="root"></div>
 
-  <!-- Fallback for crawlers that do not run JavaScript -->
+  <!-- Stopgap for crawlers that do not run JavaScript. Prerendering the real page (see the advice) replaces this. -->
   <noscript>
     <h1>Nexus Core: AI agents for workflow automation</h1>
     <p>
       Nexus Core runs autonomous AI agents that plan, use tools and finish tasks, with approval gates, spend limits and
-      a full audit trail. Enable JavaScript to use the application workspace.
+      a
+      full audit trail. Enable JavaScript to use the app.
     </p>
   </noscript>
 

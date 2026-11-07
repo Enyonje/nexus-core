@@ -19,6 +19,15 @@
       ]
     },
     {
+      "source": "/supportops/(login|agent|admin|management|investor)(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         {

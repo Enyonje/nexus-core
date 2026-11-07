@@ -1,0 +1,140 @@
+{
+    "_readme": "One entry per public URL. DRAFT COPY: every title, description and summary below was written from route and component names only, so read each against what the page really says and edit it. Titles must be 60 characters or fewer, descriptions 155 or fewer, and unique across indexable pages (the build fails otherwise). index:false pages get a noindex tag and stay out of the sitemap. canonical points a duplicate URL at the page that should rank.",
+    "pages": [
+        {
+            "path": "/",
+            "nav": "Home",
+            "title": "AI Agents for Workflow Automation | Nexus Core",
+            "description": "Nexus Core runs autonomous AI agents that plan, use tools and finish tasks, with approval gates, spend limits and a full audit trail.",
+            "h1": "AI agents for workflow automation",
+            "summary": "Give an agent a goal and it plans, calls tools and reports back. Risky actions wait for your approval, spend limits stop runaway costs, and every step is written to an audit trail."
+        },
+        {
+            "path": "/pricing",
+            "nav": "Pricing",
+            "title": "Pricing | Nexus Core",
+            "description": "Compare Nexus Core plans: free, pro and enterprise. See what each tier includes for agent runs, support channels and audit history.",
+            "h1": "Nexus Core pricing",
+            "summary": "Start on the free plan, then move to pro or enterprise when you need agent execution, more channels and longer audit history."
+        },
+        {
+            "path": "/docs",
+            "nav": "Docs",
+            "title": "Documentation | Nexus Core",
+            "description": "Guides for Nexus Core: how goals, agent runs, approvals and the audit trail work, with the steps to run your first agent.",
+            "h1": "Nexus Core documentation",
+            "summary": "Learn how to define a goal, review the agent's plan, set approval rules and spend limits, and read the audit trail."
+        },
+        {
+            "path": "/architecture",
+            "nav": "Architecture",
+            "title": "Architecture | Nexus Core",
+            "description": "How Nexus Core is built: the agent runner, approval gates, the Sentinel review layer, live event streams and the audit log.",
+            "h1": "How Nexus Core works",
+            "summary": "An overview of the runner that executes agent steps, the Sentinel layer that reviews them, and the event stream and audit log that record them."
+        },
+        {
+            "path": "/agents",
+            "nav": "Agents",
+            "title": "AI Agents Directory | Nexus Core",
+            "description": "Browse the AI agents available in Nexus Core and what each one does, from compliance checks to support automation.",
+            "h1": "AI agents directory",
+            "summary": "Browse the agents you can run in Nexus Core and see what each one is built to do."
+        },
+        {
+            "path": "/compliance",
+            "nav": "Compliance",
+            "title": "Cross-Border Compliance Agent | Nexus Core",
+            "description": "An AI agent for cross-border compliance checks, with approval gates before anything is filed and a full audit trail.",
+            "h1": "Cross-border compliance agent",
+            "summary": "Run cross-border compliance checks with an agent that asks for approval before sensitive steps and records every decision."
+        },
+        {
+            "path": "/agents/cross-border-compliance",
+            "canonical": "/compliance",
+            "index": false,
+            "title": "Cross-Border Compliance Agent | Nexus Core",
+            "description": "An AI agent for cross-border compliance checks, with approval gates before anything is filed and a full audit trail.",
+            "h1": "Cross-border compliance agent",
+            "summary": "Run cross-border compliance checks with an agent that asks for approval before sensitive steps and records every decision."
+        },
+        {
+            "path": "/tools",
+            "nav": "Tools",
+            "title": "Free Developer Tools | Nexus Core",
+            "description": "Free tools from Nexus Core for developers, including a webhook validator and an audit log analyzer.",
+            "h1": "Free developer tools",
+            "summary": "Small, free utilities for people building with webhooks, agents and audit logs."
+        },
+        {
+            "path": "/tools/webhook-validator",
+            "title": "Webhook Validator | Nexus Core",
+            "description": "Free webhook validator from Nexus Core. Check webhook payloads and signatures before they reach production.",
+            "h1": "Webhook validator",
+            "summary": "Paste a webhook request and check it before you ship the integration."
+        },
+        {
+            "path": "/tools/auditloganalyzer",
+            "title": "Audit Log Analyzer | Nexus Core",
+            "description": "Free audit log analyzer. Load a log to spot failed steps, blocked actions and unusual activity in agent runs.",
+            "h1": "Audit log analyzer",
+            "summary": "Load an audit log and see failed steps, blocked actions and unusual activity at a glance."
+        },
+        {
+            "path": "/supportops",
+            "nav": "SupportOps",
+            "title": "AI Customer Support for WhatsApp, SMS, Email | Nexus Core",
+            "description": "SupportOps puts WhatsApp, SMS, email, voice and web chat in one inbox, with AI drafts and SLA tracking for your support team.",
+            "h1": "AI customer support across every channel",
+            "summary": "One inbox for WhatsApp, SMS, email, voice and web chat. AI drafts replies, tickets are routed and tracked against SLAs, and your team stays in control."
+        },
+        {
+            "path": "/careers",
+            "nav": "Careers",
+            "title": "Careers | Nexus Core",
+            "description": "Join Nexus Core and help build AI agents that teams can trust. See how we work and the roles we are hiring for.",
+            "h1": "Careers at Nexus Core",
+            "summary": "Help build AI agents that teams can trust with real work."
+        },
+        {
+            "path": "/contact",
+            "nav": "Contact",
+            "title": "Contact Nexus Core",
+            "description": "Get in touch with the Nexus Core team about sales, support, partnerships or press.",
+            "h1": "Contact Nexus Core",
+            "summary": "Questions about plans, support or partnerships? Send us a message and we will reply."
+        },
+        {
+            "path": "/login",
+            "index": false,
+            "title": "Sign in | Nexus Core",
+            "description": "Sign in to your Nexus Core workspace.",
+            "h1": "Sign in",
+            "summary": "Sign in to your Nexus Core workspace."
+        },
+        {
+            "path": "/register",
+            "index": false,
+            "title": "Create an account | Nexus Core",
+            "description": "Create a Nexus Core account.",
+            "h1": "Create an account",
+            "summary": "Create a Nexus Core account."
+        },
+        {
+            "path": "/forgot-password",
+            "index": false,
+            "title": "Reset your password | Nexus Core",
+            "description": "Request a link to reset your Nexus Core password.",
+            "h1": "Reset your password",
+            "summary": "Request a link to reset your password."
+        },
+        {
+            "path": "/reset-password",
+            "index": false,
+            "title": "Choose a new password | Nexus Core",
+            "description": "Choose a new password for your Nexus Core account.",
+            "h1": "Choose a new password",
+            "summary": "Choose a new password for your account."
+        }
+    ]
+}
