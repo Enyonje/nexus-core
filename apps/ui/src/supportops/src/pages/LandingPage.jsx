@@ -24,7 +24,7 @@ import { ROUTES, homeForRole } from "../config/paths";
 
 const SUPPORTOPS_HOME = "/supportops";
 const NEXUS_HOME = "/dashboard";
-const LOGIN_ROUTE = ROUTES?.login || "/login";
+const LOGIN_ROUTE = ROUTES?.register || "/register";
 const PRICING_ROUTE = ROUTES?.pricing || LOGIN_ROUTE;
 
 // ============================================================

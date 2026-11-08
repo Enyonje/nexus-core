@@ -331,7 +331,7 @@ export default function LandingPage() {
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">© {new Date().getFullYear()} Nexus Core Inc. All rights reserved.</p>
           </div>
           <nav className="flex flex-wrap justify-center gap-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-            <Link to="/docs" className="hover:text-white transition">Docs</Link>
+            <Link to="/blog" className="hover:text-white transition">Blog</Link>
             <Link to="/agents" className="hover:text-white transition">Specialised Agents</Link>
             <Link to="/architecture" className="hover:text-white transition">Architecture</Link>
             <Link to="/contact" className="hover:text-white transition">Contact</Link>
