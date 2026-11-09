@@ -23,6 +23,7 @@ import { ROUTES, homeForRole } from "../config/paths";
 // ============================================================
 
 const SUPPORTOPS_HOME = "/supportops";
+const DEMO_ROUTE = "/supportops/demo";
 const NEXUS_HOME = "/dashboard";
 const LOGIN_ROUTE = ROUTES?.register || "/register";
 const PRICING_ROUTE = ROUTES?.pricing || LOGIN_ROUTE;
@@ -251,7 +252,7 @@ export default function LandingPage() {
   const handleFreeBrowse = useCallback(() => {
     if (busy) return;
 
-    safeNavigate(SUPPORTOPS_HOME);
+    safeNavigate(DEMO_ROUTE);
   }, [busy, safeNavigate]);
 
   // ==========================================================
@@ -349,6 +350,14 @@ export default function LandingPage() {
             className="transition-colors hover:text-white"
           >
             Features
+          </button>
+
+          <button
+            type="button"
+            onClick={() => safeNavigate(DEMO_ROUTE)}
+            className="transition-colors hover:text-white"
+          >
+            Live demo
           </button>
 
           <button

@@ -1,9 +1,10 @@
-// apps/api/supportops/security/entitlements.js  The one guard for every app: plan + add-ons + role + usage.
-// Replaces entitlements-compat.js. Needs entitlementRules.js in the same folder.
-import { prisma, requireAuth } from "../lib/deps.js";
-import { effectiveFeatures, effectiveLimit, isTrial, usageDecision } from "./entitlementRules.js";
+// Canonical application entitlement guard: tenant membership, app role and subscription policy.
+import { prisma } from "../config/prisma.js";
+import { requireAuth } from "../security/authMiddleware.js";
+import { effectiveFeatures, effectiveLimit, isTrial, usageDecision } from "../../supportops/security/entitlementRules.js";
+import { chooseActiveMembership, subscriptionUsable } from "../security/workspaceAccessRules.js";
+export { chooseActiveMembership, subscriptionUsable } from "../security/workspaceAccessRules.js";
 
-const GRACE_MS = 3 * 24 * 60 * 60 * 1000;
 const TTL_MS = 30_000;
 
 export class AccessError extends Error {
@@ -29,22 +30,23 @@ const getSub = (orgId, appId) =>
             include: { plan: true, addons: { include: { addon: true } } },
         }));
 
-export function subscriptionUsable(sub) {
-    if (!sub) return false;
-    if (sub.status === "active") return true;
-    if (sub.status === "trialing") return !sub.trial_ends_at || sub.trial_ends_at > new Date();
-    if (sub.status === "past_due" && sub.current_period_end) return Date.now() < sub.current_period_end.getTime() + GRACE_MS;
-    return false;
-}
-
 async function resolveOrg(userId, requestedOrgId) {
-    const memberships = await prisma.membership.findMany({ where: { user_id: userId, org: { deleted_at: null } }, include: { org: true } });
-    let active;
-    if (requestedOrgId) {
-        active = memberships.find((m) => m.org_id === requestedOrgId);
-        if (!active) throw new AccessError(403, "NOT_A_MEMBER", "You are not a member of this organization");
-    } else {
-        active = memberships.find((m) => m.org.type === "PERSONAL") ?? memberships[0];
+    const [memberships, user] = await Promise.all([
+        prisma.membership.findMany({
+            where: { user_id: userId, org: { deleted_at: null } },
+            include: { org: true },
+        }),
+        prisma.user.findFirst({
+            where: { id: userId, deleted_at: null },
+            select: { org_id: true },
+        }),
+    ]);
+
+    // A client may request a workspace, but membership is always verified here.
+    // Prefer the account's primary workspace before falling back to PERSONAL.
+    const active = chooseActiveMembership(memberships, user?.org_id, requestedOrgId);
+    if (requestedOrgId && !active) {
+        throw new AccessError(403, "NOT_A_MEMBER", "You are not a member of this organization");
     }
     return { memberships, active: active ?? null };
 }
@@ -178,18 +180,37 @@ export async function buildSession(userId, requestedOrgId) {
     if (active) {
         const [subs, grants, usage] = await Promise.all([
             prisma.subscription.findMany({ where: { org_id: active.org_id }, include: { app: true, plan: true, addons: { include: { addon: true } } } }),
-            prisma.appAccess.findMany({ where: { org_id: active.org_id, user_id: userId } }),
+            prisma.appAccess.findMany({
+                where: { org_id: active.org_id, user_id: userId },
+                include: { app: true },
+            }),
             prisma.usageRecord.findMany({ where: { org_id: active.org_id, period: period() } }),
         ]);
-        const roleByApp = new Map(grants.map((g) => [g.app_id, g.app_role]));
+        const roleByApp = new Map(grants.filter((g) => g.app.active).map((g) => [g.app_id, g.app_role]));
+        const activeSubscriptions = new Set();
         for (const s of subs) {
             if (!s.app.active || !subscriptionUsable(s) || !roleByApp.has(s.app_id)) continue;
+            activeSubscriptions.add(s.app_id);
             apps[s.app.slug] = {
-                plan: s.plan.key, status: s.status, role: roleByApp.get(s.app_id),
+                plan: s.plan.key, status: s.status, role: roleByApp.get(s.app_id), subscribed: true,
                 features: effectiveFeatures(s.plan, s.addons.map((a) => a.addon)),
                 limits: { ...s.plan.limits, ...(s.limit_overrides ?? {}) },
                 usage: Object.fromEntries(usage.filter((u) => u.app_id === s.app_id).map((u) => [u.metric, u.count])),
                 trialEndsAt: s.trial_ends_at, currentPeriodEnd: s.current_period_end,
+            };
+        }
+        // Keep the workspace's application role visible before a plan is selected.
+        // This is identity metadata only; it does not grant API access or subscription features.
+        for (const grant of grants) {
+            if (!grant.app.active || activeSubscriptions.has(grant.app_id)) continue;
+            apps[grant.app.slug] = {
+                plan: null,
+                status: "not_subscribed",
+                subscribed: false,
+                role: grant.app_role,
+                features: [],
+                limits: {},
+                usage: {},
             };
         }
     }

@@ -3,8 +3,12 @@
 // Register: await app.register(billingRoutes, { prefix: "/api/v1/billing" });
 // Env: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, APP_URL (frontend)
 
+import bcrypt from "bcryptjs";
+import { v4 as uuidv4 } from "uuid";
 import { prisma } from "../config/prisma.js";
-import { requireAuth } from "./authMiddleware.js";
+import { requireAuth } from "../lib/deps.js";
+import { createAccessToken } from "../../src/services/authService.js";
+import { generateRandomToken, hashToken } from "../../src/lib/crypto.js";
 import { AccessError, invalidateSubscription } from "../security/entitlements.js";
 import { mapStripeStatus, trialEnd } from "../security/entitlementRules.js";
 
@@ -18,12 +22,14 @@ const fail = (reply, e) =>
 
 // Only owner, admin or billing contacts can modify workspace billing
 async function billingOrg(req) {
-    const orgId = req.headers["x-org-id"];
+    const requestedOrgId = req.headers["x-org-id"];
+    const orgId = requestedOrgId || req.user.org_id || undefined;
     const m = await prisma.membership.findFirst({
         where: {
             user_id: req.user.id,
-            ...(orgId ? { org_id: orgId } : { org: { type: "PERSONAL" } }),
+            ...(orgId ? { org_id: orgId } : {}),
             org_role: { in: ["owner", "admin", "billing"] },
+            org: { deleted_at: null },
         },
         include: { org: true },
     });
@@ -65,8 +71,13 @@ export default async function billingRoutes(app) {
         }));
     });
 
-    // Guest-First Direct Checkout (No pre-registration required)
+    // Guest-first workspace provisioning. The guest receives the same signed
+    // session contract and refresh-cookie lifecycle as a normal registered user.
+    // Existing accounts must sign in; never create a second workspace against an
+    // existing email address without explicit authenticated intent.
     app.post("/guest-checkout", async (req, reply) => {
+        let createdOrgId = null;
+        let stripeCustomerId = null;
         try {
             const {
                 email,
@@ -78,138 +89,182 @@ export default async function billingRoutes(app) {
                 addons = [],
             } = req.body ?? {};
 
-            if (!email || !workspaceName) {
+            const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+            const cleanWorkspace = typeof workspaceName === "string" ? workspaceName.trim() : "";
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) || cleanEmail.length > 254 || cleanWorkspace.length < 2 || cleanWorkspace.length > 120) {
                 return reply.code(400).send({
-                    error: "MISSING_FIELDS",
-                    message: "Email and workspace name are required.",
+                    error: "INVALID_GUEST_DETAILS",
+                    message: "Enter a valid email address and a workspace name between 2 and 120 characters.",
+                });
+            }
+            if (mode !== "trial" && mode !== "checkout") {
+                return reply.code(400).send({ error: "INVALID_CHECKOUT_MODE", message: "Unsupported checkout mode." });
+            }
+            if (!Array.isArray(addons) || addons.length > 20 || addons.some((key) => typeof key !== "string")) {
+                return reply.code(400).send({ error: "INVALID_ADDONS", message: "Invalid add-on selection." });
+            }
+
+            const existingUser = await prisma.user.findUnique({ where: { email: cleanEmail }, select: { id: true } });
+            if (existingUser) {
+                return reply.code(409).send({
+                    error: "ACCOUNT_EXISTS",
+                    message: "An account already exists for this email. Sign in first, then choose a workspace and plan.",
                 });
             }
 
-            // 1. Provision or locate User record
-            const cleanEmail = email.trim().toLowerCase();
-            let user = await prisma.user.findUnique({ where: { email: cleanEmail } });
-            if (!user) {
-                user = await prisma.user.create({
+            // Validate all commercial configuration before creating any records.
+            const targetApp = await prisma.app.findFirst({
+                where: { slug, active: true },
+                include: { plans: { where: { active: true } }, addons: { where: { active: true } } },
+            });
+            if (!targetApp) return reply.code(404).send({ error: "APP_NOT_FOUND", message: "The selected product is unavailable." });
+            const plan = mode === "trial"
+                ? targetApp.plans.find((p) => p.key === "growth")
+                : targetApp.plans.find((p) => p.key === planKey);
+            if (!plan) return reply.code(400).send({ error: "PLAN_NOT_FOUND", message: "The selected plan is unavailable." });
+            if (mode === "checkout" && !plan.stripe_price_id) {
+                return reply.code(400).send({ error: "PLAN_NOT_PURCHASABLE", message: "This plan is not configured for online checkout. Contact sales." });
+            }
+            const chosenAddons = targetApp.addons.filter((x) => addons.includes(x.key) && x.stripe_price_id);
+            if (mode === "checkout" && addons.some((key) => !chosenAddons.some((x) => x.key === key))) {
+                return reply.code(400).send({ error: "ADDON_NOT_PURCHASABLE", message: "One or more selected add-ons are unavailable." });
+            }
+
+            const userId = uuidv4();
+            const orgId = uuidv4();
+            const rawRefreshToken = generateRandomToken(64);
+            const rawSetupToken = generateRandomToken(48);
+            const passwordHash = await bcrypt.hash(generateRandomToken(48), 12);
+            const rawName = typeof fullName === "string" ? fullName.trim().slice(0, 120) : "";
+            const expiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+            const trialEndsAt = mode === "trial" ? trialEnd() : null;
+
+            const provisioned = await prisma.$transaction(async (tx) => {
+                const org = await tx.organization.create({
+                    data: { id: orgId, name: cleanWorkspace, type: "TEAM", owner_id: userId },
+                });
+                const user = await tx.user.create({
                     data: {
+                        id: userId,
                         email: cleanEmail,
-                        name: fullName?.trim() || cleanEmail.split("@")[0],
+                        name: rawName || cleanEmail.split("@")[0],
+                        password_hash: passwordHash,
+                        role: "user",
+                        subscription: "free",
+                        org_id: org.id,
+                        refresh_token: hashToken(rawRefreshToken),
+                        refresh_token_expires: expiry,
+                        reset_token: hashToken(rawSetupToken),
+                        reset_token_expires: new Date(Date.now() + 24 * 60 * 60 * 1000),
                     },
                 });
-            }
-
-            // 2. Provision new workspace / Organization
-            const org = await prisma.organization.create({
-                data: {
-                    name: workspaceName.trim(),
-                    type: "TEAM",
-                    memberships: {
-                        create: {
-                            user_id: user.id,
-                            org_role: "owner",
+                await tx.membership.create({ data: { org_id: org.id, user_id: user.id, org_role: "owner" } });
+                await tx.appAccess.create({
+                    data: { org_id: org.id, user_id: user.id, app_id: targetApp.id, app_role: "admin" },
+                });
+                if (mode === "trial") {
+                    await tx.subscription.create({
+                        data: {
+                            org_id: org.id,
+                            app_id: targetApp.id,
+                            plan_id: plan.id,
+                            status: "trialing",
+                            trial_ends_at: trialEndsAt,
+                            limit_overrides: { ai_resolutions: 100 },
                         },
-                    },
-                },
+                    });
+                }
+                return { org, user };
             });
+            createdOrgId = provisioned.org.id;
 
-            // 3. Retrieve target App & Plan
-            const targetApp = await prisma.app.findUnique({
-                where: { slug },
-                include: { plans: true, addons: true },
-            });
+            // A guest account is provisioned with a random unknown password. Send a
+            // one-time password setup link before completing checkout so the owner
+            // can recover access after the initial browser session expires.
+            const { sendPasswordResetEmail } = await import("../../src/services/mailer.js");
+            const setupUrl = `${(process.env.FRONTEND_URL || process.env.APP_URL || "https://nexusthecore.com").replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(rawSetupToken)}`;
+            await sendPasswordResetEmail(cleanEmail, setupUrl, { purpose: "setup" });
 
-            if (!targetApp) {
-                return reply.code(404).send({ message: `App '${slug}' not found` });
-            }
-
-            const plan = targetApp.plans.find((p) => p.key === planKey);
-
-            // Handle Trial Mode Request
-            if (mode === "trial") {
-                const growthPlan = targetApp.plans.find((p) => p.key === "growth");
-                await prisma.subscription.create({
-                    data: {
-                        org_id: org.id,
-                        app_id: targetApp.id,
-                        plan_id: growthPlan?.id || plan?.id,
-                        status: "trialing",
-                        trial_ends_at: trialEnd(),
-                        limit_overrides: { ai_resolutions: 100 },
-                    },
-                });
-
-                await prisma.appAccess.create({
-                    data: {
-                        org_id: org.id,
-                        user_id: user.id,
-                        app_id: targetApp.id,
-                        app_role: "admin",
-                    },
-                });
-
-                // Generate authentication session token for guest handoff
-                const token = app.jwt.sign({ id: user.id, orgId: org.id });
-
-                return reply.code(201).send({
-                    success: true,
-                    token,
-                    orgId: org.id,
-                    url: `${process.env.APP_URL || ""}/admin`,
-                });
-            }
-
-            // Handle Paid Stripe Checkout Mode Request
-            if (!plan?.stripe_price_id) {
-                return reply.code(400).send({
-                    message: "That plan is not available for self-serve checkout. Contact sales.",
-                });
-            }
-
-            const chosenAddons = targetApp.addons.filter(
-                (x) => addons.includes(x.key) && x.stripe_price_id
-            );
-
-            const s = await stripe();
-            const customer = (
-                await s.customers.create({
+            let checkoutUrl = null;
+            if (mode === "checkout") {
+                const s = await stripe();
+                const customer = await s.customers.create({
                     email: cleanEmail,
-                    name: org.name,
-                    metadata: { orgId: org.id, userId: user.id },
-                })
-            ).id;
+                    name: provisioned.org.name,
+                    metadata: { orgId: provisioned.org.id, userId: provisioned.user.id, appSlug: slug },
+                }, { idempotencyKey: `nexus-customer-${provisioned.org.id}` });
+                stripeCustomerId = customer.id;
+                await prisma.organization.update({ where: { id: provisioned.org.id }, data: { stripe_customer_id: customer.id } });
 
-            await prisma.organization.update({
-                where: { id: org.id },
-                data: { stripe_customer_id: customer },
+                const metadata = {
+                    orgId: provisioned.org.id,
+                    userId: provisioned.user.id,
+                    appSlug: slug,
+                    planKey: plan.key,
+                    addons: chosenAddons.map((x) => x.key).join(","),
+                };
+                const session = await s.checkout.sessions.create({
+                    mode: "subscription",
+                    customer: customer.id,
+                    line_items: [
+                        { price: plan.stripe_price_id, quantity: 1 },
+                        ...chosenAddons.map((x) => ({ price: x.stripe_price_id, quantity: 1 })),
+                    ],
+                    subscription_data: { metadata },
+                    metadata,
+                    success_url: `${process.env.APP_URL || process.env.FRONTEND_URL}/supportops/success?session_id={CHECKOUT_SESSION_ID}`,
+                    cancel_url: `${process.env.APP_URL || process.env.FRONTEND_URL}/supportops/cancel`,
+                }, { idempotencyKey: `nexus-checkout-${provisioned.org.id}-${plan.key}` });
+                checkoutUrl = session.url;
+            }
+
+            const token = createAccessToken({
+                id: provisioned.user.id,
+                email: provisioned.user.email,
+                role: provisioned.user.role,
+                subscription: provisioned.user.subscription,
+                org_id: provisioned.org.id,
+            }, provisioned.org.name);
+
+            const sameSite = ["strict", "lax", "none"].includes(process.env.COOKIE_SAMESITE)
+                ? process.env.COOKIE_SAMESITE : "strict";
+            reply.setCookie("refreshToken", rawRefreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production" || sameSite === "none",
+                sameSite,
+                path: "/api/auth",
+                maxAge: 30 * 24 * 60 * 60,
             });
 
-            const metadata = {
-                orgId: org.id,
-                userId: user.id,
-                appSlug: slug,
-                planKey,
-                addons: chosenAddons.map((x) => x.key).join(","),
-            };
-
-            const session = await s.checkout.sessions.create({
-                mode: "subscription",
-                customer,
-                line_items: [
-                    { price: plan.stripe_price_id, quantity: 1 },
-                    ...chosenAddons.map((x) => ({ price: x.stripe_price_id, quantity: 1 })),
-                ],
-                subscription_data: { metadata },
-                metadata,
-                success_url: `${process.env.APP_URL}/supportops/success?session_id={CHECKOUT_SESSION_ID}`,
-                cancel_url: `${process.env.APP_URL}/supportops/cancel`,
+            if (mode === "trial") invalidateSubscription(provisioned.org.id, targetApp.id);
+            return reply.code(201).send({
+                success: true,
+                token,
+                orgId: provisioned.org.id,
+                url: checkoutUrl,
+                redirectTo: mode === "trial" ? "/supportops/admin/executive" : null,
+                trialEndsAt,
             });
-
-            const token = app.jwt ? app.jwt.sign({ id: user.id, orgId: org.id }) : null;
-
-            return { url: session.url, token };
         } catch (e) {
+            // Roll back newly provisioned records when Stripe setup fails.
+            if (createdOrgId) {
+                await prisma.$transaction([
+                    prisma.appAccess.deleteMany({ where: { org_id: createdOrgId } }),
+                    prisma.subscription.deleteMany({ where: { org_id: createdOrgId } }),
+                    prisma.membership.deleteMany({ where: { org_id: createdOrgId } }),
+                    prisma.user.deleteMany({ where: { org_id: createdOrgId } }),
+                    prisma.organization.deleteMany({ where: { id: createdOrgId } }),
+                ]).catch((cleanupError) => req.log?.error({ cleanupError }, "Guest provisioning cleanup failed"));
+            }
+            if (stripeCustomerId) {
+                const s = await stripe().catch(() => null);
+                await s?.customers.del(stripeCustomerId).catch((cleanupError) =>
+                    req.log?.error({ cleanupError }, "Stripe customer cleanup failed")
+                );
+            }
             if (fail(reply, e)) return;
-            req.log?.error(e);
-            return reply.code(500).send({ error: "GUEST_CHECKOUT_FAILED", message: e.message });
+            req.log?.error({ err: e }, "Guest checkout failed");
+            return reply.code(500).send({ error: "GUEST_CHECKOUT_FAILED", message: "We couldn't finish setting up your workspace. Please try again." });
         }
     });
 
@@ -241,7 +296,7 @@ export default async function billingRoutes(app) {
                     app_id: sup.id,
                     plan_id: plan.id,
                     status: "trialing",
-                    trial_ends_at: trialEnd(),
+                    trial_ends_at: trialEndsAt,
                     limit_overrides: { ai_resolutions: 100 },
                 },
             });

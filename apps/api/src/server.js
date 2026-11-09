@@ -5,7 +5,8 @@ import websocket from "@fastify/websocket";
 import fastifyPostgres from "@fastify/postgres";
 import fastifyJwt from "@fastify/jwt";
 import cookie from "@fastify/cookie";
-import dotenv from "dotenv";
+import rateLimit from "@fastify/rate-limit";
+import "dotenv/config";
 
 import { env } from "./config/env.js";
 
@@ -38,8 +39,6 @@ import * as readinessRoutesMod from "../supportops/routes/readinessRoutes.js";
 import * as billingV1Mod from "../supportops/routes/billingRoutes.js";
 import webhookRoutes from "../supportops/routes/webhooks.js";
 import realtimeRoutes from "../supportops/routes/realtime.js";
-
-dotenv.config();
 
 function isClassConstructor(func) {
   if (typeof func !== "function") return false;
@@ -88,12 +87,14 @@ async function start() {
   };
 
   /* ========================= CORS ========================= */
-  const allowedOrigins = [
+  const allowedOrigins = [...new Set([
     "https://nexusthecore.com",
     "https://nexus-core-chi.vercel.app",
     "http://localhost:3000",
     "http://localhost:5173",
-  ];
+    process.env.FRONTEND_URL,
+    ...(process.env.CORS_ALLOWED_ORIGINS || "").split(",").map((origin) => origin.trim()),
+  ].filter(Boolean))];
   await app.register(cors, () => (req, cb) => {
     const origin = req.headers.origin;
     const isWidget = req.url.includes("/chat/widget/");
@@ -107,6 +108,7 @@ async function start() {
         "Authorization",
         "X-Requested-With",
         "X-Org-Id",
+        "X-App-Slug",
         "Accept",
         "Cache-Control",
         "Last-Event-ID",
@@ -116,7 +118,8 @@ async function start() {
   });
 
   /* ========================= PLUGINS ========================= */
-  await app.register(cookie, { secret: env.COOKIE_SECRET || "fallback-secret" });
+  await app.register(cookie, { secret: env.COOKIE_SECRET });
+  await app.register(rateLimit, { max: 120, timeWindow: "1 minute" });
   await app.register(websocket);
 
   if (env.DATABASE_URL) {

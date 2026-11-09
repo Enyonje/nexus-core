@@ -14,12 +14,12 @@ async function buildSitemap() {
         { url: '/docs', changefreq: 'weekly', priority: 0.7 },
         { url: '/blog', changefreq: 'weekly', priority: 0.6 },
         { url: '/about', changefreq: 'monthly', priority: 0.5 },
-        { url: '/contact', changefreq: 'monthly', priority: 0.5 }
-        { url: '/compliance', changefreq: 'daily', priority: 1.0 }
-        { url: '/supportops', changefreq: 'daily', priority: 1.0 }
-        { url: '/agents', changefreq: 'weekly', priority: 0.7 }
-        { url: '/tools/auditloganalyzer', changefreq: 'weekly', priority: 0.7 }
-        {url: '/tools', changefreq: 'weekly', priority: 0.7 }
+        { url: '/contact', changefreq: 'monthly', priority: 0.5 },
+        { url: '/compliance', changefreq: 'daily', priority: 1.0 },
+        { url: '/supportops', changefreq: 'daily', priority: 1.0 },
+        { url: '/agents', changefreq: 'weekly', priority: 0.7 },
+        { url: '/tools/auditloganalyzer', changefreq: 'weekly', priority: 0.7 },
+        { url: '/tools', changefreq: 'weekly', priority: 0.7 },
     ];
     staticRoutes.forEach(route => sitemap.write(route));
 

@@ -22,7 +22,7 @@ const FRONTEND_URL = (
 ).replace(/\/$/, "");
 
 const DEFAULT_TIER = process.env.DEFAULT_TIER || "free";
-const DEFAULT_APP_SLUG = process.env.DEFAULT_APP_SLUG || "nexus";
+const DEFAULT_APP_SLUG = process.env.DEFAULT_APP_SLUG || "nexus-core";
 
 const MIN_PASSWORD = 10;
 const MAX_PASSWORD = 128;
@@ -191,7 +191,7 @@ function resolveRedirectPath(
   if (
     apps.some(
       (access) =>
-        access.app?.slug === "nexus"
+        ["nexus-core", "nexus"].includes(access.app?.slug)
     )
   ) {
     return "/dashboard";
@@ -204,27 +204,26 @@ function resolveRedirectPath(
 // ORGANIZATION SECURITY
 // ============================================================
 
-function callerOrgId(req, user) {
+async function callerOrgId(req, user) {
   const own = user.org_id ||
     (typeof user.organization === "string"
       ? user.organization
       : user.organization?.id);
-
   const requested = req.headers["x-org-id"];
 
-  if (
-    requested &&
-    own &&
-    String(requested) !== String(own)
-  ) {
-    return null;
-  }
+  if (!requested) return own || null;
 
-  if (requested && !own) {
-    return null;
-  }
-
-  return own || null;
+  // Workspace switching is allowed only after verifying a live membership.
+  // Do not silently assume the user's primary org is their only organization.
+  const membership = await prisma.membership.findFirst({
+    where: {
+      user_id: user.id,
+      org_id: String(requested),
+      org: { deleted_at: null },
+    },
+    select: { org_id: true },
+  });
+  return membership?.org_id || null;
 }
 
 // ============================================================
@@ -235,7 +234,9 @@ function publicSubscription(record) {
   return {
     tier: record?.plan?.key || DEFAULT_TIER,
     plan_id: record?.plan_id || null,
-    status: record?.status || "active",
+    // No subscription is not an active free subscription. Keep UI and API
+    // authorization state aligned so an unprovisioned workspace cannot appear subscribed.
+    status: record?.status || "inactive",
     app: record?.app?.slug || DEFAULT_APP_SLUG,
   };
 }
@@ -245,7 +246,7 @@ function publicSubscription(record) {
 // ============================================================
 
 async function loadSubscription(req, user) {
-  const orgId = callerOrgId(req, user);
+  const orgId = await callerOrgId(req, user);
 
   if (
     orgId === null &&

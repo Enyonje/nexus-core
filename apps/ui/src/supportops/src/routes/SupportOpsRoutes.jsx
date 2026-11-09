@@ -10,6 +10,7 @@ import LoginPage from "../pages/LoginPage";
 import AdminRegisterPage from "../pages/AdminRegisterPage";
 import PricingPage from "../pages/PricingPage";
 import FeaturesPage from "../pages/FeaturesPage";
+import PublicDemoPage from "../pages/PublicDemoPage";
 import CancelPage from "../pages/CancelPage";
 import SuccessPage from "../pages/SuccessPage";
 import AuthPage from "../pages/AuthPage";
@@ -55,6 +56,7 @@ import InvestorMode from "../pages/InvestorMode";
  *
  * /supportops
  * /supportops/features
+ * /supportops/demo
  * /supportops/pricing
  * /supportops/login
  * /supportops/register
@@ -83,6 +85,11 @@ export default function SupportOpsRoutes() {
             <Route
                 index
                 element={<LandingPage />}
+            />
+
+            <Route
+                path="demo"
+                element={<PublicDemoPage />}
             />
 
             <Route

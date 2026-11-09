@@ -34,22 +34,21 @@ const FALLBACK_PLANS = {
         {
             key: "starter",
             name: "Starter",
-            priceCents: 4900,
-            limits: { seats: 3, ai_resolutions: 500 },
-            features: ["triage_basic", "channel_email", "channel_web"],
+            priceCents: 19900,
+            limits: { seats: 5, ai_resolutions: 500 },
+            features: ["triage_basic", "channel_email"],
         },
         {
             key: "growth",
             name: "Growth",
-            priceCents: 14900,
-            limits: { seats: 10, ai_resolutions: 2500 },
+            priceCents: 69900,
+            limits: { seats: 20, ai_resolutions: 2500 },
             features: [
                 "triage_basic",
                 "channel_email",
                 "channel_web",
                 "helpdesk_sync",
-                "webhooks",
-                "rbac",
+                "sla_predict",
             ],
         },
         {
@@ -72,8 +71,8 @@ const FALLBACK_PLANS = {
         },
     ],
     addons: [
-        { key: "channel_whatsapp", name: "WhatsApp Channel Integration", priceCents: 2900 },
-        { key: "dev_integrations", name: "Jira / GitHub Integrations", priceCents: 1900 },
+        { key: "channel_whatsapp", name: "WhatsApp Channel Integration", priceCents: 7900 },
+        { key: "dev_integrations", name: "Jira / GitHub Integrations", priceCents: 4900 },
     ],
 };
 
@@ -117,24 +116,15 @@ export default function PricingPage() {
                 ? API_ENDPOINTS.billing.plans("supportops")
                 : API_ENDPOINTS?.billing?.plans;
 
-        const candidateEndpoints = [
-            configuredEndpoint,
-            "/api/billing/plans?app=supportops",
-            "/api/plans?app=supportops",
-            "/api/v1/billing/plans?app=supportops",
-        ].filter((ep, idx, arr) => ep && arr.indexOf(ep) === idx);
-
         let fetchedData = null;
 
-        for (const endpoint of candidateEndpoints) {
+        // One canonical route only. Retrying multiple aliases on the same Render
+        // service multiplies cold-start latency and hides routing/configuration bugs.
+        if (configuredEndpoint) {
             try {
-                const res = await apiFetch(endpoint, { timeout: 45000 });
-                if (res) {
-                    fetchedData = res;
-                    break;
-                }
+                fetchedData = await apiFetch(configuredEndpoint, { timeout: 8000 });
             } catch (err) {
-                console.warn(`[PricingPage] Endpoint failed (${endpoint}):`, err.message);
+                console.warn(`[PricingPage] Canonical pricing endpoint failed:`, err.message);
             }
         }
 
@@ -244,13 +234,17 @@ export default function PricingPage() {
             if (res?.token) {
                 localStorage.setItem("authToken", res.token);
                 localStorage.setItem("token", res.token);
+                if (res?.orgId) {
+                    localStorage.setItem("activeOrgId", res.orgId);
+                    localStorage.setItem("orgId", res.orgId);
+                }
             }
 
             if (res?.url) {
                 window.location.href = res.url;
             } else {
                 toast.success("Workspace created! Redirecting to dashboard...");
-                window.location.assign("/admin");
+                window.location.assign("/supportops/admin/executive");
             }
         } catch (err) {
             console.error("[Guest Checkout Error]", err);
@@ -278,7 +272,7 @@ export default function PricingPage() {
 
                 {usingFallback && !loading && (
                     <div className="mb-8 flex items-center justify-between gap-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                        <span>Showing estimated plans while live pricing connects to the server.</span>
+                        <span>Live pricing is temporarily unavailable. These figures are estimates only; checkout and trials are disabled until live prices are confirmed.</span>
                         <button
                             type="button"
                             onClick={fetchPlans}
@@ -371,7 +365,8 @@ export default function PricingPage() {
                                                     {featured && !access?.isSubscribed && (
                                                         <button
                                                             onClick={() => processDirectCheckout(p.key, "trial")}
-                                                            disabled={locked}
+                                                            disabled={locked || usingFallback}
+                                                            title={usingFallback ? "Live pricing is unavailable; retry before starting a trial." : undefined}
                                                             className="w-full px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold shadow-md shadow-indigo-600/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                                                         >
                                                             {busy === "trial" ? "Processing..." : "Start 14-day trial"}
@@ -379,7 +374,8 @@ export default function PricingPage() {
                                                     )}
                                                     <button
                                                         onClick={() => processDirectCheckout(p.key, "checkout")}
-                                                        disabled={locked}
+                                                        disabled={locked || usingFallback}
+                                                        title={usingFallback ? "Live pricing is unavailable; retry before checkout." : undefined}
                                                         className="w-full px-4 py-2.5 rounded-lg border border-slate-700 hover:bg-white/5 text-sm font-semibold transition-all disabled:opacity-50"
                                                     >
                                                         {busy === p.key ? "Redirecting…" : "Subscribe & Setup Workspace"}

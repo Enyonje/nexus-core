@@ -1,7 +1,6 @@
 // src/routes/admin.js
 import { db } from "../db/db.js";
 import { runExecution } from "../execution/runner.js";
-import rateLimit from "@fastify/rate-limit";
 import { requireAuth } from "../security/authMiddleware.js";
 import { v4 as uuidv4 } from "uuid";
 
@@ -10,12 +9,6 @@ import { v4 as uuidv4 } from "uuid";
  * Mounted at /admin
  */
 export async function adminRoutes(server) {
-  // Attach stricter rate limiting plugin (per IP)
-  await server.register(rateLimit, {
-    max: 10,
-    timeWindow: "1 minute",
-  });
-
   // Allowed origins list for CORS preflight
   const allowedOrigins = [
     "https://nexusthecore.com",

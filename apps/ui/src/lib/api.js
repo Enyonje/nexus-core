@@ -2,6 +2,7 @@
 import axios from "axios";
 
 const API_BASE_URL = (
+  import.meta.env.VITE_SUPPORTOPS_API_URL ||
   import.meta.env.VITE_BACKEND_API_URL ||
   import.meta.env.VITE_API_URL ||
   "https://nexus-core-a0px.onrender.com"
@@ -68,6 +69,11 @@ apiClient.interceptors.request.use((config) => {
   if (orgId) {
     config.headers = config.headers || {};
     config.headers["X-Org-Id"] = orgId;
+  }
+
+  if (window.location.pathname.startsWith("/supportops")) {
+    config.headers = config.headers || {};
+    config.headers["X-App-Slug"] = "supportops";
   }
 
   return config;
@@ -170,11 +176,12 @@ apiClient.interceptors.response.use(
 export const apiFetch = async (endpoint, options = {}) => {
   const method = (options.method || "GET").toLowerCase();
 
-  let cleanEndpoint = endpoint.startsWith("/")
+  const isAbsoluteUrl = /^https?:\/\//i.test(endpoint);
+  let cleanEndpoint = isAbsoluteUrl
     ? endpoint
-    : `/${endpoint}`;
+    : (endpoint.startsWith("/") ? endpoint : `/${endpoint}`);
 
-  if (!cleanEndpoint.startsWith("/api/") && cleanEndpoint !== "/api") {
+  if (!isAbsoluteUrl && !cleanEndpoint.startsWith("/api/") && cleanEndpoint !== "/api") {
     cleanEndpoint = `/api${cleanEndpoint}`;
   }
 

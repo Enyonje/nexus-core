@@ -1,102 +1,25 @@
-import axios from "axios";
+import { apiFetch as sharedApiFetch } from "../../../lib/api";
 
-const api = axios.create({
-  baseURL:
-    import.meta.env.VITE_BACKEND_API_URL ||
-    import.meta.env.VITE_API_URL ||
-    "https://nexus-core-a0px.onrender.com",
-  withCredentials: true,
-  timeout: 15000,
-});
+export const apiFetch = (url, options = {}) => sharedApiFetch(url, options);
 
-// Attach JWT token and Workspace Organization header automatically
-api.interceptors.request.use(
-  (config) => {
-    const token =
-      localStorage.getItem("access_token") ||
-      localStorage.getItem("token") ||
-      localStorage.getItem("authToken");
+const legacyRequest = (method) => async (url, bodyOrConfig, maybeConfig = {}) => {
+  const isRead = method === "GET" || method === "DELETE";
+  const options = isRead
+    ? { ...(bodyOrConfig || {}), method }
+    : { ...(maybeConfig || {}), method, body: bodyOrConfig };
+  const data = await sharedApiFetch(url, options);
+  return { data };
+};
 
-    if (token && token !== "undefined" && token !== "null") {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    // Automatically attach active workspace organization ID for SupportOps/Nexus routing
-    const activeOrgId =
-      localStorage.getItem("activeOrgId") ||
-      localStorage.getItem("orgId");
-
-    if (activeOrgId && activeOrgId !== "undefined" && activeOrgId !== "null") {
-      config.headers["X-Org-Id"] = activeOrgId;
-    }
-
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-// Global auth error handling and error status normalization
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    const status = error?.response?.status;
-
-    // Attach HTTP status code directly to error object for catch block checks (err.status)
-    if (status) {
-      error.status = status;
-    }
-
-    if (status === 401) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("token");
-      localStorage.removeItem("authToken");
-      localStorage.removeItem("user");
-      localStorage.removeItem("activeOrgId");
-      localStorage.removeItem("orgId");
-
-      // Dispatch custom event for state providers
-      window.dispatchEvent(new CustomEvent("auth:unauthorized"));
-
-      // Prevent redirect loops on public authentication pages
-      const publicRoutes = ["/login", "/register", "/forgot-password", "/reset-password"];
-      const isPublicRoute = publicRoutes.some((route) =>
-        window.location.pathname.startsWith(route)
-      );
-
-      if (!isPublicRoute) {
-        window.location.href = "/login";
-      }
-    }
-
-    return Promise.reject(error);
-  }
-);
-
-/**
- * Named apiFetch wrapper around Axios for compatibility with fetch-style calls.
- */
-export const apiFetch = async (url, options = {}) => {
-  const { method = "GET", body, headers, signal } = options;
-
-  let data = body;
-  // Auto-parse stringified JSON payloads if passed from legacy fetch callers
-  if (typeof body === "string") {
-    try {
-      data = JSON.parse(body);
-    } catch {
-      data = body;
-    }
-  }
-
-  const response = await api({
-    method,
-    url,
-    data,
-    headers,
-    signal,
-  });
-
-  return response.data;
+// Compatibility for older SupportOps screens that consume axios-style responses.
+// Authentication, refresh, tenant selection, timeout and error normalization are
+// handled by the single shared Nexus API client.
+const api = {
+  get: legacyRequest("GET"),
+  post: legacyRequest("POST"),
+  put: legacyRequest("PUT"),
+  patch: legacyRequest("PATCH"),
+  delete: legacyRequest("DELETE"),
 };
 
 export default api;

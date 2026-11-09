@@ -21,8 +21,25 @@ const DEFAULT_GUEST_USER = {
 
 const DEFAULT_GUEST_SUBSCRIPTION = {
   tier: "free",
-  status: "active",
+  status: "inactive",
 };
+
+function subscriptionRequestOptions() {
+  return window.location.pathname.startsWith("/supportops")
+    ? { headers: { "x-app-slug": "supportops" } }
+    : {};
+}
+
+function persistActiveOrganization(user) {
+  const orgId = user?.org_id || user?.organization?.id;
+  if (orgId) {
+    localStorage.setItem("activeOrgId", orgId);
+    localStorage.setItem("orgId", orgId);
+  } else {
+    localStorage.removeItem("activeOrgId");
+    localStorage.removeItem("orgId");
+  }
+}
 
 function getToken() {
   return (
@@ -130,11 +147,13 @@ export function AuthProvider({ children }) {
 
       setUser(resolvedUser);
       saveSessionUser(resolvedUser);
+      persistActiveOrganization(resolvedUser);
 
       // Subscription information is secondary to authentication.
       try {
         const subscriptionResponse = await apiFetch(
-          "/auth/subscription"
+          "/auth/subscription",
+          subscriptionRequestOptions()
         );
 
         if (requestId === requestIdRef.current) {
@@ -250,6 +269,7 @@ export function AuthProvider({ children }) {
 
     localStorage.setItem("token", token);
     localStorage.setItem("authToken", token);
+    persistActiveOrganization(resolvedUser);
 
     setUser(resolvedUser);
     saveSessionUser(resolvedUser);
@@ -259,7 +279,8 @@ export function AuthProvider({ children }) {
     // Retrieve subscription information separately.
     try {
       const subscriptionResponse = await apiFetch(
-        "/auth/subscription"
+        "/auth/subscription",
+        subscriptionRequestOptions()
       );
 
       const resolvedSubscription =
@@ -320,6 +341,7 @@ export function AuthProvider({ children }) {
 
     localStorage.setItem("token", token);
     localStorage.setItem("authToken", token);
+    persistActiveOrganization(resolvedUser);
 
     setUser(resolvedUser);
     saveSessionUser(resolvedUser);

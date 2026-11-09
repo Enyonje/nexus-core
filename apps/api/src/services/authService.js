@@ -148,7 +148,7 @@ function resolveRedirect(intent) {
 // JWT ACCESS TOKEN
 // ============================================================
 
-function createAccessToken(user, companyName) {
+export function createAccessToken(user, companyName) {
     validateConfiguration();
 
     return jwt.sign(
@@ -264,6 +264,7 @@ export async function registerUser({
     //
     // --------------------------------------------------------
 
+    const newUserId = uuidv4();
     const result = await prisma.$transaction(
         async (tx) => {
 
@@ -292,8 +293,8 @@ export async function registerUser({
                         id: uuidv4(),
 
                         name: orgName,
-
                         type: "TEAM",
+                        owner_id: newUserId,
                     },
                 });
 
@@ -302,7 +303,7 @@ export async function registerUser({
             const user =
                 await tx.user.create({
                     data: {
-                        id: uuidv4(),
+                        id: newUserId,
 
                         email,
 
@@ -336,16 +337,40 @@ export async function registerUser({
                 });
 
             // Create organization owner membership.
-
             await tx.membership.create({
                 data: {
                     org_id: org.id,
-
                     user_id: user.id,
-
                     org_role: "owner",
                 },
             });
+
+            // App-level privilege is scoped to this workspace. Never elevate the
+            // global User.role merely because someone created an organization.
+            if (registrationIntent === "supportops") {
+                const supportOps = await tx.app.findFirst({
+                    where: { slug: "supportops", active: true },
+                    select: { id: true, roles: true },
+                });
+                if (!supportOps) {
+                    throw {
+                        status: 503,
+                        code: "SUPPORTOPS_NOT_CONFIGURED",
+                        message: "SupportOps is temporarily unavailable for registration. Please try again later.",
+                    };
+                }
+                if (!supportOps.roles.includes("admin")) {
+                    throw new Error("SupportOps app configuration is missing the admin role");
+                }
+                await tx.appAccess.create({
+                        data: {
+                            org_id: org.id,
+                            user_id: user.id,
+                            app_id: supportOps.id,
+                        app_role: "admin",
+                    },
+                });
+            }
 
             return {
                 org,
@@ -395,10 +420,11 @@ export async function registerUser({
 
         user: {
             ...user,
-
             company: org.name,
-
             intent: registrationIntent,
+            appAccess: registrationIntent === "supportops"
+                ? [{ app: { slug: "supportops", name: "SupportOps" }, app_role: "admin" }]
+                : [],
         },
 
         redirectTo:

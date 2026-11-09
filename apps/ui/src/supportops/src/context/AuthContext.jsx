@@ -44,7 +44,8 @@ function supportOpsRole(user, access) {
   }
 
   const appRole =
-    access?.apps?.supportops?.role;
+    access?.apps?.supportops?.role ||
+    user?.appAccess?.find((grant) => grant?.app?.slug === "supportops")?.app_role;
 
   const metadataRole =
     user?.app_metadata?.role ||

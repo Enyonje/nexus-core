@@ -8,11 +8,12 @@
     "worker": "node src/worker.js",
     "migrate": "node src/db/migrate.js",
     "start": "node src/server.js",
-    "build": "tsc",
+    "build": "node scripts/check-js.js",
     "prisma:generate": "prisma generate",
     "postinstall": "prisma generate",
     "postbuild": "node scripts/generate-sitemap.js",
-    "prisma:migrate": "prisma migrate deploy"
+    "prisma:migrate": "prisma migrate deploy",
+    "test": "node --test"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

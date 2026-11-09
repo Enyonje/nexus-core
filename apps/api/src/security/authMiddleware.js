@@ -8,12 +8,16 @@ if (!JWT_SECRET || JWT_SECRET.length < 32) {
 }
 
 /**
- * Extracts raw token string from request headers, cookies, or query parameters.
+ * Extract bearer credentials only from Authorization or the HttpOnly auth cookie.
+ * Query-string tokens are deliberately rejected because URLs are routinely logged,
+ * copied into browser history and sent as referrers.
  */
 function extractToken(req) {
-  return req.headers.authorization?.startsWith("Bearer ")
-    ? req.headers.authorization.split(" ")[1]
-    : req.cookies?.authToken || req.query?.token || null;
+  const authorization = req.headers.authorization;
+  if (typeof authorization === "string" && authorization.startsWith("Bearer ")) {
+    return authorization.slice(7).trim() || null;
+  }
+  return req.cookies?.authToken || null;
 }
 
 /**
@@ -29,30 +33,33 @@ export async function requireAuth(req, reply) {
     }
 
     // Verify JWT payload
-    const payload = jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, JWT_SECRET, {
+      issuer: "nexus-api",
+      audience: "nexus-client",
+    });
+    if (typeof payload.sub !== "string" || !payload.sub) {
+      return reply.code(401).send({ error: "AUTH_INVALID_TOKEN" });
+    }
+
+    const dbUser = await prisma.user.findFirst({
+      where: { id: payload.sub, deleted_at: null },
+      select: { id: true, email: true, role: true, subscription: true, org_id: true },
+    });
+    if (!dbUser) {
+      return reply.code(401).send({ error: "AUTH_ACCOUNT_UNAVAILABLE" });
+    }
 
     req.identity = payload;
+    // The database is authoritative for mutable identity and tenant claims.
+    // Never trust a stale JWT role or org_id for authorization decisions.
     req.user = {
-      id: payload.sub,
-      email: payload.email,
-      role: payload.role,
-      subscription: payload.subscription,
-      org_id: payload.org_id,
+      id: dbUser.id,
+      email: dbUser.email,
+      role: dbUser.role,
+      subscription: dbUser.subscription,
+      org_id: dbUser.org_id,
       company: payload.company,
     };
-
-    // Fallback: Refresh role/subscription from database if missing in token
-    if (!req.user.subscription || !req.user.role) {
-      const dbUser = await prisma.user.findUnique({
-        where: { id: req.user.id },
-        select: { subscription: true, role: true },
-      });
-
-      if (dbUser) {
-        req.user.subscription = dbUser.subscription;
-        req.user.role = dbUser.role;
-      }
-    }
   } catch (err) {
     req.log?.error({ err }, "Auth verification failed");
     return reply.code(401).send({ error: "AUTH_INVALID_TOKEN" });
@@ -73,14 +80,29 @@ export async function optionalAuth(req, reply) {
       return;
     }
 
-    const payload = jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, JWT_SECRET, {
+      issuer: "nexus-api",
+      audience: "nexus-client",
+    });
+    if (typeof payload.sub !== "string" || !payload.sub) {
+      req.user = null;
+      return;
+    }
+    const dbUser = await prisma.user.findFirst({
+      where: { id: payload.sub, deleted_at: null },
+      select: { id: true, email: true, role: true, subscription: true, org_id: true },
+    });
+    if (!dbUser) {
+      req.user = null;
+      return;
+    }
     req.identity = payload;
     req.user = {
-      id: payload.sub,
-      email: payload.email,
-      role: payload.role,
-      subscription: payload.subscription,
-      org_id: payload.org_id,
+      id: dbUser.id,
+      email: dbUser.email,
+      role: dbUser.role,
+      subscription: dbUser.subscription,
+      org_id: dbUser.org_id,
       company: payload.company,
     };
   } catch (err) {
