@@ -1,5 +1,5 @@
 // server.js
-import Fastify, { FastifyInstance } from 'fastify';
+import Fastify from 'fastify';
 import Stripe from "stripe";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
