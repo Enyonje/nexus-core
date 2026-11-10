@@ -19,35 +19,62 @@ function initializeSSEResponse(req, reply) {
     "http://localhost:3000",
   ];
 
-  reply.raw.writeHead(200, {
-    "Content-Type": "text/event-stream",
+  if (origin && !allowedOrigins.includes(origin)) {
+    return reply.code(403).send({ error: "ORIGIN_NOT_ALLOWED" });
+  }
+
+  const headers = {
+    "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": "no-cache, no-transform",
     "Connection": "keep-alive",
-    "X-Accel-Buffering": "no", // CRITICAL for Render / NGINX
-    "Access-Control-Allow-Origin": origin && allowedOrigins.includes(origin) ? origin : "*",
-    "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Methods": "GET,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Org-Id",
-  });
+    "X-Accel-Buffering": "no",
+    "Vary": "Origin",
+  };
+  if (origin) {
+    headers["Access-Control-Allow-Origin"] = origin;
+    headers["Access-Control-Allow-Credentials"] = "true";
+  }
+
+  reply.hijack();
+  reply.raw.writeHead(200, headers);
+  reply.raw.write("retry: 3000\n");
+}
+
+function attachLifecycle(reply, remove) {
+  let closed = false;
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    clearInterval(ping);
+    remove();
+  };
+  const ping = setInterval(() => {
+    if (reply.raw.destroyed || reply.raw.writableEnded) {
+      cleanup();
+      return;
+    }
+    try {
+      reply.raw.write(`: ping ${Date.now()}\n\n`);
+    } catch {
+      cleanup();
+      reply.raw.destroy?.();
+    }
+  }, 20_000);
+  ping.unref?.();
+  reply.raw.on("close", cleanup);
+  reply.raw.on("error", cleanup);
 }
 
 /**
  * Register SSE client for a given executionId
  */
 function registerClient(executionId, reply) {
-  if (!clients.has(executionId)) {
-    clients.set(executionId, new Set());
-  }
-  clients.get(executionId).add(reply);
-
-  reply.raw.on("close", () => {
-    const listeners = clients.get(executionId);
-    if (listeners) {
-      listeners.delete(reply);
-      if (listeners.size === 0) {
-        clients.delete(executionId);
-      }
-    }
+  if (!clients.has(executionId)) clients.set(executionId, new Set());
+  const listeners = clients.get(executionId);
+  listeners.add(reply);
+  attachLifecycle(reply, () => {
+    listeners.delete(reply);
+    if (listeners.size === 0) clients.delete(executionId);
   });
 }
 
@@ -56,9 +83,7 @@ function registerClient(executionId, reply) {
  */
 function registerGlobalClient(reply) {
   globalClients.add(reply);
-  reply.raw.on("close", () => {
-    globalClients.delete(reply);
-  });
+  attachLifecycle(reply, () => globalClients.delete(reply));
 }
 
 /**
@@ -68,11 +93,17 @@ function emitEvent(executionId, payload) {
   const serialized = `event: ${payload.event || "activity"}\ndata: ${JSON.stringify(payload)}\n\n`;
 
   // Emit to global activity stream listeners
-  for (const reply of globalClients) {
+  for (const reply of [...globalClients]) {
+    if (reply.raw.destroyed || reply.raw.writableEnded) {
+      globalClients.delete(reply);
+      continue;
+    }
     try {
       reply.raw.write(serialized);
     } catch (err) {
       reply.log?.warn("Global SSE write failed:", err.message);
+      globalClients.delete(reply);
+      reply.raw.destroy?.();
     }
   }
 
@@ -80,13 +111,20 @@ function emitEvent(executionId, payload) {
   const listeners = clients.get(executionId);
   if (!listeners) return;
 
-  for (const reply of listeners) {
+  for (const reply of [...listeners]) {
+    if (reply.raw.destroyed || reply.raw.writableEnded) {
+      listeners.delete(reply);
+      continue;
+    }
     try {
       reply.raw.write(serialized);
     } catch (err) {
       reply.log?.warn("SSE write failed:", err.message);
+      listeners.delete(reply);
+      reply.raw.destroy?.();
     }
   }
+  if (!listeners.size) clients.delete(executionId);
 }
 
 /**
@@ -131,6 +169,7 @@ export async function streamRoutes(server) {
     async (req, reply) => {
       try {
         initializeSSEResponse(req, reply);
+        if (reply.sent) return;
 
         reply.raw.write(
           `data: ${JSON.stringify({
@@ -158,6 +197,7 @@ export async function streamRoutes(server) {
       try {
         const { executionId } = req.params;
         initializeSSEResponse(req, reply);
+        if (reply.sent) return;
 
         reply.raw.write(
           `data: ${JSON.stringify({

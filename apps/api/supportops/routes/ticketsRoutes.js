@@ -7,6 +7,7 @@ import { toView } from "./ticketService.js";
 import { addNote, sendReply } from "./replyService.js";
 import { listTemplates } from "./templateService.js";
 import { OutboundError } from "./outbound.js";
+import { staff, push } from "./realtime.js";
 
 const STATUSES = ["open", "pending", "solved", "closed"];
 const PRIORITIES = ["low", "normal", "high", "urgent"];
@@ -68,7 +69,9 @@ export default async function ticketsRoutes(app) {
                 ...(assignToMe ? { assignee_id: req.user.id } : {}),
             },
         });
-        return toView(t);
+        const view = toView(t);
+        push(staff, req.access.org.id, { type: "ticket", event: "ticket_updated", ticket: view });
+        return view;
     });
 
     // POST /:number/reply  { body }   delivers on the customer's channel, then records it

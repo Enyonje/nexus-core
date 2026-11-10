@@ -38,7 +38,7 @@ import * as inviteRoutesMod from "../supportops/routes/inviteRoutes.js";
 import * as readinessRoutesMod from "../supportops/routes/readinessRoutes.js";
 import * as billingV1Mod from "../supportops/routes/billingRoutes.js";
 import webhookRoutes from "../supportops/routes/webhooks.js";
-import realtimeRoutes from "../supportops/routes/realtime.js";
+import { initializeRealtime, closeRealtime } from "../supportops/routes/realtime.js";
 
 function isClassConstructor(func) {
   if (typeof func !== "function") return false;
@@ -136,7 +136,6 @@ async function start() {
   }
 
   await app.register(fastifyJwt, { secret: env.JWT_SECRET || "fallback-jwt" });
-  await app.register(realtimeRoutes, { prefix: "/api/v1" });
 
   /* ========================= CORE ROUTES ========================= */
   // Mount auth plugin under root /auth, /api/auth, and /api/v1/auth
@@ -195,6 +194,12 @@ async function start() {
         ? "An error occurred"
         : error.message || "An error occurred",
     });
+  });
+
+  // Shared Redis Pub/Sub is required for realtime fan-out across multiple API instances.
+  await initializeRealtime();
+  app.addHook("onClose", async () => {
+    await closeRealtime();
   });
 
   const port = process.env.PORT || env.PORT || 10000;

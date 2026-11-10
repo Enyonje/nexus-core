@@ -290,6 +290,8 @@ export default async function billingRoutes(app) {
                 });
             }
 
+            // Calculate once so the persisted expiry and API response are identical.
+            const trialEndsAt = trialEnd();
             await prisma.subscription.create({
                 data: {
                     org_id: org.id,
@@ -309,7 +311,7 @@ export default async function billingRoutes(app) {
                 create: { org_id: org.id, user_id: req.user.id, app_id: sup.id, app_role: "admin" },
             });
 
-            return reply.code(201).send({ ok: true, trialEndsAt: trialEnd() });
+            return reply.code(201).send({ ok: true, trialEndsAt: trialEndsAt.toISOString(), plan: plan.key, trialDays: 14 });
         } catch (e) {
             if (fail(reply, e)) return;
             throw e;

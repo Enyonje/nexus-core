@@ -342,13 +342,15 @@ export async function billingRoutes(app) {
         });
       }
 
+      // Persist and return the exact same expiry timestamp.
+      const trialEndsAt = trialEnd();
       await prisma.subscription.create({
         data: {
           org_id: org.id,
           app_id: sup.id,
           plan_id: plan.id,
           status: "trialing",
-          trial_ends_at: trialEnd(),
+          trial_ends_at: trialEndsAt,
           limit_overrides: { ai_resolutions: 100 },
         },
       });
@@ -361,7 +363,7 @@ export async function billingRoutes(app) {
         create: { org_id: org.id, user_id: req.user.id, app_id: sup.id, app_role: "admin" },
       });
 
-      return reply.code(201).send({ ok: true, trialEndsAt: trialEnd() });
+      return reply.code(201).send({ ok: true, trialEndsAt: trialEndsAt.toISOString(), plan: plan.key, trialDays: 14 });
     } catch (e) {
       if (fail(reply, e)) return;
       throw e;
