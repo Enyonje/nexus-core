@@ -213,6 +213,50 @@ fastify.post('/api/v1/supportops/checkout', async (request, reply) => {
 });
 
 // ==========================================
+// 4. PROVISION WORKSPACE ENDPOINT (POST)
+// ==========================================
+fastify.post('/api/v1/supportops/provision-workspace', async (request, reply) => {
+  try {
+    const {
+      companyName,
+      adminName,
+      adminEmail,
+      password,
+      teamSize,
+      primaryChannel,
+      planId,
+      onboardingType,
+      stripeSessionId,
+    } = request.body || {};
+
+    if (!companyName || !adminEmail || !password) {
+      return reply.status(400).send({
+        success: false,
+        error: 'Missing required workspace fields (companyName, adminEmail, password).',
+      });
+    }
+
+    fastify.log.info(`[Workspace Setup] Provisioning tenant "${companyName}" for admin ${adminEmail}`);
+
+    // TODO: Hash password and store company/user details in PostgreSQL/MongoDB
+    // const workspace = await db.workspaces.create({ ... });
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Workspace provisioned successfully.',
+      token: 'jwt_mock_session_token_' + Date.now(),
+      dashboardUrl: '/supportops/dashboard?status=setup_complete',
+    });
+  } catch (err) {
+    fastify.log.error('[Workspace Setup Error]:', err.message);
+    return reply.status(500).send({
+      success: false,
+      error: 'Server error while provisioning workspace.',
+    });
+  }
+});
+
+// ==========================================
 // 4. ENTERPRISE LEAD CAPTURE / CONTACT SALES
 // ==========================================
 fastify.post('/api/v1/supportops/contact-sales', async (req, res) => {

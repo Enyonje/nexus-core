@@ -14,6 +14,7 @@ import PublicDemoPage from "../pages/PublicDemoPage";
 import CancelPage from "../pages/CancelPage";
 import SuccessPage from "../pages/SuccessPage";
 import AuthPage from "../pages/AuthPage";
+import SupportOpsOnboarding from "../pages/SupportOpsOnboarding";
 
 // Layouts
 import AgentLayout from "../layouts/AgentLayout";
@@ -135,6 +136,10 @@ export default function SupportOpsRoutes() {
                 element={<SuccessPage />}
             />
 
+            <Route
+                path="onboarding"
+                element={<SupportOpsOnboarding />}
+            />
 
             {/* ================================================
                 PROTECTED APPLICATION ROUTES
