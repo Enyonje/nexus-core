@@ -60,7 +60,7 @@ export default function SupportOpsOnboarding() {
             }
 
             // Redirect to the active SupportOps workspace dashboard
-            window.location.href = data.dashboardUrl || '/supportops/dashboard';
+            window.location.href = data.dashboardUrl || '/supportops/admin';
         } catch (err) {
             console.error('[Onboarding Error]:', err);
             setError(err.message || 'An error occurred during workspace setup.');
