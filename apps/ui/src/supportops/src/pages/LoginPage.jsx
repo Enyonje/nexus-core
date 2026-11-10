@@ -35,7 +35,7 @@ export default function LoginPage() {
             }
 
             // Redirect to the Super Admin Dashboard
-            window.location.href = data.redirectUrl || '/supportops/admin';
+            window.location.href = data.redirectUrl || '/supportops/admin/executive';
         } catch (err) {
             console.error('[Login Error]:', err);
             setError(err.message || 'Failed to authenticate. Please check your credentials.');
@@ -82,7 +82,7 @@ export default function LoginPage() {
                     <div>
                         <div className="flex items-center justify-between mb-1">
                             <label className="block text-xs font-medium text-slate-300">Password</label>
-                            <a href="/supportops/forgot-password" class="text-xs text-cyan-400 hover:underline">Forgot password?</a>
+                            <a href="/supportops/forgot-password" className="text-xs text-cyan-400 hover:underline">Forgot password?</a>
                         </div>
                         <input
                             type="password"
