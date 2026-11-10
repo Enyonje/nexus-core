@@ -68,7 +68,7 @@ function resolvePlugin(mod, label = "unknown") {
 
 const app = Fastify({ logger: true, bodyLimit: 1048576 });
 // Express / Node.js backend route implementation
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // 1. Broadcast Live Pricing Tiers
 app.get('/api/v1/supportops/pricing', async (req, res) => {
