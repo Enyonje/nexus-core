@@ -1,5 +1,6 @@
 // server.js
 import Fastify from "fastify";
+import Stripe from "stripe";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import fastifyPostgres from "@fastify/postgres";
