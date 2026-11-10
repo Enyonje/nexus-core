@@ -1,190 +1,89 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { ShieldCheck, Loader2 } from "lucide-react";
+
+const DEFAULT_API = (import.meta.env.VITE_SUPPORTOPS_API_URL || import.meta.env.VITE_BACKEND_API_URL || import.meta.env.VITE_API_URL || "https://nexus-core-a0px.onrender.com").replace(/\/$/, "").replace(/\/api\/v1$/, "").replace(/\/api$/, "");
 
 export default function SupportOpsOnboarding() {
-    const [params, setParams] = useState({ plan: 'price_supportops_growth', type: 'trial', sessionId: null });
-    const [formData, setFormData] = useState({
-        companyName: '',
-        adminName: '',
-        adminEmail: '',
-        password: '',
-        teamSize: '1-5',
-        primaryChannel: 'email',
-    });
+    const [params, setParams] = useState({ plan: "growth", type: "trial" });
+    const [formData, setFormData] = useState({ companyName: "", adminName: "", adminEmail: "", password: "", teamSize: "1-5", primaryChannel: "email" });
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
+    const [error, setError] = useState("");
 
-    const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://nexus-core-a0px.onrender.com/api/v1').replace(/\/$/, '');
-
-    // Parse URL query parameters on load (?plan=...&type=...&session_id=...)
     useEffect(() => {
-        const searchParams = new URLSearchParams(window.location.search);
-        setParams({
-            plan: searchParams.get('plan') || 'price_supportops_growth',
-            type: searchParams.get('type') || 'trial',
-            sessionId: searchParams.get('session_id') || null,
-        });
+        const query = new URLSearchParams(window.location.search);
+        setParams({ plan: query.get("plan") || "growth", type: query.get("type") || "trial" });
     }, []);
 
-    const handleChange = (e) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
-    };
+    const endpoint = useMemo(() => `${DEFAULT_API}/api/v1/billing/guest-checkout`, []);
+    const change = (event) => setFormData((current) => ({ ...current, [event.target.name]: event.target.value }));
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
+    async function submit(event) {
+        event.preventDefault();
+        setError("");
+        if (formData.password.length < 8) return setError("Your password must contain at least 8 characters.");
         setLoading(true);
-        setError(null);
-
         try {
-            const payload = {
-                ...formData,
-                planId: params.plan,
-                onboardingType: params.type,
-                stripeSessionId: params.sessionId,
-            };
-
-            const res = await fetch(`${API_BASE}/supportops/provision-workspace`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
+            const response = await fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-App-Slug": "supportops" },
+                body: JSON.stringify({
+                    app: "supportops",
+                    mode: params.type === "trial" ? "trial" : "checkout",
+                    plan: params.plan === "price_supportops_growth" ? "growth" : params.plan,
+                    workspaceName: formData.companyName.trim(),
+                    fullName: formData.adminName.trim(),
+                    email: formData.adminEmail.trim().toLowerCase(),
+                    password: formData.password,
+                    teamSize: formData.teamSize,
+                    primaryChannel: formData.primaryChannel,
+                    addons: [],
+                }),
             });
-
-            const data = await res.json();
-
-            if (!res.ok || !data.success) {
-                throw new Error(data.error || 'Failed to provision workspace.');
-            }
-
-            // Store auth state / token if returned
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) throw new Error(data.message || data.error || "We couldn't create your SupportOps workspace.");
             if (data.token) {
-                localStorage.setItem('supportops_token', data.token);
+                localStorage.setItem("token", data.token);
+                localStorage.setItem("authToken", data.token);
             }
-
-            // Redirect to the active SupportOps workspace dashboard
-            window.location.href = data.dashboardUrl || '/supportops/admin';
+            if (data.orgId) {
+                localStorage.setItem("activeOrgId", data.orgId);
+                localStorage.setItem("orgId", data.orgId);
+            }
+            localStorage.setItem("supportops_trial_ends_at", data.trialEndsAt || "");
+            window.location.assign(data.dashboardUrl || data.redirectTo || "/supportops/admin/executive");
         } catch (err) {
-            console.error('[Onboarding Error]:', err);
-            setError(err.message || 'An error occurred during workspace setup.');
+            setError(err.message || "An error occurred during workspace setup.");
         } finally {
             setLoading(false);
         }
-    };
+    }
 
-    return (
-        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
-            <div className="max-w-xl w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl space-y-6">
-
-                {/* Header Badge & Title */}
-                <div className="text-center space-y-2">
-                    <span className="inline-block px-3 py-1 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-semibold rounded-full uppercase tracking-wider">
-                        {params.type === 'trial' ? '14-Day Free Trial Setup' : 'Workspace Provisioning'}
-                    </span>
-                    <h1 className="text-2xl font-bold text-white">Setup Your SupportOps Admin Account</h1>
-                    <p className="text-slate-400 text-sm">
-                        Configure your autonomous AI ticket triage engine and team workspace.
-                    </p>
+    const input = "w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500";
+    return <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-10 text-white">
+        <section className="w-full max-w-2xl space-y-6 rounded-2xl border border-slate-800 bg-slate-900 p-7 shadow-2xl sm:p-9">
+            <header className="text-center">
+                <Link to="/supportops" className="mb-5 inline-flex items-center gap-2 text-cyan-400"><ShieldCheck /> SupportOps</Link>
+                <p className="mx-auto mb-3 w-fit rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-cyan-300">{params.type === "trial" ? "14-day free trial" : "Workspace setup"}</p>
+                <h1 className="text-2xl font-bold">Create your administrator workspace</h1>
+                <p className="mt-2 text-sm text-slate-400">Your account becomes the workspace owner. Team members join only through administrator invitations.</p>
+            </header>
+            {error && <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">{error}</div>}
+            <form onSubmit={submit} className="space-y-4">
+                <label className="block text-xs text-slate-300">Company / workspace name<input className={`${input} mt-1`} name="companyName" required minLength={2} maxLength={120} value={formData.companyName} onChange={change} placeholder="Acme Cloud Systems" /></label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block text-xs text-slate-300">Administrator full name<input className={`${input} mt-1`} name="adminName" required maxLength={120} value={formData.adminName} onChange={change} placeholder="Full name" /></label>
+                    <label className="block text-xs text-slate-300">Work email<input className={`${input} mt-1`} type="email" name="adminEmail" required maxLength={254} value={formData.adminEmail} onChange={change} placeholder="admin@company.com" /></label>
                 </div>
-
-                {error && (
-                    <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl">
-                        {error}
-                    </div>
-                )}
-
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Company / Workspace Name</label>
-                        <input
-                            type="text"
-                            name="companyName"
-                            required
-                            placeholder="e.g. Acme Cloud Systems"
-                            value={formData.companyName}
-                            onChange={handleChange}
-                            className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-cyan-500 text-sm"
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-medium text-slate-300 mb-1">Admin Full Name</label>
-                            <input
-                                type="text"
-                                name="adminName"
-                                required
-                                placeholder="Evans Nyonje"
-                                value={formData.adminName}
-                                onChange={handleChange}
-                                className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-cyan-500 text-sm"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-slate-300 mb-1">Admin Work Email</label>
-                            <input
-                                type="email"
-                                name="adminEmail"
-                                required
-                                placeholder="admin@company.com"
-                                value={formData.adminEmail}
-                                onChange={handleChange}
-                                className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-cyan-500 text-sm"
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Account Password</label>
-                        <input
-                            type="password"
-                            name="password"
-                            required
-                            minLength={8}
-                            placeholder="••••••••••••"
-                            value={formData.password}
-                            onChange={handleChange}
-                            className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-cyan-500 text-sm"
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-medium text-slate-300 mb-1">Estimated Team Seats</label>
-                            <select
-                                name="teamSize"
-                                value={formData.teamSize}
-                                onChange={handleChange}
-                                className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-cyan-500 text-sm"
-                            >
-                                <option value="1-5">1 - 5 seats</option>
-                                <option value="6-20">6 - 20 seats</option>
-                                <option value="21-50">21 - 50 seats</option>
-                                <option value="50+">50+ Enterprise seats</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-slate-300 mb-1">Primary Support Channel</label>
-                            <select
-                                name="primaryChannel"
-                                value={formData.primaryChannel}
-                                onChange={handleChange}
-                                className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-cyan-500 text-sm"
-                            >
-                                <option value="email">Email / Support Desk</option>
-                                <option value="inapp">In-App Chat Widget</option>
-                                <option value="zendesk">Zendesk / Intercom Sync</option>
-                                <option value="api">Custom API / Webhooks</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-semibold py-3 px-4 rounded-xl transition-colors mt-6 shadow-lg shadow-cyan-600/20"
-                    >
-                        {loading ? 'Provisioning Workspace...' : 'Create Admin Workspace & Launch'}
-                    </button>
-                </form>
-            </div>
-        </div>
-    );
+                <label className="block text-xs text-slate-300">Account password<input className={`${input} mt-1`} type="password" name="password" required minLength={8} maxLength={128} autoComplete="new-password" value={formData.password} onChange={change} placeholder="At least 8 characters" /></label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block text-xs text-slate-300">Estimated team size<select className={`${input} mt-1`} name="teamSize" value={formData.teamSize} onChange={change}><option value="1-5">1–5 seats</option><option value="6-20">6–20 seats</option><option value="21-50">21–50 seats</option><option value="50+">50+ enterprise seats</option></select></label>
+                    <label className="block text-xs text-slate-300">Primary support channel<select className={`${input} mt-1`} name="primaryChannel" value={formData.primaryChannel} onChange={change}><option value="email">Email / support desk</option><option value="inapp">In-app chat widget</option><option value="zendesk">Zendesk / Intercom sync</option><option value="api">Custom API / webhooks</option></select></label>
+                </div>
+                <button disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 py-3 font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60">{loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating workspace…</> : "Create admin workspace & start trial"}</button>
+                <p className="text-center text-xs text-slate-500">14 days on Growth, with the trial usage limits shown in your workspace. No team member receives access until invited.</p>
+            </form>
+            <p className="text-center text-sm text-slate-400">Already have an account? <Link className="text-cyan-400 hover:text-cyan-300" to="/supportops/login">Sign in</Link></p>
+        </section>
+    </main>;
 }

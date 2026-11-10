@@ -145,6 +145,37 @@ fastify.get('/api/v1/supportops/pricing', (req, res) => {
 });
 
 // ==========================================
+// 5. LOGIN AUTHENTICATION ENDPOINT (POST)
+// ==========================================
+fastify.post('/api/v1/supportops/login', async (request, reply) => {
+  try {
+    const { email, password } = request.body || {};
+
+    if (!email || !password) {
+      return reply.status(400).send({
+        success: false,
+        error: 'Email and password are required.',
+      });
+    }
+
+    fastify.log.info(`[Login Attempt] Authenticating user: ${email}`);
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Authentication successful.',
+      token: 'jwt_mock_auth_token_' + Date.now(),
+      redirectUrl: '/supportops/admin/executive', // Redirect to the Super Admin Dashboard after login
+    });
+  } catch (err) {
+    fastify.log.error('[Login Error]:', err.message);
+    return reply.status(500).send({
+      success: false,
+      error: 'Server error during authentication.',
+    });
+  }
+});
+
+// ==========================================
 // 1. FREE TRIAL ENDPOINT -> Admin Workspace Setup Form
 // ==========================================
 fastify.post('/api/v1/supportops/start-trial', async (request, reply) => {
@@ -245,7 +276,7 @@ fastify.post('/api/v1/supportops/provision-workspace', async (request, reply) =>
       success: true,
       message: 'Workspace provisioned successfully.',
       token: 'jwt_mock_session_token_' + Date.now(),
-      dashboardUrl: '/supportops/dashboard?status=setup_complete',
+      dashboardUrl: '/supportops/admin/executive', // Redirect to the admin dashboard after setup
     });
   } catch (err) {
     fastify.log.error('[Workspace Setup Error]:', err.message);
