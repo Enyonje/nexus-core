@@ -144,54 +144,36 @@ app.get('/api/v1/supportops/pricing', (req, res) => {
   return { success: true, tiers };
 });
 
-const fastify = Fastify({ logger: true });
 // ==========================================
-// 2. PAID CHECKOUT ENDPOINT (Stripe Session)
+// 3. STRIPE CHECKOUT ROUTE (POST)
 // ==========================================
 fastify.post('/api/v1/supportops/checkout', async (request, reply) => {
   try {
-    const body = request.body || {};
-    const { priceId, withTrial } = body;
+    const { priceId, withTrial } = request.body || {};
 
     if (!priceId) {
-      return reply.status(400).send({
-        success: false,
-        error: 'Missing required parameter: priceId',
-      });
+      return reply.status(400).send({ success: false, error: 'Missing priceId parameter.' });
     }
 
-    // Check if Stripe is configured
     if (!stripe) {
-      console.warn('[SupportOps Checkout] STRIPE_SECRET_KEY is not configured on Render.');
       return reply.status(200).send({
         success: true,
         url: '/supportops/dashboard?checkout=sandbox_bypass',
       });
     }
 
-    const sessionConfig = {
+    const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       mode: 'subscription',
       success_url: 'https://nexusthecore.com/supportops/dashboard?session_id={CHECKOUT_SESSION_ID}',
       cancel_url: 'https://nexusthecore.com/supportops/pricing',
-    };
+      ...(withTrial && { subscription_data: { trial_period_days: 14 } }),
+    });
 
-    if (withTrial) {
-      sessionConfig.subscription_data = {
-        trial_period_days: 14,
-      };
-    }
-
-    const session = await stripe.checkout.sessions.create(sessionConfig);
     return reply.status(200).send({ success: true, url: session.url });
   } catch (err) {
-    fastify.log.error('[SupportOps Checkout Error]:', err.message);
-
-    return reply.status(500).send({
-      success: false,
-      error: err.message || 'Failed to initialize Stripe checkout session.',
-    });
+    return reply.status(500).send({ success: false, error: err.message });
   }
 });
 
