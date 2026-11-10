@@ -93,6 +93,55 @@ export default function PricingPage() {
     const [busy, setBusy] = useState(null);
     const [loading, setLoading] = useState(true);
     const [showAdminModal, setShowAdminModal] = useState(false);
+    const [tiers, setTiers] = useState([]);
+    const [error, setError] = useState(null);
+    const [processingId, setProcessingId] = useState(null);
+
+    useEffect(() => {
+        const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://nexus-core-a0px.onrender.com/api/v1';
+
+        fetch(`${apiBase}/supportops/pricing`)
+            .then((res) => {
+                if (!res.ok) throw new Error('Failed to fetch pricing broadcast.');
+                return res.json();
+            })
+            .then((data) => {
+                if (data?.success && data?.tiers) {
+                    setTiers(data.tiers);
+                } else {
+                    setError('Invalid pricing payload received.');
+                }
+                setLoading(false);
+            })
+            .catch((err) => {
+                setError('Could not connect to pricing service. Please try again later.');
+                setLoading(false);
+            });
+    }, []);
+
+    const handleSelectPlan = async (priceId) => {
+        setProcessingId(priceId);
+        try {
+            const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://nexus-core-a0px.onrender.com/api/v1';
+
+            const response = await fetch(`${apiBase}/supportops/checkout`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ priceId }),
+            });
+
+            const session = await response.json();
+            if (session?.url) {
+                window.location.href = session.url; // Unblocks the user past pricing and opens checkout
+            } else {
+                alert(session?.error || 'Failed to create checkout session.');
+                setProcessingId(null);
+            }
+        } catch (err) {
+            alert('Network error during checkout initialization.');
+            setProcessingId(null);
+        }
+    };
 
     // Guest Workspace Modal State
     const [showSetupModal, setShowSetupModal] = useState(false);
@@ -173,12 +222,12 @@ export default function PricingPage() {
                 const res = await apiFetch(trialEndpoint, {
                     method: "POST",
                     headers: {
-                      "x-org-id": activeOrgId,
+                        "x-org-id": activeOrgId,
                     },
                     body: {
-                      app: "supportops",
+                        app: "supportops",
                     },
-                  });
+                });
 
                 if (res?.token) localStorage.setItem("authToken", res.token);
                 if (access?.refresh) await access.refresh();

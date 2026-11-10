@@ -67,6 +67,56 @@ function resolvePlugin(mod, label = "unknown") {
 }
 
 const app = Fastify({ logger: true, bodyLimit: 1048576 });
+// Express / Node.js backend route implementation
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+// 1. Broadcast Live Pricing Tiers
+app.get('/api/v1/supportops/pricing', async (req, res) => {
+  try {
+    const prices = await stripe.prices.list({
+      active: true,
+      expand: ['data.product'],
+      limit: 10,
+    });
+
+    const tiers = prices.data.map((price) => ({
+      id: price.id,
+      name: price.product.name,
+      description: price.product.description || 'SupportOps autonomous workflow tier.',
+      price: `$${(price.unit_amount / 100).toFixed(2)}`,
+      currency: price.currency.toUpperCase(),
+      interval: price.recurring?.interval || 'month',
+    }));
+
+    res.json({ success: true, tiers });
+  } catch (err) {
+    console.error('Stripe pricing fetch error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch live pricing broadcast.' });
+  }
+});
+
+// 2. Create Stripe Checkout Session to Unblock User
+app.post('/api/v1/supportops/checkout', async (req, res) => {
+  const { priceId } = req.body;
+  if (!priceId) {
+    return res.status(400).json({ success: false, error: 'Missing priceId parameter.' });
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId, quantity: 1 }],
+      mode: 'subscription',
+      success_url: 'https://nexusthecore.com/supportops/dashboard?session_id={CHECKOUT_SESSION_ID}',
+      cancel_url: 'https://nexusthecore.com/supportops/pricing',
+    });
+
+    res.json({ success: true, url: session.url });
+  } catch (err) {
+    console.error('Stripe checkout error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // ========================= IMMEDIATE HEALTH CHECK ROUTE =========================
 const healthHandler = async (_req, reply) => {
