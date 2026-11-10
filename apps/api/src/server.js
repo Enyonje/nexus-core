@@ -314,7 +314,7 @@ async function start() {
   mountBoth("stripe", stripeRoutesMod, "stripe");
   mountBoth("dashboard", dashboardRoutesMod, ""); // <--- Registers /api/metrics, /api/dashboard/metrics, etc.
 
-  app.register(resolvePlugin(webhooksRoutesMod, "webhooks"));
+  fastify.register(resolvePlugin(webhooksRoutesMod, "webhooks"));
 
   /* ========================= SUPPORTOPS ROUTES ========================= */
   mountBoth("supportops/tickets", ticketsRoutesMod, "supportops/tickets");
