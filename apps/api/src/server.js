@@ -67,7 +67,7 @@ function resolvePlugin(mod, label = "unknown") {
   return picked;
 }
 
-const app = Fastify({ logger: true, bodyLimit: 1048576 });
+const fastify = Fastify({ logger: true, bodyLimit: 1048576 });
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -76,7 +76,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // ==========================================
 // 1. BROADCAST PRICING TIERS
 // ==========================================
-app.get('/api/v1/supportops/pricing', (req, res) => {
+fastify.get('/api/v1/supportops/pricing', (req, res) => {
   const tiers = [
     {
       id: 'supportops_free_trial',
@@ -211,7 +211,7 @@ fastify.post('/api/v1/supportops/start-trial', async (request, reply) => {
 // ==========================================
 // 4. ENTERPRISE LEAD CAPTURE / CONTACT SALES
 // ==========================================
-app.post('/api/v1/supportops/contact-sales', async (req, res) => {
+fastify.post('/api/v1/supportops/contact-sales', async (req, res) => {
   const { name, email, company, requirements } = req.body;
 
   try {
@@ -233,15 +233,15 @@ const healthHandler = async (_req, reply) => {
     timestamp: new Date().toISOString(),
   });
 };
-app.get("/health", healthHandler);
-app.get("/api/health", healthHandler);
-app.get("/api/v1/system/health", healthHandler);
+fastify.get("/health", healthHandler);
+fastify.get("/api/health", healthHandler);
+fastify.get("/api/v1/system/health", healthHandler);
 
 async function start() {
   const mountBoth = (label, mod, prefixSegment) => {
     const plugin = resolvePlugin(mod, label);
-    app.register(plugin, { prefix: `/api/v1/${prefixSegment}` });
-    app.register(plugin, { prefix: `/api/${prefixSegment}` });
+    fastify.register(plugin, { prefix: `/api/v1/${prefixSegment}` });
+    fastify.register(plugin, { prefix: `/api/${prefixSegment}` });
   };
 
   /* ========================= CORS ========================= */
@@ -253,7 +253,7 @@ async function start() {
     process.env.FRONTEND_URL,
     ...(process.env.CORS_ALLOWED_ORIGINS || "").split(",").map((origin) => origin.trim()),
   ].filter(Boolean))];
-  await app.register(cors, () => (req, cb) => {
+  await fastify.register(cors, () => (req, cb) => {
     const origin = req.headers.origin;
     const isWidget = req.url.includes("/chat/widget/");
     const allowed = !origin || isWidget || allowedOrigins.includes(origin);
@@ -276,13 +276,13 @@ async function start() {
   });
 
   /* ========================= PLUGINS ========================= */
-  await app.register(cookie, { secret: env.COOKIE_SECRET });
-  await app.register(rateLimit, { max: 120, timeWindow: "1 minute" });
-  await app.register(websocket);
+  await fastify.register(cookie, { secret: env.COOKIE_SECRET });
+  await fastify.register(rateLimit, { max: 120, timeWindow: "1 minute" });
+  await fastify.register(websocket);
 
   if (env.DATABASE_URL) {
     try {
-      await app.register(fastifyPostgres, {
+      await fastify.register(fastifyPostgres, {
         connectionString: env.DATABASE_URL,
         ssl: env.NODE_ENV === "production"
           ? { ca: env.PG_CA_CERT, rejectUnauthorized: false }
@@ -293,16 +293,16 @@ async function start() {
     }
   }
 
-  await app.register(fastifyJwt, { secret: env.JWT_SECRET || "fallback-jwt" });
+  await fastify.register(fastifyJwt, { secret: env.JWT_SECRET || "fallback-jwt" });
 
   /* ========================= CORE ROUTES ========================= */
   // Mount auth plugin under root /auth, /api/auth, and /api/v1/auth
   const authPlugin = resolvePlugin(authRoutesMod, "auth");
-  app.register(authPlugin, { prefix: "/auth" });
-  app.register(authPlugin, { prefix: "/api/auth" });
-  app.register(authPlugin, { prefix: "/api/v1/auth" });
-  app.register(webhookRoutes, { prefix: "/api" });
-  app.register(webhookRoutes, { prefix: "/api/v1" });
+  fastify.register(authPlugin, { prefix: "/auth" });
+  fastify.register(authPlugin, { prefix: "/api/auth" });
+  fastify.register(authPlugin, { prefix: "/api/v1/auth" });
+  fastify.register(webhookRoutes, { prefix: "/api" });
+  fastify.register(webhookRoutes, { prefix: "/api/v1" });
 
   // Other Core Routes
   mountBoth("goals", goalsRoutesMod, "goals");
@@ -334,7 +334,7 @@ async function start() {
 
 
   /* ========================= ERROR HANDLERS ========================= */
-  app.setNotFoundHandler((req, reply) => {
+  fastify.setNotFoundHandler((req, reply) => {
     reply.code(404).send({
       statusCode: 404,
       error: "Not Found",
@@ -342,7 +342,7 @@ async function start() {
     });
   });
 
-  app.setErrorHandler((error, req, reply) => {
+  fastify.setErrorHandler((error, req, reply) => {
     req.log.error(error);
     const status = error.statusCode || 500;
     reply.code(status).send({
@@ -356,12 +356,12 @@ async function start() {
 
   // Shared Redis Pub/Sub is required for realtime fan-out across multiple API instances.
   await initializeRealtime();
-  app.addHook("onClose", async () => {
+  fastify.addHook("onClose", async () => {
     await closeRealtime();
   });
 
   const port = process.env.PORT || env.PORT || 10000;
-  await app.listen({ port: Number(port), host: "0.0.0.0" });
+  await fastify.listen({ port: Number(port), host: "0.0.0.0" });
   console.log(`🚀 API running on port ${port} in ${env.NODE_ENV || "development"} mode`);
 }
 
