@@ -141,7 +141,7 @@ app.get('/api/v1/supportops/pricing', (req, res) => {
     }
   ];
 
-  return res.json({ success: true, tiers });
+  return { success: true, tiers };
 });
 
 // ==========================================
@@ -171,7 +171,7 @@ app.post('/api/v1/supportops/checkout', async (req, res) => {
     }
 
     const session = await stripe.checkout.sessions.create(sessionConfig);
-    return res.json({ success: true, url: session.url });
+    return { success: true, url: session.url };
   } catch (err) {
     console.error('Stripe checkout error:', err.message);
     return res.status(500).json({ success: false, error: err.message });
@@ -213,7 +213,7 @@ app.post('/api/v1/supportops/contact-sales', async (req, res) => {
       message: 'Sales inquiry received. Our team will contact you within 2 business hours.'
     });
   } catch (err) {
-    return res.status(500).json({ success: false, error: 'Failed to submit inquiry.' });
+    return { success: false, error: 'Failed to submit inquiry.' };
   }
 });
 
