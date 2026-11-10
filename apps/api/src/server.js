@@ -145,41 +145,6 @@ fastify.get('/api/v1/supportops/pricing', (req, res) => {
 });
 
 // ==========================================
-// 3. STRIPE CHECKOUT ROUTE (POST)
-// ==========================================
-fastify.post('/api/v1/supportops/checkout', async (request, reply) => {
-  try {
-    const { priceId, withTrial } = request.body || {};
-
-    if (!priceId) {
-      return reply.status(400).send({ success: false, error: 'Missing priceId parameter.' });
-    }
-
-    if (!stripe) {
-      return reply.status(200).send({
-        success: true,
-        url: '/supportops/dashboard?checkout=sandbox_bypass',
-      });
-    }
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      mode: 'subscription',
-      success_url: 'https://nexusthecore.com/supportops/dashboard?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url: 'https://nexusthecore.com/supportops/pricing',
-      ...(withTrial && { subscription_data: { trial_period_days: 14 } }),
-    });
-
-    return reply.status(200).send({ success: true, url: session.url });
-  } catch (err) {
-    return reply.status(500).send({ success: false, error: err.message });
-  }
-});
-
-
-
-// ==========================================
 // 1. FREE TRIAL ENDPOINT -> Admin Workspace Setup Form
 // ==========================================
 fastify.post('/api/v1/supportops/start-trial', async (request, reply) => {
