@@ -52,45 +52,53 @@ export default function PricingPage() {
 
     const handleAction = async (tier, actionType) => {
         setProcessingId(tier.id);
+
         try {
-            // 1. Instant 14-Day Free Trial (No Credit Card / Stripe required)
+            // 1. Enterprise Contact Sales
+            if (tier.isEnterprise) {
+                window.location.href = '/contact?ref=enterprise_supportops';
+                return;
+            }
+
+            // 2. 14-Day Free Trial Flow
             if (actionType === 'trial' || tier.isTrial) {
                 const res = await fetch(`${API_BASE}/supportops/start-trial`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ planId: tier.id }),
                 });
+
                 const data = await res.json();
+
                 if (data?.redirectUrl) {
                     window.location.href = data.redirectUrl;
                     return;
+                } else {
+                    throw new Error(data?.error || 'Failed to start trial session.');
                 }
             }
 
-            // 2. Enterprise Lead Capture / Contact Sales
-            if (tier.isEnterprise) {
-                window.location.href = '/contact?ref=enterprise_supportops';
-                return;
-            }
-
-            // 3. Paid Stripe Subscription Checkout
+            // 3. Direct Paid Subscription Flow
             const res = await fetch(`${API_BASE}/supportops/checkout`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     priceId: tier.id,
-                    withTrial: actionType === 'trial'
+                    withTrial: actionType === 'trial',
                 }),
             });
+
             const data = await res.json();
+
             if (data?.url) {
+                // Handles external Stripe Checkout URL or local sandbox setup URL
                 window.location.href = data.url;
             } else {
-                alert(data?.error || 'Unable to initiate checkout session.');
+                alert(data?.error || 'Unable to start checkout session.');
             }
         } catch (err) {
-            console.error('[PricingPage] Action Error:', err);
-            alert('Network error while processing your request.');
+            console.error('[PricingPage Action Error]:', err);
+            alert(err.message || 'Network error while initiating action.');
         } finally {
             setProcessingId(null);
         }

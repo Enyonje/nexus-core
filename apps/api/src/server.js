@@ -180,30 +180,69 @@ fastify.post('/api/v1/supportops/checkout', async (request, reply) => {
 
 
 // ==========================================
-// 1. FREE TRIAL ENDPOINT (No Credit Card)
+// 1. FREE TRIAL ENDPOINT -> Admin Workspace Setup Form
 // ==========================================
 fastify.post('/api/v1/supportops/start-trial', async (request, reply) => {
   try {
-    const body = request.body || {};
-    const { planId, email } = body;
-
-    console.log('[SupportOps Trial] Initializing trial workspace for plan:', planId);
-
-    // TODO: Save trial state in your database
-    // e.g., await db.workspaces.create({ planId, email, status: 'active_trial' });
+    const { planId } = request.body || {};
 
     return reply.status(200).send({
       success: true,
-      message: 'Trial workspace provisioned successfully.',
-      redirectUrl: '/supportops/dashboard?trial=active',
+      message: 'Trial initialized successfully.',
+      // Explicit route to your Admin Workspace creation form
+      redirectUrl: `/supportops/onboarding?plan=${encodeURIComponent(planId || 'price_supportops_growth')}&type=trial`,
     });
   } catch (err) {
-    fastify.log.error('[SupportOps Trial Error]:', err);
-
-    // Return a structured error response with status 200/400 to prevent uncaught 500 crashes
+    fastify.log.error('[Start Trial Error]:', err);
     return reply.status(400).send({
       success: false,
       error: 'Unable to start trial at this time.',
+    });
+  }
+});
+
+// ==========================================
+// 2. PAID CHECKOUT ENDPOINT -> Stripe Checkout or Sandbox Setup
+// ==========================================
+fastify.post('/api/v1/supportops/checkout', async (request, reply) => {
+  try {
+    const { priceId, withTrial } = request.body || {};
+
+    if (!priceId) {
+      return reply.status(400).send({
+        success: false,
+        error: 'Missing priceId parameter.',
+      });
+    }
+
+    // If Stripe key is missing on Render, route to Sandbox Admin Setup rather than landing page
+    if (!stripe) {
+      console.warn('[Checkout] STRIPE_SECRET_KEY missing. Bypassing to onboarding sandbox.');
+      return reply.status(200).send({
+        success: true,
+        url: `/supportops/onboarding?plan=${encodeURIComponent(priceId)}&type=paid_sandbox`,
+      });
+    }
+
+    // Live Stripe Checkout Session
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId, quantity: 1 }],
+      mode: 'subscription',
+      success_url: `${request.headers.origin || 'https://nexusthecore.com'}/supportops/onboarding?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${request.headers.origin || 'https://nexusthecore.com'}/supportops/pricing`,
+      ...(withTrial && { subscription_data: { trial_period_days: 14 } }),
+    });
+
+    return reply.status(200).send({
+      success: true,
+      url: session.url,
+    });
+  } catch (err) {
+    fastify.log.error('[Checkout Error]:', err.message);
+    return reply.status(500).send({
+      success: false,
+      error: err.message || 'Failed to initialize payment session.',
     });
   }
 });
