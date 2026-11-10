@@ -26,7 +26,7 @@ const SEOPillarPage = () => {
     },
     "mainEntityOfPage": {
       "@type": "WebPage",
-      "@id": "https://yourdomain.com/neural-mesh"
+      "@id": "https://nexusthecore.com/neural-mesh"
     }
   };
 
@@ -35,11 +35,11 @@ const SEOPillarPage = () => {
       <Helmet>
         {/* Browser Tab Title */}
         <title>Nexus Core | Secure AI Mesh & Neural Governance Infrastructure</title>
-        
+
         {/* SEO Meta Tags */}
         <meta name="description" content="Explore the Nexus Core Neural Mesh. Engineered in Nairobi for secure AI agent governance, featuring Aiven PostgreSQL and Prisma ORM integration." />
         <meta name="keywords" content="AI Mesh, AI Governance, Prisma ORM, Aiven PostgreSQL, Nairobi Tech, Autonomous Agents, Secure AI Kenya" />
-        
+
         {/* Open Graph / Social Media */}
         <meta property="og:title" content="Nexus Core: Engineering AI Autonomy" />
         <meta property="og:description" content="High-performance AI infrastructure with hardened database-level protocols." />
@@ -67,12 +67,12 @@ const SEOPillarPage = () => {
           </div>
 
           <h1 className="text-7xl lg:text-9xl font-black text-white tracking-tighter leading-[0.85] mb-8">
-            ENGINEERING <br/> 
+            ENGINEERING <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 via-purple-500 to-blue-400">
               AUTONOMY
             </span>
           </h1>
-          
+
           <p className="text-xl md:text-2xl text-gray-500 max-w-3xl leading-relaxed font-medium">
             Nexus Core is a high-performance neural mesh designed to govern autonomous agent behavior through hardened database-level protocols and decentralized execution.
           </p>
@@ -89,7 +89,7 @@ const SEOPillarPage = () => {
                 By utilizing <strong className="text-white">Aiven PostgreSQL</strong>, we ensure that every AI state transition is immutable and globally available. Our integration with <strong className="text-white">Prisma</strong> allows for real-time data validation, preventing unauthorized agent escalations at the schema level.
               </p>
             </div>
-            
+
             <div className="p-8 bg-gray-900/40 border border-gray-800 rounded-3xl backdrop-blur-md">
               <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
                 <span className="h-2 w-2 bg-blue-500 rounded-full"></span>
@@ -111,18 +111,18 @@ const SEOPillarPage = () => {
 
           {/* Interactive Card/Visual */}
           <div className="relative group">
-             <div className="absolute -inset-4 bg-blue-600/20 blur-[100px] rounded-full group-hover:bg-blue-600/30 transition-all duration-1000"></div>
-             <div className="relative border border-gray-800 bg-[#0f172a]/80 backdrop-blur-2xl p-12 rounded-[2.5rem] overflow-hidden">
-                <div className="absolute top-0 right-0 p-8 opacity-10 font-black text-8xl">NBO</div>
-                <h3 className="text-5xl font-black text-white mb-6 italic uppercase tracking-tighter">Nairobi // HQ</h3>
-                <p className="text-gray-400 text-lg mb-8 font-medium leading-relaxed">
-                  The heartbeat of the Nexus network. Strategically positioned in the Silicon Savannah to leverage the world's most adaptive tech ecosystem.
-                </p>
-                <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
-                   <div className="h-full bg-blue-600 w-1/3 animate-pulse"></div>
-                </div>
-                <p className="mt-4 font-mono text-[10px] text-gray-600 uppercase tracking-[0.2em]">Regional Latency: 12ms</p>
-             </div>
+            <div className="absolute -inset-4 bg-blue-600/20 blur-[100px] rounded-full group-hover:bg-blue-600/30 transition-all duration-1000"></div>
+            <div className="relative border border-gray-800 bg-[#0f172a]/80 backdrop-blur-2xl p-12 rounded-[2.5rem] overflow-hidden">
+              <div className="absolute top-0 right-0 p-8 opacity-10 font-black text-8xl">NBO</div>
+              <h3 className="text-5xl font-black text-white mb-6 italic uppercase tracking-tighter">Nairobi // HQ</h3>
+              <p className="text-gray-400 text-lg mb-8 font-medium leading-relaxed">
+                The heartbeat of the Nexus network. Strategically positioned in the Silicon Savannah to leverage the world's most adaptive tech ecosystem.
+              </p>
+              <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-600 w-1/3 animate-pulse"></div>
+              </div>
+              <p className="mt-4 font-mono text-[10px] text-gray-600 uppercase tracking-[0.2em]">Regional Latency: 12ms</p>
+            </div>
           </div>
         </div>
       </section>
@@ -134,20 +134,20 @@ const SEOPillarPage = () => {
             <h2 className="text-5xl font-black text-white mb-4 uppercase tracking-tighter">Intelligence FAQ</h2>
             <p className="text-gray-500 font-mono text-sm uppercase">Structured Data // Protocol Clarification</p>
           </div>
-          
+
           <div className="space-y-12">
             {[
-              { 
-                q: "How does the Neural Mesh scale?", 
-                a: "We leverage horizontal scaling via Aiven's distributed PostgreSQL clusters and edge-execution nodes managed by Node.js. This architecture allows the mesh to expand elastically without manual shard management." 
+              {
+                q: "How does the Neural Mesh scale?",
+                a: "We leverage horizontal scaling via Aiven's distributed PostgreSQL clusters and edge-execution nodes managed by Node.js. This architecture allows the mesh to expand elastically without manual shard management."
               },
-              { 
-                q: "What is the benefit of Prisma in AI Governance?", 
-                a: "Prisma acts as our type-safe gatekeeper. It prevents injection attacks and ensures that agent-generated queries strictly adhere to the defined RAAC (Role-Based AI Access Control) schema." 
+              {
+                q: "What is the benefit of Prisma in AI Governance?",
+                a: "Prisma acts as our type-safe gatekeeper. It prevents injection attacks and ensures that agent-generated queries strictly adhere to the defined RAAC (Role-Based AI Access Control) schema."
               },
-              { 
-                q: "Is the Nairobi Node production-ready?", 
-                a: "Yes. Our Nairobi HQ serves as a Tier-1 validator node, providing redundant failover for our sub-Saharan operations and serving as the primary hub for local neural engineering talent." 
+              {
+                q: "Is the Nairobi Node production-ready?",
+                a: "Yes. Our Nairobi HQ serves as a Tier-1 validator node, providing redundant failover for our sub-Saharan operations and serving as the primary hub for local neural engineering talent."
               }
             ].map((faq, i) => (
               <div key={i} className="group border-l-2 border-gray-800 pl-8 hover:border-blue-500 transition-all duration-300">
@@ -163,10 +163,10 @@ const SEOPillarPage = () => {
       <section className="py-32 px-8 text-center bg-white">
         <div className="max-w-2xl mx-auto">
           <h2 className="text-5xl md:text-6xl font-black text-black tracking-tighter mb-8 uppercase leading-none">
-            Join the <br/> Intelligence Era.
+            Join the <br /> Intelligence Era.
           </h2>
-          <button 
-            onClick={() => window.location.href='/contact'} 
+          <button
+            onClick={() => window.location.href = '/contact'}
             className="group relative inline-flex items-center justify-center px-10 py-5 font-black text-white bg-black hover:bg-blue-600 transition-all duration-300 uppercase tracking-[0.2em] text-sm overflow-hidden"
           >
             <span className="relative z-10">Transmit Signal</span>
