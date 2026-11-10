@@ -1,618 +1,184 @@
-// supportops/src/pages/PricingPage.jsx - Guest-First Direct Checkout & Workspace Setup
-import React, { useContext, useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import toast from "react-hot-toast";
-import { Check, RefreshCw, ShieldAlert, Building2, X, ArrowRight, Sparkles } from "lucide-react";
-import { API_ENDPOINTS, ROUTES } from "../config/paths";
-import { AccessContext, useAccess } from "../context/AccessProvider";
-import { useAuth } from "../context/AuthProvider";
-import { rememberReturn } from "../components/Access";
-import { apiFetch } from "../lib/api";
-
-const LABELS = {
-    triage_basic: "Basic triage",
-    channel_email: "Email",
-    channel_web: "In-app chat",
-    helpdesk_sync: "Intercom / Zendesk sync",
-    sla_predict: "Predictive SLA engine",
-    webhooks: "Custom webhook triggers",
-    sso: "SSO",
-    rbac: "Role-based access control",
-    audit_logs: "Audit logs & exports",
-    tenant_isolation: "Dedicated tenant isolation",
-    dev_integrations: "Jira / GitHub",
-    channel_whatsapp: "WhatsApp",
-    channel_voice: "Phone",
-    channel_social: "Social inbox",
-    channel_sms: "SMS",
-};
-
-// Fallback pricing configuration
-const FALLBACK_PLANS = {
-    app: "supportops",
-    plans: [
-        {
-            key: "starter",
-            name: "Starter",
-            priceCents: 19900,
-            limits: { seats: 5, ai_resolutions: 500 },
-            features: ["triage_basic", "channel_email"],
-        },
-        {
-            key: "growth",
-            name: "Growth",
-            priceCents: 69900,
-            limits: { seats: 20, ai_resolutions: 2500 },
-            features: [
-                "triage_basic",
-                "channel_email",
-                "channel_web",
-                "helpdesk_sync",
-                "sla_predict",
-            ],
-        },
-        {
-            key: "enterprise",
-            name: "Enterprise",
-            priceCents: null,
-            limits: { seats: null, ai_resolutions: null },
-            features: [
-                "triage_basic",
-                "channel_email",
-                "channel_web",
-                "helpdesk_sync",
-                "sla_predict",
-                "webhooks",
-                "sso",
-                "rbac",
-                "audit_logs",
-                "tenant_isolation",
-            ],
-        },
-    ],
-    addons: [
-        { key: "channel_whatsapp", name: "WhatsApp Channel Integration", priceCents: 7900 },
-        { key: "dev_integrations", name: "Jira / GitHub Integrations", priceCents: 4900 },
-    ],
-};
-
-const money = (cents) => (cents == null ? "Custom" : `$${(cents / 100).toLocaleString()}`);
-const needsBillingRole = (msg = "") => /owner|admin|billing contact/i.test(msg);
+import React, { useState, useEffect } from 'react';
 
 export default function PricingPage() {
-    const navigate = useNavigate();
-    const access = useAccess();
-    const rawAccessContext = useContext(AccessContext);
-    const { user, isAuthenticated } = useAuth();
-
-    const isAuth = isAuthenticated || !!user;
-
-    const [app, setApp] = useState(null);
-    const [usingFallback, setUsingFallback] = useState(false);
-    const [picked, setPicked] = useState([]);
-    const [busy, setBusy] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [showAdminModal, setShowAdminModal] = useState(false);
     const [tiers, setTiers] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [processingId, setProcessingId] = useState(null);
 
-    useEffect(() => {
-        const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://nexus-core-a0px.onrender.com/api/v1';
+    // Resolved API base URL - defaults cleanly to Render production
+    const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://nexus-core-a0px.onrender.com/api/v1').replace(/\/$/, '');
 
-        fetch(`${apiBase}/supportops/pricing`)
+    useEffect(() => {
+        let isMounted = true;
+        setLoading(true);
+
+        fetch(`${API_BASE}/supportops/pricing`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            },
+        })
             .then((res) => {
-                if (!res.ok) throw new Error('Failed to fetch pricing broadcast.');
+                if (!res.ok) throw new Error(`Server returned status ${res.status}`);
                 return res.json();
             })
             .then((data) => {
-                if (data?.success && data?.tiers) {
-                    setTiers(data.tiers);
+                if (!isMounted) return;
+
+                // Correctly extract tiers array from Fastify wrapper payload { success: true, tiers: [...] }
+                const pricingTiers = data?.tiers || (Array.isArray(data) ? data : null);
+
+                if (pricingTiers && pricingTiers.length > 0) {
+                    setTiers(pricingTiers);
+                    setError(null);
                 } else {
-                    setError('Invalid pricing payload received.');
+                    setError('No pricing tiers available.');
                 }
-                setLoading(false);
             })
             .catch((err) => {
-                setError('Could not connect to pricing service. Please try again later.');
-                setLoading(false);
+                if (!isMounted) return;
+                console.error('[PricingPage] Fetch error:', err);
+                setError('Failed to load live pricing. Check connection to API backend.');
+            })
+            .finally(() => {
+                if (isMounted) setLoading(false);
             });
-    }, []);
 
-    const handleSelectPlan = async (tier) => {
+        return () => {
+            isMounted = false;
+        };
+    }, [API_BASE]);
+
+    const handleAction = async (tier, actionType) => {
         setProcessingId(tier.id);
         try {
-            const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://nexus-core-a0px.onrender.com/api/v1';
-
-            // Check if it's a trial plan or free tier
-            if (tier.isTrial || tier.price === '$0') {
-                const response = await fetch(`${apiBase}/supportops/start-trial`, {
+            // 1. Instant 14-Day Free Trial (No Credit Card / Stripe required)
+            if (actionType === 'trial' || tier.isTrial) {
+                const res = await fetch(`${API_BASE}/supportops/start-trial`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ planId: tier.id }),
                 });
-
-                const data = await response.json();
-                if (data?.success) {
-                    window.location.href = data.redirectUrl; // Instantly enter dashboard without Stripe
+                const data = await res.json();
+                if (data?.redirectUrl) {
+                    window.location.href = data.redirectUrl;
                     return;
                 }
             }
 
-            // Otherwise, proceed with paid Stripe checkout
-            const response = await fetch(`${apiBase}/supportops/checkout`, {
+            // 2. Enterprise Lead Capture / Contact Sales
+            if (tier.isEnterprise) {
+                window.location.href = '/contact?ref=enterprise_supportops';
+                return;
+            }
+
+            // 3. Paid Stripe Subscription Checkout
+            const res = await fetch(`${API_BASE}/supportops/checkout`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ priceId: tier.id }),
+                body: JSON.stringify({
+                    priceId: tier.id,
+                    withTrial: actionType === 'trial'
+                }),
             });
-
-            const session = await response.json();
-            if (session?.url) {
-                window.location.href = session.url;
+            const data = await res.json();
+            if (data?.url) {
+                window.location.href = data.url;
             } else {
-                alert(session?.error || 'Failed to create checkout session.');
-                setProcessingId(null);
+                alert(data?.error || 'Unable to initiate checkout session.');
             }
         } catch (err) {
-            alert('Network error during plan selection.');
+            console.error('[PricingPage] Action Error:', err);
+            alert('Network error while processing your request.');
+        } finally {
             setProcessingId(null);
         }
     };
 
-    // Guest Workspace Modal State
-    const [showSetupModal, setShowSetupModal] = useState(false);
-    const [pendingSelection, setPendingSelection] = useState({ planKey: null, mode: "checkout" });
-    const [guestForm, setGuestForm] = useState({
-        email: "",
-        workspaceName: "",
-        fullName: "",
-    });
-
-    const orgs = access?.orgs || rawAccessContext?.orgs || [];
-    const activeOrgId = access?.activeOrgId || rawAccessContext?.activeOrgId;
-    const personal = orgs.find((o) => o.type === "PERSONAL");
-    const inSomeoneElsesWorkspace = Boolean(personal && activeOrgId && activeOrgId !== personal.id);
-
-    const fetchPlans = useCallback(async () => {
-        setLoading(true);
-
-        const configuredEndpoint =
-            typeof API_ENDPOINTS?.billing?.plans === "function"
-                ? API_ENDPOINTS.billing.plans("supportops")
-                : API_ENDPOINTS?.billing?.plans;
-
-        let fetchedData = null;
-
-        // One canonical route only. Retrying multiple aliases on the same Render
-        // service multiplies cold-start latency and hides routing/configuration bugs.
-        if (configuredEndpoint) {
-            try {
-                fetchedData = await apiFetch(configuredEndpoint, { timeout: 8000 });
-            } catch (err) {
-                console.warn(`[PricingPage] Canonical pricing endpoint failed:`, err.message);
-            }
-        }
-
-        if (fetchedData) {
-            let payload = fetchedData;
-            if (payload && typeof payload === "object" && !Array.isArray(payload) && payload.data) {
-                payload = payload.data;
-            }
-
-            let target = null;
-            if (Array.isArray(payload)) {
-                target = payload.find((a) => a.app === "supportops" || a.key === "supportops") ?? payload[0] ?? null;
-            } else if (payload && typeof payload === "object") {
-                target = payload.plans ? payload : (payload.data ?? null);
-            }
-
-            if (target && Array.isArray(target.plans)) {
-                setApp(target);
-                setUsingFallback(false);
-                setLoading(false);
-                return;
-            }
-        }
-
-        setApp(FALLBACK_PLANS);
-        setUsingFallback(true);
-        setLoading(false);
-    }, []);
-
-    useEffect(() => {
-        fetchPlans();
-    }, [fetchPlans]);
-
-    // Direct Guest Provisioning + Checkout Handler
-    async function processDirectCheckout(planKey, mode = "checkout") {
-        if (!isAuth) {
-            setPendingSelection({ planKey, mode });
-            setShowSetupModal(true);
-            return;
-        }
-
-        setBusy(planKey);
-        try {
-            if (mode === "trial") {
-                const trialEndpoint = API_ENDPOINTS?.billing?.trial || "/api/billing/trial";
-                const res = await apiFetch(trialEndpoint, {
-                    method: "POST",
-                    headers: {
-                        "x-org-id": activeOrgId,
-                    },
-                    body: {
-                        app: "supportops",
-                    },
-                });
-
-                if (res?.token) localStorage.setItem("authToken", res.token);
-                if (access?.refresh) await access.refresh();
-
-                toast.success("Your 14-day trial has started");
-                const adminTarget = ROUTES?.admin?.executive || ROUTES?.adminDashboard || "/admin";
-                window.location.assign(adminTarget);
-            } else {
-                const checkoutEndpoint = API_ENDPOINTS?.billing?.checkout || "/api/billing/checkout";
-                const res = await apiFetch(checkoutEndpoint, {
-                    method: "POST",
-                    body: { app: "supportops", plan: planKey, addons: picked },
-                });
-
-                if (res?.url) {
-                    window.location.href = res.url;
-                } else {
-                    toast.success(`Subscribed to ${planKey} plan`);
-                }
-            }
-        } catch (e) {
-            if (needsBillingRole(e.message)) setShowAdminModal(true);
-            else toast.error(e.message || "Action failed");
-        } finally {
-            setBusy(null);
-        }
+    if (loading) {
+        return (
+            <div className="min-h-[400px] flex items-center justify-center text-slate-400">
+                Broadcasting live SupportOps pricing...
+            </div>
+        );
     }
 
-    // Guest submission handler for setting up workspace and going directly to checkout
-    async function handleGuestWorkspaceSubmit(e) {
-        e.preventDefault();
-        if (!guestForm.email || !guestForm.workspaceName) {
-            toast.error("Please enter an email and workspace name");
-            return;
-        }
-
-        setBusy("guest_provision");
-        try {
-            const setupEndpoint = "/api/billing/guest-checkout";
-            const res = await apiFetch(setupEndpoint, {
-                method: "POST",
-                body: {
-                    app: "supportops",
-                    email: guestForm.email.trim(),
-                    workspaceName: guestForm.workspaceName.trim(),
-                    fullName: guestForm.fullName.trim(),
-                    plan: pendingSelection.planKey,
-                    mode: pendingSelection.mode,
-                    addons: picked,
-                },
-            });
-
-            if (res?.token) {
-                localStorage.setItem("authToken", res.token);
-                localStorage.setItem("token", res.token);
-                if (res?.orgId) {
-                    localStorage.setItem("activeOrgId", res.orgId);
-                    localStorage.setItem("orgId", res.orgId);
-                }
-            }
-
-            if (res?.url) {
-                window.location.href = res.url;
-            } else {
-                toast.success("Workspace created! Redirecting to dashboard...");
-                window.location.assign("/supportops/admin/executive");
-            }
-        } catch (err) {
-            console.error("[Guest Checkout Error]", err);
-            toast.error(err.message || "Failed to setup workspace and billing");
-        } finally {
-            setBusy(null);
-            setShowSetupModal(false);
-        }
+    if (error) {
+        return (
+            <div className="min-h-[400px] flex flex-col items-center justify-center text-red-400 space-y-4">
+                <p>{error}</p>
+                <button
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+                >
+                    Retry Connection
+                </button>
+            </div>
+        );
     }
-
-    const toggle = (key) =>
-        setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]));
-
-    const locked = Boolean(busy);
 
     return (
-        <div className="min-h-screen bg-[#030712] text-slate-100 px-4 sm:px-6 lg:px-8 py-12 relative">
-            <div className="max-w-6xl mx-auto">
-                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-center">
-                    Pick the plan that fits your team
-                </h1>
-                <p className="text-center text-slate-400 mt-2 mb-10">
-                    Set up your workspace and start instantly. No registration hurdles required.
+        <div className="max-w-7xl mx-auto px-4 py-12 space-y-8">
+            <div className="text-center space-y-3">
+                <h1 className="text-4xl font-bold text-white">SupportOps Plans &amp; Pricing</h1>
+                <p className="text-slate-400 max-w-2xl mx-auto">
+                    AI-assisted customer support workflows. Compare plans or start a friction-free trial.
                 </p>
-
-                {usingFallback && !loading && (
-                    <div className="mb-8 flex items-center justify-between gap-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                        <span>Live pricing is temporarily unavailable. These figures are estimates only; checkout and trials are disabled until live prices are confirmed.</span>
-                        <button
-                            type="button"
-                            onClick={fetchPlans}
-                            className="shrink-0 font-semibold underline underline-offset-2 hover:text-white"
-                        >
-                            Retry live load
-                        </button>
-                    </div>
-                )}
-
-                {loading ? (
-                    <div className="text-center py-16 space-y-3">
-                        <RefreshCw className="w-6 h-6 text-indigo-400 animate-spin mx-auto" />
-                        <p className="text-slate-400 text-sm">Loading plans…</p>
-                    </div>
-                ) : !app || !app.plans ? (
-                    <div className="text-center py-12 bg-slate-900/40 rounded-2xl border border-slate-800">
-                        <p className="text-slate-400 mb-4">Unable to load plans right now.</p>
-                        <button
-                            onClick={fetchPlans}
-                            className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-all inline-flex items-center gap-2"
-                        >
-                            <RefreshCw className="w-4 h-4" /> Retry
-                        </button>
-                    </div>
-                ) : (
-                    <>
-                        <div className="grid md:grid-cols-3 gap-6">
-                            {app.plans.map((p) => {
-                                const priceCents =
-                                    p.priceCents ?? p.price_cents ?? (p.price != null ? p.price * 100 : null);
-                                const seatsLimit = p.limits?.seats;
-                                const aiResolutionsLimit = p.limits?.ai_resolutions ?? p.limits?.aiResolutions;
-                                const features = p.features || [];
-
-                                const current = access?.plan === p.key && access?.subscriptionStatus === "active";
-                                const featured = p.key === "growth";
-
-                                return (
-                                    <div
-                                        key={p.key}
-                                        className={`rounded-2xl p-6 flex flex-col border ${featured
-                                            ? "border-indigo-500 bg-indigo-600/5 shadow-lg shadow-indigo-500/10"
-                                            : "border-slate-800 bg-slate-900/40"
-                                            }`}
-                                    >
-                                        <h2 className="text-lg font-bold">{p.name}</h2>
-                                        <p className="mt-2">
-                                            <span className="text-3xl font-extrabold">{money(priceCents)}</span>
-                                            {priceCents != null && <span className="text-slate-400 text-sm"> / month</span>}
-                                        </p>
-                                        <ul className="mt-5 space-y-2 text-sm text-slate-300 flex-1">
-                                            <li className="flex gap-2">
-                                                <Check className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
-                                                {seatsLimit == null ? "Unlimited seats" : `Up to ${seatsLimit} seats`}
-                                            </li>
-                                            <li className="flex gap-2">
-                                                <Check className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
-                                                {aiResolutionsLimit == null
-                                                    ? "Custom AI resolution volume"
-                                                    : `${aiResolutionsLimit.toLocaleString()} AI resolutions / month`}
-                                            </li>
-                                            {features
-                                                .filter((f) => !f.startsWith("channel_") || features.length < 8)
-                                                .map((f) => (
-                                                    <li key={f} className="flex gap-2">
-                                                        <Check className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
-                                                        {LABELS[f] ?? f}
-                                                    </li>
-                                                ))}
-                                        </ul>
-
-                                        <div className="mt-6 space-y-2">
-                                            {priceCents == null ? (
-                                                <a
-                                                    href="mailto:sales@nexuscore.app?subject=SupportOps%20Enterprise"
-                                                    className="block text-center px-4 py-2.5 rounded-lg border border-slate-700 hover:bg-white/5 text-sm font-semibold transition-all"
-                                                >
-                                                    Contact sales
-                                                </a>
-                                            ) : current ? (
-                                                <button
-                                                    disabled
-                                                    className="w-full px-4 py-2.5 rounded-lg bg-slate-800 text-slate-400 text-sm font-semibold"
-                                                >
-                                                    Current plan
-                                                </button>
-                                            ) : (
-                                                <>
-                                                    {featured && !access?.isSubscribed && (
-                                                        <button
-                                                            onClick={() => processDirectCheckout(p.key, "trial")}
-                                                            disabled={locked || usingFallback}
-                                                            title={usingFallback ? "Live pricing is unavailable; retry before starting a trial." : undefined}
-                                                            className="w-full px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold shadow-md shadow-indigo-600/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                                                        >
-                                                            {busy === "trial" ? "Processing..." : "Start 14-day trial"}
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        onClick={() => processDirectCheckout(p.key, "checkout")}
-                                                        disabled={locked || usingFallback}
-                                                        title={usingFallback ? "Live pricing is unavailable; retry before checkout." : undefined}
-                                                        className="w-full px-4 py-2.5 rounded-lg border border-slate-700 hover:bg-white/5 text-sm font-semibold transition-all disabled:opacity-50"
-                                                    >
-                                                        {busy === p.key ? "Redirecting…" : "Subscribe & Setup Workspace"}
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        {app.addons && app.addons.length > 0 && (
-                            <section className="mt-10 rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
-                                <h2 className="font-semibold mb-1">Add-ons</h2>
-                                <p className="text-xs text-slate-500 mb-4">
-                                    Added to your selected workspace plan. Enterprise includes all channels.
-                                </p>
-                                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {app.addons.map((a) => (
-                                        <label
-                                            key={a.key}
-                                            className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-800 cursor-pointer hover:bg-white/5 transition-colors"
-                                        >
-                                            <span className="flex items-center gap-3 text-sm">
-                                                <input
-                                                    type="checkbox"
-                                                    className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
-                                                    checked={picked.includes(a.key)}
-                                                    onChange={() => toggle(a.key)}
-                                                />
-                                                {a.name}
-                                            </span>
-                                            <span className="text-xs text-slate-400 font-mono">
-                                                {money(a.priceCents ?? a.price_cents)}/mo
-                                            </span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </section>
-                        )}
-                    </>
-                )}
             </div>
 
-            {/* Guest Direct Setup Modal */}
-            {showSetupModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
-                        <button
-                            onClick={() => setShowSetupModal(false)}
-                            aria-label="Close"
-                            className="absolute top-5 right-5 text-slate-400 hover:text-slate-200 transition-colors"
-                        >
-                            <X className="w-5 h-5" />
-                        </button>
-
-                        <div className="flex items-center gap-3 mb-2 text-indigo-400">
-                            <div className="p-2.5 bg-indigo-500/10 rounded-2xl border border-indigo-500/20">
-                                <Sparkles className="w-6 h-6" />
-                            </div>
+            <div className="grid md:grid-cols-3 gap-8 items-stretch">
+                {tiers.map((tier) => (
+                    <div
+                        key={tier.id}
+                        className={`bg-slate-900 border rounded-2xl p-8 flex flex-col justify-between space-y-6 ${tier.hasTrial ? 'border-cyan-500/50 shadow-lg shadow-cyan-500/10' : 'border-slate-800'
+                            }`}
+                    >
+                        <div className="space-y-6">
                             <div>
-                                <h3 className="text-xl font-bold text-white">Setup Your Workspace</h3>
-                                <p className="text-xs text-slate-400">No account creation required to checkout.</p>
+                                <h3 className="text-2xl font-bold text-white">{tier.name}</h3>
+                                <div className="mt-4 flex items-baseline text-white">
+                                    <span className="text-4xl font-extrabold tracking-tight">{tier.price}</span>
+                                    {tier.interval && tier.interval !== 'custom' && (
+                                        <span className="ml-1 text-slate-400 text-sm">/{tier.interval}</span>
+                                    )}
+                                </div>
                             </div>
+
+                            {tier.features && (
+                                <ul className="space-y-3 text-sm text-slate-300">
+                                    {tier.features.map((feature, idx) => (
+                                        <li key={idx} className="flex items-start">
+                                            <span className="text-cyan-400 mr-2">✓</span>
+                                            <span>{feature}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
                         </div>
 
-                        <form onSubmit={handleGuestWorkspaceSubmit} className="space-y-4 mt-6">
-                            <div>
-                                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                                    Workspace Name
-                                </label>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. Acme Support"
-                                    required
-                                    value={guestForm.workspaceName}
-                                    onChange={(e) => setGuestForm({ ...guestForm, workspaceName: e.target.value })}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                                    Work Email
-                                </label>
-                                <input
-                                    type="email"
-                                    placeholder="admin@acme.com"
-                                    required
-                                    value={guestForm.email}
-                                    onChange={(e) => setGuestForm({ ...guestForm, email: e.target.value })}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                                    Full Name
-                                </label>
-                                <input
-                                    type="text"
-                                    placeholder="Alex Mercer"
-                                    value={guestForm.fullName}
-                                    onChange={(e) => setGuestForm({ ...guestForm, fullName: e.target.value })}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500"
-                                />
-                            </div>
-
-                            <button
-                                type="submit"
-                                disabled={busy === "guest_provision"}
-                                className="w-full mt-4 py-3.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm rounded-xl shadow-lg shadow-indigo-600/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                            >
-                                {busy === "guest_provision" ? (
-                                    "Provisioning Workspace..."
-                                ) : (
-                                    <>
-                                        Continue to Billing <ArrowRight className="w-4 h-4" />
-                                    </>
-                                )}
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* Workspace Admin Modal */}
-            {showAdminModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl relative">
-                        <button
-                            onClick={() => setShowAdminModal(false)}
-                            aria-label="Close"
-                            className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition-colors"
-                        >
-                            <X className="w-5 h-5" />
-                        </button>
-
-                        <div className="flex items-center gap-3 mb-4 text-amber-400">
-                            <div className="p-2 bg-amber-500/10 rounded-xl border border-amber-500/20">
-                                <ShieldAlert className="w-6 h-6" />
-                            </div>
-                            <h3 className="text-lg font-bold text-white">Only a workspace admin can change the plan</h3>
-                        </div>
-
-                        <p className="text-sm text-slate-300 leading-relaxed mb-5">
-                            You're a member of this workspace, so billing is managed by its{" "}
-                            <strong className="text-white">owner</strong> or an{" "}
-                            <strong className="text-white">admin</strong>. Ask them to change the plan.
-                            {inSomeoneElsesWorkspace && " Or start a separate plan for your own workspace."}
-                        </p>
-
-                        <div className="flex flex-col gap-2.5">
-                            {inSomeoneElsesWorkspace && (
+                        <div className="space-y-3 pt-6 border-t border-slate-800/80">
+                            {tier.hasTrial && (
                                 <button
-                                    onClick={() => access?.switchOrg?.(personal.id)}
-                                    className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-indigo-600/25 transition-all flex items-center justify-center gap-2"
+                                    onClick={() => handleAction(tier, 'trial')}
+                                    disabled={processingId === tier.id}
+                                    className="w-full bg-slate-800 hover:bg-slate-700 text-cyan-400 font-semibold py-3 px-4 rounded-xl border border-cyan-500/30 transition-colors"
                                 >
-                                    <Building2 className="w-4 h-4" /> Use my own workspace
+                                    {processingId === tier.id ? 'Initializing...' : tier.ctaTrial || 'Start 14-day trial'}
                                 </button>
                             )}
+
                             <button
-                                onClick={() => setShowAdminModal(false)}
-                                className="w-full py-2 px-4 text-slate-400 hover:text-slate-200 font-medium text-sm rounded-xl transition-all"
+                                onClick={() => handleAction(tier, 'subscribe')}
+                                disabled={processingId === tier.id}
+                                className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-semibold py-3 px-4 rounded-xl transition-colors"
                             >
-                                Close
+                                {processingId === tier.id ? 'Processing...' : tier.cta || tier.ctaSubscribe || 'Subscribe & Setup Workspace'}
                             </button>
                         </div>
                     </div>
-                </div>
-            )}
+                ))}
+            </div>
         </div>
     );
 }

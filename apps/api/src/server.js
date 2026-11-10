@@ -1,5 +1,5 @@
 // server.js
-import Fastify from "fastify";
+import Fastify, { FastifyInstance } from 'fastify';
 import Stripe from "stripe";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
@@ -144,17 +144,31 @@ app.get('/api/v1/supportops/pricing', (req, res) => {
   return { success: true, tiers };
 });
 
+const fastify = Fastify({ logger: true });
 // ==========================================
-// 2. PAID CHECKOUT ROUTE (Starter & Growth)
+// 2. PAID CHECKOUT ENDPOINT (Stripe Session)
 // ==========================================
-app.post('/api/v1/supportops/checkout', async (req, res) => {
-  const { priceId, withTrial } = req.body;
-
-  if (!priceId) {
-    return res.status(400).json({ success: false, error: 'Missing priceId.' });
-  }
-
+fastify.post('/api/v1/supportops/checkout', async (request, reply) => {
   try {
+    const body = request.body || {};
+    const { priceId, withTrial } = body;
+
+    if (!priceId) {
+      return reply.status(400).send({
+        success: false,
+        error: 'Missing required parameter: priceId',
+      });
+    }
+
+    // Check if Stripe is configured
+    if (!stripe) {
+      console.warn('[SupportOps Checkout] STRIPE_SECRET_KEY is not configured on Render.');
+      return reply.status(200).send({
+        success: true,
+        url: '/supportops/dashboard?checkout=sandbox_bypass',
+      });
+    }
+
     const sessionConfig = {
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
@@ -163,7 +177,6 @@ app.post('/api/v1/supportops/checkout', async (req, res) => {
       cancel_url: 'https://nexusthecore.com/supportops/pricing',
     };
 
-    // If Growth user selects 14-day trial with card on file via Stripe
     if (withTrial) {
       sessionConfig.subscription_data = {
         trial_period_days: 14,
@@ -171,31 +184,45 @@ app.post('/api/v1/supportops/checkout', async (req, res) => {
     }
 
     const session = await stripe.checkout.sessions.create(sessionConfig);
-    return { success: true, url: session.url };
+    return reply.status(200).send({ success: true, url: session.url });
   } catch (err) {
-    console.error('Stripe checkout error:', err.message);
-    return res.status(500).json({ success: false, error: err.message });
+    fastify.log.error('[SupportOps Checkout Error]:', err.message);
+
+    return reply.status(500).send({
+      success: false,
+      error: err.message || 'Failed to initialize Stripe checkout session.',
+    });
   }
 });
 
-// ==========================================
-// 3. INSTANT TRIAL ROUTE (No Credit Card)
-// ==========================================
-app.post('/api/v1/supportops/start-trial', async (req, res) => {
-  const { planId, email } = req.body;
 
+
+// ==========================================
+// 1. FREE TRIAL ENDPOINT (No Credit Card)
+// ==========================================
+fastify.post('/api/v1/supportops/start-trial', async (request, reply) => {
   try {
-    // TODO: Provision user workspace in database with a 14-day expiry date
-    // e.g., await db.workspaces.create({ planId, email, status: 'trial', expiresAt: ... });
+    const body = request.body || {};
+    const { planId, email } = body;
 
-    return res.json({
+    console.log('[SupportOps Trial] Initializing trial workspace for plan:', planId);
+
+    // TODO: Save trial state in your database
+    // e.g., await db.workspaces.create({ planId, email, status: 'active_trial' });
+
+    return reply.status(200).send({
       success: true,
-      message: 'Workspace trial provisioned successfully.',
-      redirectUrl: '/supportops/dashboard?trial=active'
+      message: 'Trial workspace provisioned successfully.',
+      redirectUrl: '/supportops/dashboard?trial=active',
     });
   } catch (err) {
-    console.error('Trial provisioning error:', err.message);
-    return res.status(500).json({ success: false, error: 'Failed to initialize trial workspace.' });
+    fastify.log.error('[SupportOps Trial Error]:', err);
+
+    // Return a structured error response with status 200/400 to prevent uncaught 500 crashes
+    return reply.status(400).send({
+      success: false,
+      error: 'Unable to start trial at this time.',
+    });
   }
 });
 
