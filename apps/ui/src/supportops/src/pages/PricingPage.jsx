@@ -119,26 +119,42 @@ export default function PricingPage() {
             });
     }, []);
 
-    const handleSelectPlan = async (priceId) => {
-        setProcessingId(priceId);
+    const handleSelectPlan = async (tier) => {
+        setProcessingId(tier.id);
         try {
             const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://nexus-core-a0px.onrender.com/api/v1';
 
+            // Check if it's a trial plan or free tier
+            if (tier.isTrial || tier.price === '$0') {
+                const response = await fetch(`${apiBase}/supportops/start-trial`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ planId: tier.id }),
+                });
+
+                const data = await response.json();
+                if (data?.success) {
+                    window.location.href = data.redirectUrl; // Instantly enter dashboard without Stripe
+                    return;
+                }
+            }
+
+            // Otherwise, proceed with paid Stripe checkout
             const response = await fetch(`${apiBase}/supportops/checkout`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ priceId }),
+                body: JSON.stringify({ priceId: tier.id }),
             });
 
             const session = await response.json();
             if (session?.url) {
-                window.location.href = session.url; // Unblocks the user past pricing and opens checkout
+                window.location.href = session.url;
             } else {
                 alert(session?.error || 'Failed to create checkout session.');
                 setProcessingId(null);
             }
         } catch (err) {
-            alert('Network error during checkout initialization.');
+            alert('Network error during plan selection.');
             setProcessingId(null);
         }
     };

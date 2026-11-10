@@ -68,54 +68,152 @@ function resolvePlugin(mod, label = "unknown") {
 }
 
 const app = Fastify({ logger: true, bodyLimit: 1048576 });
-// Express / Node.js backend route implementation
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// 1. Broadcast Live Pricing Tiers
-app.get('/api/v1/supportops/pricing', async (req, res) => {
-  try {
-    const prices = await stripe.prices.list({
-      active: true,
-      expand: ['data.product'],
-      limit: 10,
-    });
 
-    const tiers = prices.data.map((price) => ({
-      id: price.id,
-      name: price.product.name,
-      description: price.product.description || 'SupportOps autonomous workflow tier.',
-      price: `$${(price.unit_amount / 100).toFixed(2)}`,
-      currency: price.currency.toUpperCase(),
-      interval: price.recurring?.interval || 'month',
-    }));
 
-    res.json({ success: true, tiers });
-  } catch (err) {
-    console.error('Stripe pricing fetch error:', err.message);
-    res.status(500).json({ success: false, error: 'Failed to fetch live pricing broadcast.' });
-  }
+// ==========================================
+// 1. BROADCAST PRICING TIERS
+// ==========================================
+app.get('/api/v1/supportops/pricing', (req, res) => {
+  const tiers = [
+    {
+      id: 'supportops_free_trial',
+      name: 'SupportOps 14-Day Trial',
+      description: 'Full access to autonomous agent swarms and ticket triage. No credit card required.',
+      price: '$0',
+      currency: 'USD',
+      interval: '14 days',
+      isTrial: true, // Flags frontend to bypass Stripe
+    },
+    {
+      id: 'price_supportops_starter',
+      name: 'Starter',
+      price: '$199',
+      interval: 'month',
+      isTrial: false,
+      features: [
+        'Up to 5 seats',
+        '500 AI resolutions / month',
+        'Basic triage',
+        'Email'
+      ],
+      cta: 'Subscribe & Setup Workspace'
+    },
+    {
+      id: 'price_supportops_growth',
+      name: 'Growth',
+      price: '$699',
+      interval: 'month',
+      hasTrial: true,
+      features: [
+        'Up to 20 seats',
+        '2,500 AI resolutions / month',
+        'Basic triage',
+        'Email',
+        'In-app chat',
+        'Intercom / Zendesk sync',
+        'Predictive SLA engine'
+      ],
+      ctaTrial: 'Start 14-day trial',
+      ctaSubscribe: 'Subscribe & Setup Workspace'
+    },
+    {
+      id: 'price_supportops_enterprise',
+      name: 'Enterprise',
+      price: 'Custom',
+      interval: 'custom',
+      isEnterprise: true,
+      features: [
+        'Unlimited seats',
+        'Custom AI resolution volume',
+        'Basic triage',
+        'Intercom / Zendesk sync',
+        'Predictive SLA engine',
+        'Custom webhook triggers',
+        'SSO',
+        'Role-based access control',
+        'Audit logs & exports',
+        'Dedicated tenant isolation'
+      ],
+      cta: 'Contact sales'
+    }
+  ];
+
+  return res.json({ success: true, tiers });
 });
 
-// 2. Create Stripe Checkout Session to Unblock User
+// ==========================================
+// 2. PAID CHECKOUT ROUTE (Starter & Growth)
+// ==========================================
 app.post('/api/v1/supportops/checkout', async (req, res) => {
-  const { priceId } = req.body;
+  const { priceId, withTrial } = req.body;
+
   if (!priceId) {
-    return res.status(400).json({ success: false, error: 'Missing priceId parameter.' });
+    return res.status(400).json({ success: false, error: 'Missing priceId.' });
   }
 
   try {
-    const session = await stripe.checkout.sessions.create({
+    const sessionConfig = {
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       mode: 'subscription',
       success_url: 'https://nexusthecore.com/supportops/dashboard?session_id={CHECKOUT_SESSION_ID}',
       cancel_url: 'https://nexusthecore.com/supportops/pricing',
-    });
+    };
 
-    res.json({ success: true, url: session.url });
+    // If Growth user selects 14-day trial with card on file via Stripe
+    if (withTrial) {
+      sessionConfig.subscription_data = {
+        trial_period_days: 14,
+      };
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionConfig);
+    return res.json({ success: true, url: session.url });
   } catch (err) {
     console.error('Stripe checkout error:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// 3. INSTANT TRIAL ROUTE (No Credit Card)
+// ==========================================
+app.post('/api/v1/supportops/start-trial', async (req, res) => {
+  const { planId, email } = req.body;
+
+  try {
+    // TODO: Provision user workspace in database with a 14-day expiry date
+    // e.g., await db.workspaces.create({ planId, email, status: 'trial', expiresAt: ... });
+
+    return res.json({
+      success: true,
+      message: 'Workspace trial provisioned successfully.',
+      redirectUrl: '/supportops/dashboard?trial=active'
+    });
+  } catch (err) {
+    console.error('Trial provisioning error:', err.message);
+    return res.status(500).json({ success: false, error: 'Failed to initialize trial workspace.' });
+  }
+});
+
+// ==========================================
+// 4. ENTERPRISE LEAD CAPTURE / CONTACT SALES
+// ==========================================
+app.post('/api/v1/supportops/contact-sales', async (req, res) => {
+  const { name, email, company, requirements } = req.body;
+
+  try {
+    // TODO: Send notification email to sales team or store lead in CRM
+
+    return res.json({
+      success: true,
+      message: 'Sales inquiry received. Our team will contact you within 2 business hours.'
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'Failed to submit inquiry.' });
   }
 });
 
