@@ -1,43 +1,36 @@
-let ws = null;
+// Compatibility facade for older callers. SupportOps uses authenticated SSE;
+// bearer tokens are never placed in a WebSocket query string.
+import { SUPPORTOPS_API } from "../config/paths";
+import { listenSse } from "./sse";
+
+let controller = null;
 
 export function connectSocket(onEvent) {
-  const token = localStorage.getItem("access_token");
-  if (!token) return;
+    disconnectSocket();
+    const token = localStorage.getItem("token") || localStorage.getItem("authToken") || localStorage.getItem("access_token");
+    if (!token) return false;
 
-  // Backend WebSocket URL should be set in your Vite env file (.env)
-  // Example: VITE_BACKEND_WS_URL=wss://supportops-ai.onrender.com/ws/tickets
-  const backendUrl = import.meta.env.VITE_BACKEND_WS_URL;
-  const url = `${backendUrl}?token=${encodeURIComponent(token)}`;
-
-  ws = new WebSocket(url);
-
-  ws.onopen = () => console.log("WS connected");
-  ws.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      onEvent?.(data);
-    } catch {
-      // Fallback for plain text messages
-      onEvent?.({ type: "MESSAGE", payload: e.data });
-    }
-  };
-  ws.onclose = () => {
-    console.log("WS closed");
-    // Optional: attempt reconnect
-    // setTimeout(() => connectSocket(onEvent), 3000);
-  };
-  ws.onerror = (err) => console.error("WS error", err);
+    controller = new AbortController();
+    void listenSse(
+        SUPPORTOPS_API.chat("/stream"),
+        (event) => onEvent?.(event.data),
+        controller.signal,
+        {
+            Authorization: `Bearer ${token}`,
+            ...(localStorage.getItem("activeOrgId")
+                ? { "X-Org-Id": localStorage.getItem("activeOrgId") }
+                : {}),
+        },
+    );
+    return true;
 }
 
 export function disconnectSocket() {
-  try {
-    ws?.close();
-  } catch {}
-  ws = null;
+    controller?.abort();
+    controller = null;
 }
 
-export function wsSend(payload) {
-  if (ws?.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(payload));
-  }
+// SSE is server-to-client only. Mutations must use the authenticated REST API.
+export function wsSend() {
+    return false;
 }

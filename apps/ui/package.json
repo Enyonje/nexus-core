@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "vite preview",
-    "tailwind:init": "tailwindcss init -p"
+    "tailwind:init": "tailwindcss init -p",
+    "postbuild": "node scripts/generate-seo-routes.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

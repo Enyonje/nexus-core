@@ -32,7 +32,7 @@ export default function SupportOpsDashboard() {
 
     // Real-time activity stream via SSE
     const { events: liveEvents, isConnected: isStreamConnected } = useAgentStream(
-        `${API_BASE_URL}/api/v1/agents/activity/stream`
+        `${API_BASE_URL}/api/v1/stream/agents/activity/stream`
     );
 
     // Fetch production metrics & system operational health

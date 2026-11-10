@@ -109,6 +109,8 @@ export default function App() {
             {/* ================= PUBLIC: never ask for authentication ================= */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/docs" element={<SEOPillarPage />} />
+            <Route path="/ai-agents" element={<SEOPillarPage />} />
+            <Route path="/workflow-automation" element={<SEOPillarPage />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/goals" element={<Goals />} />
             <Route path="/architecture" element={<ArchitecturePage />} />

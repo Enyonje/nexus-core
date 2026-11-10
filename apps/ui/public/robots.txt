@@ -1,13 +1,21 @@
 User-agent: *
 Allow: /
 Allow: /agents
+Allow: /ai-agents
+Allow: /workflow-automation
 Allow: /pricing
 Allow: /supportops
+Allow: /supportops/pricing
+Allow: /supportops/demo
 
-# Disallow protected app routes from search engine indexing
 Disallow: /dashboard
 Disallow: /executions
 Disallow: /goals
 Disallow: /admin
+Disallow: /supportops/login
+Disallow: /supportops/agent
+Disallow: /supportops/admin
+Disallow: /supportops/management
+Disallow: /supportops/investor
 
-Sitemap: https://nexus-core-a0px.onrender.com/sitemap.xml
+Sitemap: https://nexusthecore.com/sitemap.xml

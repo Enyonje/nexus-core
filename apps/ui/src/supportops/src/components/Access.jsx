@@ -54,8 +54,8 @@ import { useAuth } from "../context/AuthContext";
  * AGENT:
  * - Agent Workspace
  *
- * USER:
- * - Agent Workspace
+ * UNINVITED USERS:
+ * - No SupportOps workspace access; membership and app access must be granted by invitation.
  *
  * INVESTOR:
  * - Investor Workspace
@@ -184,10 +184,6 @@ const WORKSPACE_PERMISSIONS = {
         "agent",
     ],
 
-    user: [
-        "agent",
-    ],
-
     investor: [
         "investor",
     ],
@@ -223,9 +219,6 @@ export function getDefaultWorkspace(user) {
             return ADMIN_HOME;
 
         case "agent":
-        case "user":
-            return AGENT_HOME;
-
         case "investor":
             return INVESTOR_HOME;
 

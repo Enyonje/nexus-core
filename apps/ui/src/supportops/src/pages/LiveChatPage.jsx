@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { MessagesSquare, Send, CheckCircle2 } from "lucide-react";
 import { SUPPORTOPS_API } from "../config/paths";
+import { listenSse } from "../lib/sse";
 
 const headers = () => {
     const token = localStorage.getItem("authToken");
@@ -21,25 +22,9 @@ async function call(method, url, body) {
     return data;
 }
 
-// fetch-based SSE so the Authorization header can be sent (EventSource cannot)
-async function listen(url, onEvent, signal) {
-    while (!signal.aborted) {
-        try {
-            const res = await fetch(url, { signal, headers: headers() });
-            const reader = res.body.getReader();
-            const dec = new TextDecoder();
-            let buf = "";
-            for (; ;) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buf += dec.decode(value, { stream: true });
-                const parts = buf.split("\n\n");
-                buf = parts.pop();
-                for (const p of parts) if (p.startsWith("data: ")) onEvent(JSON.parse(p.slice(6)));
-            }
-        } catch { /* reconnect below */ }
-        if (!signal.aborted) await new Promise((r) => setTimeout(r, 3000));
-    }
+// Authenticated fetch-SSE with bounded reconnect and response validation.
+function listen(url, onEvent, signal) {
+    return listenSse(url, (event) => onEvent(event.data), signal, headers());
 }
 
 const ago = (d) => new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -65,6 +50,14 @@ export default function LiveChatPage() {
     useEffect(() => {
         const controller = new AbortController();
         listen(SUPPORTOPS_API.chat("/stream"), (ev) => {
+            if (ev.type === "stream_ready") {
+                loadList();
+                if (activeRef.current) {
+                    call("GET", SUPPORTOPS_API.chat(`/conversations/${activeRef.current}/messages`))
+                        .then((rows) => setMessages(Array.isArray(rows) ? rows : []))
+                        .catch(() => {});
+                }
+            }
             if (ev.type === "conversation") loadList();
             if (ev.type === "message") {
                 if (ev.conversationId === activeRef.current) {

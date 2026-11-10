@@ -1,130 +1,88 @@
-// src/hooks/useAgentStream.js
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useAuth } from "../context/AuthContext";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { API_ENDPOINTS } from "../config/paths";
+import { listenSse } from "../lib/sse";
+
+const readToken = () =>
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("access_token");
+
+function resolveOptions(input, extra = {}) {
+    if (typeof input === "string") return { ...extra, url: input };
+    return { ...(input || {}), ...extra };
+}
 
 /**
- * Custom hook for real-time SupportOps AI agent telemetry and streaming logs.
- * Supports Server-Sent Events (SSE) and WebSocket stream fallbacks.
- *
- * @param {Object} options
- * @param {string} options.ticketId - Optional specific ticket to stream logs for.
- * @param {string} options.agentId - Optional agent instance to monitor.
- * @param {boolean} options.autoConnect - Auto-start stream on mount (default: true).
+ * Authenticated Nexus/SupportOps activity stream.
+ * Accepts either useAgentStream(url, { enabled }) or useAgentStream({ url, enabled }).
+ * Bearer credentials are sent in headers, never in query strings.
  */
-export function useAgentStream({ ticketId = null, agentId = null, autoConnect = true } = {}) {
-    const { token } = useAuth();
-    const [messages, setMessages] = useState([]);
-    const [status, setStatus] = useState("disconnected"); // "disconnected" | "connecting" | "connected" | "error"
+export function useAgentStream(input = {}, extra = {}) {
+    const options = resolveOptions(input, extra);
+    const url = options.url || API_ENDPOINTS.activityStream;
+    const enabled = options.enabled ?? options.autoConnect ?? true;
+
+    const [events, setEvents] = useState([]);
+    const [status, setStatus] = useState("disconnected");
     const [telemetry, setTelemetry] = useState({
         activeAgents: 0,
         tokensPerSec: 0,
         currentSlaStatus: "healthy",
     });
+    const controllerRef = useRef(null);
 
-    const eventSourceRef = useRef(null);
-    const reconnectTimeoutRef = useRef(null);
-
-    // Clear log history
-    const clearLogs = useCallback(() => {
-        setMessages([]);
+    const disconnect = useCallback(() => {
+        controllerRef.current?.abort();
+        controllerRef.current = null;
+        setStatus("disconnected");
     }, []);
 
-    // Connect to backend SSE / WebSockets stream
     const connect = useCallback(() => {
+        controllerRef.current?.abort();
+        const token = readToken();
         if (!token) {
             setStatus("error");
             return;
         }
 
+        const controller = new AbortController();
+        controllerRef.current = controller;
         setStatus("connecting");
 
-        const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-        const queryParams = new URLSearchParams({ token });
-        if (ticketId) queryParams.append("ticketId", ticketId);
-        if (agentId) queryParams.append("agentId", agentId);
-
-        const streamUrl = `${baseUrl}/api/v1/supportops/stream?${queryParams.toString()}`;
-
-        // Clean up prior stream instance if present
-        if (eventSourceRef.current) {
-            eventSourceRef.current.close();
-        }
-
-        try {
-            const es = new EventSource(streamUrl);
-            eventSourceRef.current = es;
-
-            es.onopen = () => {
-                setStatus("connected");
-            };
-
-            // Listen for incoming AI thought tokens / streaming messages
-            es.addEventListener("agent_message", (event) => {
-                try {
-                    const payload = JSON.parse(event.data);
-                    setMessages((prev) => [...prev, payload]);
-                } catch (err) {
-                    console.error("Failed to parse agent_message payload:", err);
+        void listenSse(
+            url,
+            (event) => {
+                const payload = event.data;
+                setEvents((previous) => [...previous, {
+                    ...(payload && typeof payload === "object" ? payload : { description: String(payload ?? "") }),
+                    id: event.id || `${Date.now()}-${previous.length}`,
+                    eventType: event.type,
+                    receivedAt: new Date().toISOString(),
+                }].slice(-100));
+                if (event.type === "telemetry_update" && payload && typeof payload === "object") {
+                    setTelemetry((previous) => ({ ...previous, ...payload }));
                 }
-            });
+            },
+            controller.signal,
+            { Authorization: `Bearer ${token}`, Accept: "text/event-stream" },
+            setStatus,
+        );
+    }, [url]);
 
-            // Listen for real-time telemetry updates (active agents, tokens/sec, SLA metrics)
-            es.addEventListener("telemetry_update", (event) => {
-                try {
-                    const payload = JSON.parse(event.data);
-                    setTelemetry((prev) => ({ ...prev, ...payload }));
-                } catch (err) {
-                    console.error("Failed to parse telemetry payload:", err);
-                }
-            });
-
-            // Handle stream errors & automatic reconnection
-            es.onerror = (err) => {
-                console.error("SupportOps agent stream error:", err);
-                setStatus("error");
-                es.close();
-
-                // Attempt reconnection after 5 seconds
-                reconnectTimeoutRef.current = setTimeout(() => {
-                    connect();
-                }, 5000);
-            };
-        } catch (err) {
-            console.error("Failed to initialize EventSource connection:", err);
-            setStatus("error");
-        }
-    }, [token, ticketId, agentId]);
-
-    // Disconnect stream helper
-    const disconnect = useCallback(() => {
-        if (eventSourceRef.current) {
-            eventSourceRef.current.close();
-            eventSourceRef.current = null;
-        }
-        if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current);
-        }
-        setStatus("disconnected");
-    }, []);
-
-    // Auto-connect lifecycle hook
     useEffect(() => {
-        if (autoConnect && token) {
-            connect();
-        }
-
-        return () => {
-            disconnect();
-        };
-    }, [autoConnect, token, connect, disconnect]);
+        if (enabled) connect();
+        else disconnect();
+        return disconnect;
+    }, [enabled, connect, disconnect]);
 
     return {
-        messages,
+        events,
+        messages: events,
         telemetry,
         status,
         connect,
         disconnect,
-        clearLogs,
+        clearLogs: () => setEvents([]),
         isConnected: status === "connected",
     };
 }

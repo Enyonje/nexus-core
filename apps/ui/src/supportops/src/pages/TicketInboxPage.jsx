@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Inbox, Send, CheckCircle2, UserCheck, StickyNote, Clock } from "lucide-react";
 import { SUPPORTOPS_API } from "../config/paths";
+import { listenSse } from "../lib/sse";
 
 const authHeaders = () => {
     const token = localStorage.getItem("authToken");
@@ -25,25 +26,10 @@ async function call(method, url, body) {
     return data;
 }
 
-// fetch-based SSE so the Authorization header can be sent
-async function listen(url, onEvent, signal) {
-    while (!signal.aborted) {
-        try {
-            const res = await fetch(url, { signal, headers: authHeaders() });
-            const reader = res.body.getReader();
-            const dec = new TextDecoder();
-            let buf = "";
-            for (; ;) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buf += dec.decode(value, { stream: true });
-                const parts = buf.split("\n\n");
-                buf = parts.pop();
-                for (const p of parts) if (p.startsWith("data: ")) onEvent(JSON.parse(p.slice(6)));
-            }
-        } catch { /* reconnect */ }
-        if (!signal.aborted) await new Promise((r) => setTimeout(r, 3000));
-    }
+// Authenticated fetch-SSE: supports Authorization headers, safe parsing and
+// bounded reconnects. EventSource cannot attach the bearer token header.
+function listen(url, onEvent, signal) {
+    return listenSse(url, (event) => onEvent(event.data), signal, authHeaders());
 }
 
 const CHANNEL = { whatsapp: "WhatsApp", voice: "Phone", email: "Email", sms: "SMS", web: "Web chat", social: "Social" };
@@ -87,6 +73,11 @@ export default function TicketInboxPage() {
     useEffect(() => {
         const c = new AbortController();
         listen(SUPPORTOPS_API.chat("/stream"), (ev) => {
+            if (ev.type === "stream_ready") {
+                loadList();
+                if (ref.current.activeNo) loadDetail(ref.current.activeNo);
+                return;
+            }
             if (ev.type !== "ticket") return;
             loadList();
             if (ev.ticket?.number === ref.current.activeNo) loadDetail(ev.ticket.number);
