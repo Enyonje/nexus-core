@@ -22,7 +22,9 @@ const esc = (s) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll
 
 for (const route of routes) {
   const canonical = `${origin}${route.path === '/' ? '/' : route.path}`;
-  const content = `<main id="seo-content" class="seo-content"><h1>${esc(route.h1)}</h1><p>${esc(route.body)}</p><nav aria-label="Related pages">${route.links.map(([label, href]) => `<a href="${href}">${esc(label)}</a>`).join(' · ')}</nav></main>`;
+  // Wrap the injected SEO block with Tailwind's sr-only (screen-reader only) class
+  // This keeps it hidden from the visual viewport while remaining 100% readable to Googlebot.
+  const content = `<main id="seo-content" class="sr-only"><h1>${esc(route.h1)}</h1><p>${esc(route.body)}</p><nav aria-label="Related pages">${route.links.map(([label, href]) => `<a href="${href}">${esc(label)}</a>`).join(' · ')}</nav></main>`;
 
   // 1. Clean out existing titles or description/robots tags if they exist to prevent duplicates
   let html = template
