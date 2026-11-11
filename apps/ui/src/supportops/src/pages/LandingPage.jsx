@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from "react";
+
+import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 
 import {
-  LayoutDashboard,
   Sparkles,
   ArrowRight,
   CheckCircle2,
@@ -11,22 +11,15 @@ import {
   MessageSquare,
   BarChart3,
   Eye,
-  LogIn,
 } from "lucide-react";
 
-import { useAuth } from "../context/AuthContext";
-import { useApp } from "../../../context/AccessProvider";
-import { ROUTES, homeForRole } from "../config/paths";
-
 // ============================================================
-// CONFIGURATION
+// PUBLIC ROUTES
 // ============================================================
 
 const SUPPORTOPS_HOME = "/supportops";
 const DEMO_ROUTE = "/supportops/demo";
-const NEXUS_HOME = "/dashboard";
-const LOGIN_ROUTE = ROUTES?.register || "/register";
-const PRICING_ROUTE = ROUTES?.pricing || LOGIN_ROUTE;
+const PRICING_ROUTE = "/supportops/pricing";
 
 // ============================================================
 // SAFE INTERNAL ROUTE VALIDATION
@@ -42,108 +35,17 @@ function isSafePath(path) {
   );
 }
 
-function normalize(value) {
-  return typeof value === "string"
-    ? value.trim().toLowerCase()
-    : "";
-}
-
 // ============================================================
-// DESTINATION RESOLUTION
-// ============================================================
-
-function resolveDestination(user, role, backendRedirect) {
-  const intent = normalize(user?.intent);
-
-  const product = normalize(
-    typeof user?.product === "string"
-      ? user.product
-      : user?.product?.slug || user?.product?.name
-  );
-
-  const organization = normalize(
-    typeof user?.organization === "string"
-      ? user.organization
-      : user?.organization?.name ||
-      user?.organization?.slug
-  );
-
-  // SUPPORTOPS
-  if (
-    intent === "supportops" ||
-    product === "supportops" ||
-    organization.includes("supportops")
-  ) {
-    return SUPPORTOPS_HOME;
-  }
-
-  // NEXUS
-  if (
-    intent === "launch_swarm" ||
-    intent === "dashboard" ||
-    intent === "nexus" ||
-    intent === "explore_agents" ||
-    intent === "agents" ||
-    product === "nexus" ||
-    product === "nexuscore" ||
-    organization.includes("nexus")
-  ) {
-    return NEXUS_HOME;
-  }
-
-  // TRUSTED BACKEND REDIRECT
-  if (isSafePath(backendRedirect)) {
-    return backendRedirect;
-  }
-
-  // ROLE-BASED FALLBACK
-  if (typeof homeForRole === "function" && role) {
-    try {
-      const destination = homeForRole(role);
-
-      if (isSafePath(destination)) {
-        return destination;
-      }
-    } catch (error) {
-      console.error(
-        "[LandingPage] Role navigation error:",
-        error
-      );
-    }
-  }
-
-  return NEXUS_HOME;
-}
-
-// ============================================================
-// LANDING PAGE
+// PUBLIC LANDING PAGE
 // ============================================================
 
 export default function LandingPage() {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState("inbox");
-  const [navigating, setNavigating] = useState(false);
-
-  const {
-    isAuth,
-    loading,
-    role,
-    user,
-    redirectTo: authRedirect,
-  } = useAuth();
-
-  const plan = useApp("supportops");
-
-  const busy =
-    Boolean(
-      loading ||
-      (isAuth && plan?.loading) ||
-      navigating
-    );
 
   // ==========================================================
-  // SAFE NAVIGATION
+  // PUBLIC NAVIGATION
   // ==========================================================
 
   const safeNavigate = useCallback(
@@ -153,11 +55,8 @@ export default function LandingPage() {
           "[LandingPage] Invalid destination:",
           path
         );
-
         return;
       }
-
-      setNavigating(true);
 
       navigate(path, options);
     },
@@ -165,38 +64,16 @@ export default function LandingPage() {
   );
 
   // ==========================================================
-  // RESOLVE USER DESTINATION
+  // PUBLIC ACTIONS
   // ==========================================================
 
-  const dashboardRoute = resolveDestination(
-    user,
-    role,
-    authRedirect
-  );
+  const handleLaunchClick = useCallback(() => {
+    safeNavigate(PRICING_ROUTE);
+  }, [safeNavigate]);
 
-  // ==========================================================
-  // AUTOMATIC AUTHENTICATED REDIRECT
-  // ==========================================================
-
-  useEffect(() => {
-    if (loading || !isAuth || plan?.loading) {
-      return;
-    }
-
-    safeNavigate(dashboardRoute, {
-      replace: true,
-    });
-  }, [
-    loading,
-    isAuth,
-    plan?.loading,
-    dashboardRoute,
-    safeNavigate,
-  ]);
-
-  // ==========================================================
-  // SCROLL
-  // ==========================================================
+  const handleFreeBrowse = useCallback(() => {
+    safeNavigate(DEMO_ROUTE);
+  }, [safeNavigate]);
 
   const scrollToSection = useCallback((id) => {
     document.getElementById(id)?.scrollIntoView({
@@ -204,66 +81,6 @@ export default function LandingPage() {
       block: "start",
     });
   }, []);
-
-  // ==========================================================
-  // MAIN CTA
-  // ==========================================================
-
-  const handleLaunchClick = useCallback(() => {
-    if (busy) return;
-
-    if (isAuth) {
-      safeNavigate(dashboardRoute);
-      return;
-    }
-
-    safeNavigate(PRICING_ROUTE);
-  }, [
-    busy,
-    isAuth,
-    dashboardRoute,
-    safeNavigate,
-  ]);
-
-  // ==========================================================
-  // LOGIN
-  // ==========================================================
-
-  const handleLogin = useCallback(() => {
-    if (busy) return;
-
-    if (isAuth) {
-      safeNavigate(dashboardRoute);
-      return;
-    }
-
-    safeNavigate(LOGIN_ROUTE);
-  }, [
-    busy,
-    isAuth,
-    dashboardRoute,
-    safeNavigate,
-  ]);
-
-  // ==========================================================
-  // FREE BROWSING
-  // ==========================================================
-
-  const handleFreeBrowse = useCallback(() => {
-    if (busy) return;
-
-    safeNavigate(DEMO_ROUTE);
-  }, [busy, safeNavigate]);
-
-  // ==========================================================
-  // CTA LABEL
-  // ==========================================================
-
-  const ctaLabel = busy
-    ? "Checking Session..."
-    : isAuth
-      ? "Open Workspace"
-      : "Get Started";
 
   // ==========================================================
   // FEATURES
@@ -311,6 +128,10 @@ export default function LandingPage() {
     },
   ];
 
+  const selectedTab =
+    featureTabs.find((tab) => tab.id === activeTab) ??
+    featureTabs[0];
+
   // ==========================================================
   // RENDER
   // ==========================================================
@@ -354,7 +175,7 @@ export default function LandingPage() {
 
           <button
             type="button"
-            onClick={() => safeNavigate(DEMO_ROUTE)}
+            onClick={handleFreeBrowse}
             className="transition-colors hover:text-white"
           >
             Live demo
@@ -362,7 +183,7 @@ export default function LandingPage() {
 
           <button
             type="button"
-            onClick={() => safeNavigate(PRICING_ROUTE)}
+            onClick={handleLaunchClick}
             className="transition-colors hover:text-white"
           >
             Pricing
@@ -375,36 +196,19 @@ export default function LandingPage() {
           <button
             type="button"
             onClick={handleFreeBrowse}
-            disabled={busy}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-2 text-sm font-semibold text-slate-200 transition-all hover:bg-slate-800 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-2 text-sm font-semibold text-slate-200 transition-all hover:bg-slate-800"
           >
             <Eye className="h-4 w-4 text-indigo-400" />
             Browse Free
           </button>
 
-          {!isAuth && (
-            <button
-              type="button"
-              onClick={handleLogin}
-              disabled={busy}
-              className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-300 hover:text-white sm:inline-flex"
-            >
-              <LogIn className="h-4 w-4" />
-              Login
-            </button>
-          )}
-
           <button
             type="button"
             onClick={handleLaunchClick}
-            disabled={busy}
-            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition-all hover:bg-indigo-500 disabled:opacity-50 sm:px-5"
+            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition-all hover:bg-indigo-500 sm:px-5"
           >
-            {isAuth && !busy && (
-              <LayoutDashboard className="h-4 w-4" />
-            )}
-
-            {ctaLabel}
+            Get Started
+            <ArrowRight className="h-4 w-4" />
           </button>
 
         </div>
@@ -440,8 +244,7 @@ export default function LandingPage() {
           <button
             type="button"
             onClick={handleFreeBrowse}
-            disabled={busy}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-8 py-3.5 font-semibold text-indigo-300 transition-all hover:bg-indigo-500/20 disabled:opacity-50 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-8 py-3.5 font-semibold text-indigo-300 transition-all hover:bg-indigo-500/20 sm:w-auto"
           >
             <Eye className="h-4 w-4" />
             Browse for Free
@@ -450,10 +253,9 @@ export default function LandingPage() {
           <button
             type="button"
             onClick={handleLaunchClick}
-            disabled={busy}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-8 py-3.5 font-semibold text-white shadow-lg shadow-indigo-600/25 transition-all hover:bg-indigo-500 disabled:opacity-50 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-8 py-3.5 font-semibold text-white shadow-lg shadow-indigo-600/25 transition-all hover:bg-indigo-500 sm:w-auto"
           >
-            {ctaLabel}
+            Get Started
             <ArrowRight className="h-4 w-4" />
           </button>
 
@@ -544,85 +346,81 @@ export default function LandingPage() {
 
           <AnimatePresence mode="wait">
 
-            {featureTabs
-              .filter((tab) => tab.id === activeTab)
-              .map((tab) => (
-                <motion.div
-                  key={tab.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                  className="grid grid-cols-1 items-center gap-8 lg:grid-cols-2"
-                >
+            <motion.div
+              key={selectedTab.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="grid grid-cols-1 items-center gap-8 lg:grid-cols-2"
+            >
 
-                  <div className="space-y-6">
+              <div className="space-y-6">
 
-                    <h3 className="text-2xl font-bold text-white sm:text-3xl">
-                      {tab.title}
-                    </h3>
+                <h3 className="text-2xl font-bold text-white sm:text-3xl">
+                  {selectedTab.title}
+                </h3>
 
-                    <p className="text-base leading-relaxed text-slate-300">
-                      {tab.description}
-                    </p>
+                <p className="text-base leading-relaxed text-slate-300">
+                  {selectedTab.description}
+                </p>
 
-                    <ul className="space-y-3">
-                      {tab.highlights.map((item) => (
-                        <li
-                          key={item}
-                          className="flex items-center gap-3 text-slate-200"
-                        >
-                          <CheckCircle2 className="h-5 w-5 shrink-0 text-indigo-400" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
+                <ul className="space-y-3">
+                  {selectedTab.highlights.map((item) => (
+                    <li
+                      key={item}
+                      className="flex items-center gap-3 text-slate-200"
+                    >
+                      <CheckCircle2 className="h-5 w-5 shrink-0 text-indigo-400" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
 
+              </div>
+
+              <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-950 p-6 shadow-inner">
+
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 w-3 rounded-full bg-red-500/80" />
+                    <div className="h-3 w-3 rounded-full bg-yellow-500/80" />
+                    <div className="h-3 w-3 rounded-full bg-green-500/80" />
                   </div>
 
-                  <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-950 p-6 shadow-inner">
+                  <span className="font-mono text-xs text-slate-500">
+                    live_ops_view.json
+                  </span>
 
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                </div>
 
-                      <div className="flex items-center gap-2">
-                        <div className="h-3 w-3 rounded-full bg-red-500/80" />
-                        <div className="h-3 w-3 rounded-full bg-yellow-500/80" />
-                        <div className="h-3 w-3 rounded-full bg-green-500/80" />
-                      </div>
+                <div className="space-y-2 font-mono text-xs text-slate-300">
 
-                      <span className="font-mono text-xs text-slate-500">
-                        live_ops_view.json
-                      </span>
+                  <p className="text-indigo-400">
+                    // Status: Active SupportOps Session
+                  </p>
 
-                    </div>
+                  <p>{"{"}</p>
 
-                    <div className="space-y-2 font-mono text-xs text-slate-300">
+                  <p className="pl-4 text-emerald-400">
+                    "agent_status": "ONLINE",
+                  </p>
 
-                      <p className="text-indigo-400">
-                        // Status: Active SupportOps Session
-                      </p>
+                  <p className="pl-4 text-amber-300">
+                    "unassigned_tickets": 0,
+                  </p>
 
-                      <p>{"{"}</p>
+                  <p className="pl-4 text-indigo-300">
+                    "auto_resolution_rate": "88.4%"
+                  </p>
 
-                      <p className="pl-4 text-emerald-400">
-                        "agent_status": "ONLINE",
-                      </p>
+                  <p>{"}"}</p>
 
-                      <p className="pl-4 text-amber-300">
-                        "unassigned_tickets": 0,
-                      </p>
+                </div>
+              </div>
 
-                      <p className="pl-4 text-indigo-300">
-                        "auto_resolution_rate": "88.4%"
-                      </p>
-
-                      <p>{"}"}</p>
-
-                    </div>
-                  </div>
-
-                </motion.div>
-              ))}
+            </motion.div>
 
           </AnimatePresence>
 
@@ -650,8 +448,7 @@ export default function LandingPage() {
             <button
               type="button"
               onClick={handleFreeBrowse}
-              disabled={busy}
-              className="inline-flex w-full items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-8 py-4 text-lg font-bold text-indigo-300 hover:bg-indigo-500/20 disabled:opacity-50 sm:w-auto"
+              className="inline-flex w-full items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-8 py-4 text-lg font-bold text-indigo-300 hover:bg-indigo-500/20 sm:w-auto"
             >
               Browse for Free
             </button>
@@ -659,10 +456,9 @@ export default function LandingPage() {
             <button
               type="button"
               onClick={handleLaunchClick}
-              disabled={busy}
-              className="inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-8 py-4 text-lg font-bold text-white shadow-xl shadow-indigo-600/30 hover:bg-indigo-500 disabled:opacity-50 sm:w-auto"
+              className="inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-8 py-4 text-lg font-bold text-white shadow-xl shadow-indigo-600/30 hover:bg-indigo-500 sm:w-auto"
             >
-              {ctaLabel}
+              Get Started
             </button>
 
           </div>

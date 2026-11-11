@@ -1,4 +1,3 @@
-// src/context/AccessProvider.jsx
 
 import React, {
     createContext,
@@ -8,7 +7,13 @@ import React, {
 
 import { useAuth } from "./AuthProvider";
 
+// ============================================================
+// NEXUS CORE ACCESS CONTROL
+// ============================================================
+
 export const AccessContext = createContext(null);
+
+const NEXUS_CORE_APP = "nexus-core";
 
 const VALID_PLANS = [
     "free",
@@ -23,9 +28,10 @@ const ACTIVE_SUBSCRIPTION_STATUSES = [
     "trialing",
 ];
 
-/**
- * Normalize a value to a lowercase string.
- */
+// ============================================================
+// NORMALIZATION
+// ============================================================
+
 function normalize(value, fallback = "") {
     if (typeof value !== "string") {
         return fallback;
@@ -34,34 +40,51 @@ function normalize(value, fallback = "") {
     return value.trim().toLowerCase() || fallback;
 }
 
-/**
- * Resolve the current user's subscription plan.
- */
+function isRealUser(user) {
+    return Boolean(
+        user?.id &&
+        !user?.isGuest
+    );
+}
+
+// ============================================================
+// SUBSCRIPTION RESOLUTION
+// ============================================================
+
 function resolvePlan(user, subscription) {
     const rawPlan =
-        subscription?.plan_id ??
         subscription?.tier ??
+        subscription?.plan?.key ??
         user?.subscription?.tier ??
         user?.plan ??
         "free";
 
-    return normalize(rawPlan, "free");
+    const plan = normalize(rawPlan, "free");
+
+    return VALID_PLANS.includes(plan)
+        ? plan
+        : "free";
 }
 
-/**
- * Resolve the current subscription status.
- *
- * Missing subscription information must not automatically
- * grant paid access.
- */
 function resolveSubscriptionStatus(user, subscription) {
     const rawStatus =
         subscription?.status ??
         user?.subscription?.status ??
-        "";
+        "inactive";
 
     return normalize(rawStatus, "inactive");
 }
+
+function resolveSubscriptionApp(subscription) {
+    return normalize(
+        subscription?.app,
+        NEXUS_CORE_APP
+    );
+}
+
+// ============================================================
+// ACCESS PROVIDER
+// ============================================================
 
 export const AccessProvider = ({ children }) => {
     const {
@@ -71,21 +94,24 @@ export const AccessProvider = ({ children }) => {
     } = useAuth();
 
     const accessControls = useMemo(() => {
-        const isAuthenticated = Boolean(user);
+        const isAuthenticated = isRealUser(user);
 
-        // Public visitors receive no privileged role.
         const role = normalize(
             user?.role,
             isAuthenticated ? "user" : "guest"
         );
 
+        // Never use permissions from another application.
         const permissions = Array.isArray(user?.permissions)
             ? user.permissions
+                .filter(
+                    (permission) =>
+                        typeof permission === "string"
+                )
+                .map((permission) =>
+                    permission.trim().toLowerCase()
+                )
             : [];
-
-        const normalizedPermissions = permissions
-            .filter((permission) => typeof permission === "string")
-            .map((permission) => permission.trim().toLowerCase());
 
         const plan = resolvePlan(user, subscription);
 
@@ -94,15 +120,25 @@ export const AccessProvider = ({ children }) => {
             subscription
         );
 
+        const subscriptionApp =
+            resolveSubscriptionApp(subscription);
+
+        // A subscription explicitly belonging to another
+        // application cannot grant Nexus Core paid access.
+        const isNexusCoreSubscription =
+            subscriptionApp === NEXUS_CORE_APP;
+
         const isSubscribed =
             isAuthenticated &&
+            isNexusCoreSubscription &&
             ACTIVE_SUBSCRIPTION_STATUSES.includes(status);
 
-        /**
-         * Role checks.
-         */
+        // ====================================================
+        // ROLE CHECKS
+        // ====================================================
+
         const hasRole = (requiredRoles) => {
-            if (!isAuthenticated) {
+            if (!isAuthenticated || !requiredRoles) {
                 return false;
             }
 
@@ -116,24 +152,23 @@ export const AccessProvider = ({ children }) => {
             );
         };
 
-        /**
-         * Permission checks.
-         *
-         * Only explicit permissions or explicitly recognized
-         * administrative roles grant access.
-         *
-         * IMPORTANT:
-         * Backend endpoints must independently enforce permissions.
-         */
+        // ====================================================
+        // PERMISSION CHECKS
+        // ====================================================
+
         const hasPermission = (permission) => {
-            if (!isAuthenticated || !permission) {
+            if (
+                !isAuthenticated ||
+                !permission ||
+                typeof permission !== "string"
+            ) {
                 return false;
             }
 
             const normalizedPermission =
                 normalize(permission);
 
-            // Explicit administrative roles.
+            // Explicit Nexus Core administrative roles.
             if (
                 role === "admin" ||
                 role === "owner"
@@ -141,60 +176,66 @@ export const AccessProvider = ({ children }) => {
                 return true;
             }
 
-            return normalizedPermissions.includes(
+            return permissions.includes(
                 normalizedPermission
             );
         };
 
-        /**
-         * Plan hierarchy.
-         *
-         * A plan must be recognized and meet the requested tier.
-         */
+        // ====================================================
+        // PLAN CHECKS
+        // ====================================================
+
         const hasPlan = (requiredPlan) => {
-            if (!isAuthenticated || !requiredPlan) {
+            if (
+                !isAuthenticated ||
+                !requiredPlan
+            ) {
                 return false;
             }
 
-            const normalizedPlan =
+            const normalizedRequiredPlan =
                 normalize(requiredPlan);
 
-            const userPlanIndex =
+            const currentPlanIndex =
                 VALID_PLANS.indexOf(plan);
 
             const requiredPlanIndex =
-                VALID_PLANS.indexOf(normalizedPlan);
+                VALID_PLANS.indexOf(
+                    normalizedRequiredPlan
+                );
 
             if (
-                userPlanIndex === -1 ||
+                currentPlanIndex === -1 ||
                 requiredPlanIndex === -1
             ) {
                 return false;
             }
 
-            // Paid plans require a valid active subscription.
-            if (
-                normalizedPlan !== "free" &&
-                !isSubscribed
-            ) {
+            // Free access does not require a paid subscription.
+            if (normalizedRequiredPlan === "free") {
+                return true;
+            }
+
+            // Paid access requires an active Nexus Core subscription.
+            if (!isSubscribed) {
                 return false;
             }
 
-            return userPlanIndex >= requiredPlanIndex;
+            return currentPlanIndex >= requiredPlanIndex;
         };
 
-        /**
-         * Check whether a feature is available.
-         *
-         * The argument is treated as a permission identifier.
-         */
+        // ====================================================
+        // FEATURE CHECKS
+        // ====================================================
+
         const can = (feature) => {
             return hasPermission(feature);
         };
 
-        /**
-         * Evaluate role, permission, and plan requirements.
-         */
+        // ====================================================
+        // COMBINED ACCESS CHECK
+        // ====================================================
+
         const canAccess = (requirement = {}) => {
             if (!isAuthenticated) {
                 return false;
@@ -224,18 +265,29 @@ export const AccessProvider = ({ children }) => {
             return true;
         };
 
+        // ====================================================
+        // NEXUS CORE ACCESS STATE
+        // ====================================================
+
         return {
+            app: NEXUS_CORE_APP,
+
             role,
-            permissions: normalizedPermissions,
+
+            permissions,
+
             plan,
 
             subscriptionStatus: status,
+
             status,
 
             isAuthenticated,
+
             isGuest: !isAuthenticated,
 
             isSubscribed,
+
             subscribed: isSubscribed,
 
             trialEndsAt:
@@ -246,12 +298,17 @@ export const AccessProvider = ({ children }) => {
                 null,
 
             usage: subscription?.usage ?? {},
+
             limits: subscription?.limits ?? {},
 
             hasRole,
+
             hasPermission,
+
             hasPlan,
+
             can,
+
             canAccess,
         };
     }, [user, subscription]);
@@ -271,25 +328,28 @@ export const AccessProvider = ({ children }) => {
     );
 };
 
-/**
- * Access context hook.
- */
+// ============================================================
+// NEXUS CORE ACCESS HOOK
+// ============================================================
+
 export const useAccess = () => {
     const context = useContext(AccessContext);
 
     if (!context) {
         throw new Error(
-            "useAccess must be used within an AccessProvider."
+            "useAccess must be used within Nexus Core AccessProvider."
         );
     }
 
     return context;
 };
 
-/**
- * Backwards-compatible aliases.
- */
+// ============================================================
+// BACKWARDS-COMPATIBLE EXPORTS
+// ============================================================
+
 export const useApp = useAccess;
+
 export const useAccessContext = useAccess;
 
 export default AccessProvider;

@@ -1,292 +1,119 @@
-// src/pages/Register.jsx
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
 import { useAuth } from "../hooks/useAuth";
 
+function safeNexusDestination(value) {
+  if (typeof value !== "string" || !value.startsWith("/")) return "";
+  if (value.startsWith("//")) return "";
+  const path = value.split(/[?#]/, 1)[0];
+  if (["/", "/login", "/register", "/supportops", "/crossborder"].some((blocked) => path === blocked || path.startsWith(`${blocked}/`))) return "";
+  return value;
+}
+
+function BrandMark() {
+  return (
+    <Link to="/" className="inline-flex items-center gap-3" aria-label="Nexus Core home">
+      <span className="grid h-10 w-10 place-items-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200 shadow-[0_0_30px_rgba(34,211,238,.12)]">
+        <svg viewBox="0 0 32 32" className="h-6 w-6" fill="none" aria-hidden="true"><path d="M7 24V8l18 16V8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /><circle cx="7" cy="8" r="2" fill="currentColor" /><circle cx="25" cy="24" r="2" fill="currentColor" /></svg>
+      </span>
+      <span className="text-left leading-none"><span className="block text-lg font-black tracking-[.16em] text-white">NEXUS<span className="text-cyan-300"> CORE</span></span><span className="mt-1 block text-[9px] font-semibold tracking-[.28em] text-slate-500">INTELLIGENCE PLATFORM</span></span>
+    </Link>
+  );
+}
+
+function EyeIcon({ visible }) {
+  return visible ? <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg> : <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="m3 3 18 18M10.6 10.6a2 2 0 0 0 2.8 2.8" /><path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a16 16 0 0 1-3.1 3.9M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7c1.1 0 2.1-.2 3-.5" /></svg>;
+}
+
 export default function Register() {
-  const [intent, setIntent] = useState("launch_swarm"); // "launch_swarm" | "explore_agents"
   const [email, setEmail] = useState("");
   const [organization, setOrganization] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-
   const { addToast } = useToast();
   const { login } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Social SSO Handler (Redirects to backend OAuth route)
-  const handleSocialAuth = (provider) => {
-    addToast(`Connecting to ${provider}...`, "info");
-    const backendUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-    window.location.href = `${backendUrl}/api/v1/auth/oauth/${provider}?intent=${intent}`;
-  };
-
-  async function handleRegister(e) {
-    e.preventDefault();
+  async function handleRegister(event) {
+    event.preventDefault();
+    if (loading) return;
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanOrganization = organization.trim();
+    if (password.length < 10 || password.length > 128 || new TextEncoder().encode(password).length > 72) {
+      addToast("Use a password between 10 and 128 characters (maximum 72 UTF-8 bytes).", "error");
+      return;
+    }
     setLoading(true);
-
     try {
-      const cleanEmail = email.trim();
-      const res = await apiFetch("/auth/register", {
+      const result = await apiFetch("/auth/register", {
         method: "POST",
         body: JSON.stringify({
           email: cleanEmail,
-          password: password,
+          password,
           accessKey: password,
-          organization: organization.trim(),
-          intent,
+          organization: cleanOrganization,
+          intent: "nexus-core",
         }),
       });
+      if (!result?.token || !result?.user) throw new Error(result?.message || "The server returned an incomplete registration response.");
 
-      if (!res?.token || !res?.user) {
-        throw new Error(res?.message || "Invalid registration response from server");
-      }
+      // Keep the existing auth persistence contract used by the application.
+      localStorage.setItem("authToken", result.token);
+      localStorage.setItem("token", result.token);
+      localStorage.setItem("user", JSON.stringify(result.user));
+      login({ user: result.user, token: result.token });
+      addToast("Your Nexus Core account is ready.", "success");
 
-      // Persist auth tokens
-      localStorage.setItem("authToken", res.token);
-      localStorage.setItem("token", res.token);
-      localStorage.setItem("user", JSON.stringify(res.user));
-
-      // Update AuthContext state
-      login({
-        user: res.user,
-        token: res.token,
-      });
-
-      addToast("Welcome to Nexus Core! 🎉", "success");
-
-      // Dynamic path resolution based on intent or location state
-      let targetPath = intent === "explore_agents" ? "/agents" : "/dashboard";
-      if (res.redirectTo && res.redirectTo !== "/") {
-        targetPath = res.redirectTo;
-      } else if (location.state?.from && location.state.from !== "/") {
-        targetPath = location.state.from;
-      }
-
-      navigate(targetPath, { replace: true });
-    } catch (err) {
-      console.error("Register error:", err);
-      addToast(err.message || "Registration failed. Please try again.", "error");
+      const requested = safeNexusDestination(location.state?.from);
+      const serverTarget = safeNexusDestination(result.redirectTo);
+      navigate(requested || serverTarget || "/dashboard", { replace: true });
+    } catch (error) {
+      console.error("Nexus Core registration failed:", error);
+      const message = error instanceof TypeError
+        ? "We couldn't reach Nexus Core. Check your connection and try again."
+        : (error?.message || "We couldn't create your account. Please try again.");
+      addToast(message, "error");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#020617] relative overflow-hidden px-4 py-8">
-      {/* Background Ambient Glows */}
-      <div className="absolute top-1/4 -left-10 w-72 h-72 bg-blue-600/20 blur-[100px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-1/4 -right-10 w-72 h-72 bg-purple-600/20 blur-[100px] rounded-full pointer-events-none" />
+    <main className="relative isolate flex min-h-screen items-center justify-center overflow-hidden bg-[#050914] px-4 py-8 text-white selection:bg-cyan-300/30">
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_12%_20%,rgba(8,145,178,.16),transparent_35%),radial-gradient(ellipse_at_88%_82%,rgba(79,70,229,.16),transparent_38%)]" />
+      <div className="pointer-events-none absolute inset-0 -z-10 opacity-[.14] [background-image:linear-gradient(rgba(148,163,184,.12)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,.12)_1px,transparent_1px)] [background-size:48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]" />
 
-      <div className="relative z-10 w-full max-w-md animate-in fade-in zoom-in duration-500">
-        {/* Branding Header */}
-        <div className="text-center mb-6">
-          <Link to="/" className="inline-block group">
-            <div className="text-4xl font-black tracking-tighter bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent group-hover:opacity-90 transition-opacity">
-              NEXUS CORE
-            </div>
-          </Link>
-          <div className="h-1 w-12 bg-blue-500 mx-auto mt-2 rounded-full shadow-[0_0_10px_#3b82f6]" />
-        </div>
+      <div className="w-full max-w-[1040px]">
+        <header className="mb-7 flex items-center justify-center sm:justify-between"><BrandMark /><span className="hidden rounded-full border border-cyan-300/20 bg-cyan-300/[.06] px-3 py-2 text-[10px] font-semibold uppercase tracking-[.18em] text-cyan-200 sm:inline-flex">Create your workspace</span></header>
 
-        {/* Form Container */}
-        <div className="bg-slate-900/60 backdrop-blur-2xl rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-8 space-y-5 border border-slate-800/50">
-          <div className="space-y-1">
-            <h2 className="text-2xl font-bold text-white tracking-tight">Create Your Account</h2>
-            <p className="text-sm text-slate-400">Get started in seconds with instant single sign-on.</p>
+        <section className="grid overflow-hidden rounded-[28px] border border-white/10 bg-[#0b1220]/90 shadow-[0_30px_100px_rgba(0,0,0,.48)] backdrop-blur-xl md:grid-cols-[.9fr_1.1fr]">
+          <aside className="relative hidden flex-col justify-between overflow-hidden border-r border-white/[.07] bg-gradient-to-br from-cyan-950/50 via-[#101b31] to-indigo-950/50 p-10 md:flex">
+            <div className="absolute -right-24 top-16 h-72 w-72 rounded-full border border-cyan-300/10" /><div className="absolute -right-12 top-28 h-48 w-48 rounded-full border border-cyan-300/10" />
+            <div className="relative"><p className="mb-5 text-[10px] font-bold uppercase tracking-[.3em] text-cyan-300">Start with a clear view</p><h1 className="max-w-sm text-4xl font-semibold leading-[1.12] tracking-tight">Bring your ideas.<br /><span className="text-cyan-300">Build your core.</span></h1><p className="mt-5 max-w-sm text-sm leading-7 text-slate-400">Create your Nexus Core account and bring your AI tools, agents, and workflows into one intelligent workspace.</p></div>
+            <div className="relative rounded-2xl border border-white/10 bg-black/10 p-5"><div className="mb-3 flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-cyan-300" /><span className="text-[10px] font-bold uppercase tracking-[.2em] text-slate-400">Your Nexus Core workspace</span></div><div className="space-y-2"><div className="h-2 w-4/5 rounded-full bg-white/10" /><div className="h-2 w-3/5 rounded-full bg-white/[.07]" /><div className="mt-4 grid grid-cols-3 gap-2"><div className="h-12 rounded-lg border border-cyan-300/10 bg-cyan-300/[.06]" /><div className="h-12 rounded-lg border border-white/[.06] bg-white/[.03]" /><div className="h-12 rounded-lg border border-indigo-300/10 bg-indigo-300/[.06]" /></div></div><p className="mt-5 text-[9px] font-semibold uppercase tracking-[.22em] text-slate-600">One account · Nexus Core</p></div>
+          </aside>
+
+          <div className="p-7 sm:p-10">
+            <div className="mb-7"><p className="mb-2 text-[10px] font-bold uppercase tracking-[.25em] text-cyan-300">Get started</p><h2 className="text-3xl font-semibold tracking-tight">Create your account</h2><p className="mt-2 text-sm leading-6 text-slate-400">Set up your Nexus Core identity. You can configure your workspace after signing in.</p></div>
+
+            <form onSubmit={handleRegister} className="space-y-4">
+              <div className="space-y-2"><label htmlFor="register-organization" className="text-xs font-semibold text-slate-300">Workspace or organization</label><input id="register-organization" type="text" autoComplete="organization" placeholder="e.g. Acme Technologies" value={organization} onChange={(event) => setOrganization(event.target.value)} maxLength={120} className="w-full rounded-xl border border-white/10 bg-[#060c18] px-4 py-3.5 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/20 focus:border-cyan-400/60 focus:ring-4 focus:ring-cyan-400/10" required /></div>
+              <div className="space-y-2"><label htmlFor="register-email" className="text-xs font-semibold text-slate-300">Work email</label><input id="register-email" type="email" autoComplete="email" inputMode="email" placeholder="you@company.com" value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-xl border border-white/10 bg-[#060c18] px-4 py-3.5 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/20 focus:border-cyan-400/60 focus:ring-4 focus:ring-cyan-400/10" required /></div>
+              <div className="space-y-2"><div className="flex items-center justify-between gap-3"><label htmlFor="register-password" className="text-xs font-semibold text-slate-300">Create password</label><span className="text-[10px] text-slate-500">10+ characters</span></div><div className="relative"><input id="register-password" type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="Create a strong password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={10} maxLength={128} className="w-full rounded-xl border border-white/10 bg-[#060c18] px-4 py-3.5 pr-12 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/20 focus:border-cyan-400/60 focus:ring-4 focus:ring-cyan-400/10" required /><button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-500 transition hover:bg-white/5 hover:text-cyan-200"><EyeIcon visible={showPassword} /></button></div><p className="text-[10px] leading-5 text-slate-500">Use a unique password. For security, passwords are limited to 72 UTF-8 bytes.</p></div>
+
+              <button type="submit" disabled={loading || !email.trim() || !organization.trim() || password.length < 10} className="group mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 py-3.5 text-sm font-bold text-[#04111b] shadow-[0_8px_30px_rgba(34,211,238,.14)] transition hover:bg-cyan-200 hover:shadow-[0_8px_36px_rgba(34,211,238,.24)] active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-60">{loading ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#04111b]/30 border-t-[#04111b]" /> Creating account…</> : <>Create Nexus Core account <span aria-hidden="true" className="transition group-hover:translate-x-1">→</span></>}</button>
+            </form>
+
+            <p className="mt-6 text-center text-xs text-slate-500">Already have an account? <Link to="/login" state={{ from: location.state?.from }} className="font-semibold text-cyan-300 transition hover:text-cyan-200">Sign in</Link></p>
+            <p className="mt-5 text-center text-[10px] leading-5 text-slate-600">Creating an account gives you access to Nexus Core only. Other products use their own access and workspace permissions.</p>
           </div>
-
-          {/* 1-CLICK SOCIAL SSO BUTTONS */}
-          <div className="grid grid-cols-2 gap-3 pt-1">
-            <button
-              type="button"
-              onClick={() => handleSocialAuth("google")}
-              className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-950/80 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-white text-xs font-semibold transition-all shadow-sm"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path
-                  fill="#EA4335"
-                  d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.3 9 5 12 5z"
-                />
-                <path
-                  fill="#4285F4"
-                  d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 10.8 0 12.5s.7 2.8 1.9 5.2l3.7-2.9z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.3-6.4-5.2L1.9 16C3.7 19.7 7.5 23 12 23z"
-                />
-              </svg>
-              Google
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSocialAuth("github")}
-              className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-950/80 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-white text-xs font-semibold transition-all shadow-sm"
-            >
-              <svg className="w-4 h-4 fill-current text-white" viewBox="0 0 24 24">
-                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
-              </svg>
-              GitHub
-            </button>
-          </div>
-
-          {/* DIVIDER */}
-          <div className="relative flex items-center justify-center my-2">
-            <div className="border-t border-slate-800 w-full" />
-            <span className="bg-[#0b1329] px-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest absolute">
-              or email
-            </span>
-          </div>
-
-          <form onSubmit={handleRegister} className="space-y-4">
-            {/* INTENT SWITCHER */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
-                Workspace Objective
-              </label>
-              <div className="grid grid-cols-2 gap-2 bg-slate-950/70 p-1.5 rounded-2xl border border-slate-800/60">
-                <button
-                  type="button"
-                  onClick={() => setIntent("launch_swarm")}
-                  className={`py-2 px-3 rounded-xl text-xs font-semibold transition-all flex flex-col items-center justify-center gap-0.5 ${intent === "launch_swarm"
-                    ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/40"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50"
-                    }`}
-                >
-                  <span>Launch Swarm</span>
-                  <span className="text-[9px] opacity-75 font-normal">To Dashboard</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIntent("explore_agents")}
-                  className={`py-2 px-3 rounded-xl text-xs font-semibold transition-all flex flex-col items-center justify-center gap-0.5 ${intent === "explore_agents"
-                    ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-900/40"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50"
-                    }`}
-                >
-                  <span>Explore Agents</span>
-                  <span className="text-[9px] opacity-75 font-normal">Browse Directory</span>
-                </button>
-              </div>
-            </div>
-
-            {/* ORGANIZATION FIELD */}
-            <div className="group space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 group-focus-within:text-blue-400 transition-colors">
-                Organization
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Nexus Tech"
-                value={organization}
-                onChange={(e) => setOrganization(e.target.value)}
-                className="w-full bg-slate-950/50 border border-slate-800/80 text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all placeholder:text-slate-700 text-sm"
-                required
-              />
-            </div>
-
-            {/* EMAIL FIELD */}
-            <div className="group space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 group-focus-within:text-indigo-400 transition-colors">
-                Work Email
-              </label>
-              <input
-                type="email"
-                placeholder="developer@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-slate-950/50 border border-slate-800/80 text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all placeholder:text-slate-700 text-sm"
-                required
-              />
-            </div>
-
-            {/* PASSWORD FIELD */}
-            <div className="group space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 group-focus-within:text-purple-400 transition-colors">
-                Master Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-950/50 border border-slate-800/80 text-white px-4 py-3 pr-12 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-transparent transition-all placeholder:text-slate-700 text-sm"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-blue-400 transition-colors z-20"
-                >
-                  {showPassword ? (
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  ) : (
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858-5.908A9.954 9.954 0 0112 3c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21M3 3l18 18" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* SUBMIT BUTTON */}
-            <button
-              type="submit"
-              disabled={loading}
-              className={`w-full relative overflow-hidden group py-3.5 rounded-xl font-bold transition-all shadow-lg active:scale-95 disabled:opacity-70 text-white mt-2 ${intent === "explore_agents"
-                ? "bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-purple-900/30"
-                : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-900/30"
-                }`}
-            >
-              <span className="relative z-10 flex items-center justify-center gap-2 text-xs uppercase tracking-wider">
-                {loading ? (
-                  <>
-                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    Initializing Account...
-                  </>
-                ) : intent === "explore_agents" ? (
-                  "Continue to Agent Directory"
-                ) : (
-                  "Launch Swarm Workspace"
-                )}
-              </span>
-            </button>
-          </form>
-
-          <div className="text-center pt-2">
-            <Link
-              to="/login"
-              state={{ from: location.state?.from }}
-              className="text-xs font-semibold text-slate-500 hover:text-blue-400 transition-colors uppercase tracking-widest"
-            >
-              Already Registered? <span className="text-blue-500">Sign In</span>
-            </Link>
-          </div>
-        </div>
-
-        <p className="text-center mt-6 text-[10px] text-slate-600 uppercase tracking-widest">
-          Secure Agentic Protocol v1.02 • <span className="text-slate-500">Flux Studios Edition</span>
-        </p>
+        </section>
+        <footer className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[10px] font-medium uppercase tracking-[.16em] text-slate-600"><span>© {new Date().getFullYear()} Nexus Core</span><span>Secure account creation</span><Link to="/pricing" className="transition hover:text-cyan-300">View plans</Link></footer>
       </div>
-    </div>
+    </main>
   );
 }
