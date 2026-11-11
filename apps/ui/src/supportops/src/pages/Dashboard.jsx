@@ -1,41 +1,10 @@
 // src/pages/Dashboard.jsx
-
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import { Link, Navigate } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
-  MessageCircle,
-  Phone,
-  Mail,
-  Smartphone,
-  Globe,
-  Share2,
-  Clock,
-  AlertTriangle,
-  CheckCircle2,
-  Users,
-  DollarSign,
-  Sparkles,
-  Ticket,
-  RefreshCw,
-  Inbox,
-  Activity,
-  Plug,
-  Zap,
-  LockKeyhole,
-  Building2,
-  UserPlus,
-  Send,
-  X,
-  Check,
-  ArrowRight,
-  ShieldCheck,
-  CalendarDays,
-  Loader2,
+  MessageCircle, Phone, Mail, Smartphone, Globe, Share2, Clock, AlertTriangle,
+  CheckCircle2, Users, DollarSign, Sparkles, Ticket, RefreshCw, Inbox, Activity,
+  Plug, LockKeyhole, UserPlus, Send, X, Check, ShieldCheck, Loader2, Lightbulb,
 } from "lucide-react";
 
 import RevenueChart from "../components/RevenueChart";
@@ -45,115 +14,48 @@ import { useAgentStream } from "../hooks/useAgentStream";
 import { API_ENDPOINTS, SUPPORTOPS_API, ROUTES } from "../config/paths";
 import { useAuth } from "../context/AuthContext";
 
-/* ---------- configuration ---------- */
+/* ================= configuration ================= */
 
 const CHANNELS = {
-  whatsapp: {
-    label: "WhatsApp",
-    icon: MessageCircle,
-    tone: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-  },
-  voice: {
-    label: "Phone",
-    icon: Phone,
-    tone: "text-sky-400 bg-sky-500/10 border-sky-500/20",
-  },
-  email: {
-    label: "Email",
-    icon: Mail,
-    tone: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-  },
-  sms: {
-    label: "SMS",
-    icon: Smartphone,
-    tone: "text-violet-400 bg-violet-500/10 border-violet-500/20",
-  },
-  web: {
-    label: "Web chat",
-    icon: Globe,
-    tone: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
-  },
-  social: {
-    label: "Social",
-    icon: Share2,
-    tone: "text-pink-400 bg-pink-500/10 border-pink-500/20",
-  },
+  whatsapp: { label: "WhatsApp", icon: MessageCircle, tone: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+  voice: { label: "Phone", icon: Phone, tone: "text-sky-400 bg-sky-500/10 border-sky-500/20" },
+  email: { label: "Email", icon: Mail, tone: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+  sms: { label: "SMS", icon: Smartphone, tone: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
+  web: { label: "Web chat", icon: Globe, tone: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20" },
+  social: { label: "Social", icon: Share2, tone: "text-pink-400 bg-pink-500/10 border-pink-500/20" },
 };
 
-const VIEWS = {
-  agent: "Agent",
-  management: "Management",
-  admin: "Admin",
-  investor: "Investor",
-};
+const VIEWS = { agent: "Agent", management: "Management", admin: "Admin", investor: "Investor" };
 
-const ALIAS = {
-  user: "agent",
-  agent: "agent",
-  management: "management",
-  admin: "admin",
-  investor: "investor",
+const ALIAS = { user: "agent", agent: "agent", management: "management", admin: "admin", investor: "investor" };
+
+// Which views each role may open. Anything else falls back to the role's own view (no redirects, so no loops).
+const ALLOWED = {
+  agent: ["agent"],
+  management: ["management"],
+  investor: ["investor"],
+  admin: ["admin", "agent", "management", "investor"],
 };
 
 const TITLES = {
-  agent: [
-    "My queue",
-    "Your tickets from every channel, most urgent first",
-  ],
-  management: [
-    "Operations",
-    "Backlog, SLA health and workload across all channels",
-  ],
-  admin: [
-    "Executive command center",
-    "Set up your workspace, bring your team together and oversee customer operations",
-  ],
-  investor: [
-    "Business performance",
-    "Revenue, growth and what AI is saving",
-  ],
+  agent: ["My queue", "Your tickets from every channel, most urgent first"],
+  management: ["Operations", "Backlog, SLA health and workload across all channels"],
+  admin: ["Executive command center", "Set up your workspace, bring your team together and oversee customer operations"],
+  investor: ["Business performance", "Revenue, growth and what AI is saving"],
 };
 
-/**
- * Demo tickets are used only when explicitly enabled.
- * Never silently substitute fake business data after an API failure.
- */
-const SAMPLE = [
-  {
-    id: "T-1042",
-    subject: "Payment failed twice at checkout",
-    customer: "Amina K.",
-    channel: "whatsapp",
-    priority: "high",
-    slaMins: 12,
-  },
-  {
-    id: "T-1041",
-    subject: "Missed call: delivery not received",
-    customer: "Brian O.",
-    channel: "voice",
-    priority: "urgent",
-    slaMins: -8,
-  },
-  {
-    id: "T-1039",
-    subject: "Invoice copy request",
-    customer: "Nia Traders",
-    channel: "email",
-    priority: "low",
-    slaMins: 190,
-  },
-  {
-    id: "T-1037",
-    subject: "Cannot reset password",
-    customer: "Joy M.",
-    channel: "web",
-    priority: "normal",
-    slaMins: 55,
-  },
+const INVITABLE_ROLES = [
+  { value: "agent", label: "Support agent" },
+  { value: "management", label: "Manager" },
+  { value: "investor", label: "Investor" },
 ];
 
-/* ---------- backend configuration ---------- */
+const SAMPLE = [
+  { id: "T-1042", subject: "Payment failed twice at checkout", customer: "Amina K.", channel: "whatsapp", priority: "high", slaMins: 12 },
+  { id: "T-1041", subject: "Missed call: delivery not received", customer: "Brian O.", channel: "voice", priority: "urgent", slaMins: -8 },
+  { id: "T-1039", subject: "Invoice copy request", customer: "Nia Traders", channel: "email", priority: "low", slaMins: 190 },
+  { id: "T-1037", subject: "Cannot reset password", customer: "Joy M.", channel: "web", priority: "normal", slaMins: 55 },
+];
 
 const API_BASE_URL = (
   import.meta.env.VITE_SUPPORTOPS_API_URL ||
@@ -163,109 +65,42 @@ const API_BASE_URL = (
   "https://nexus-core-a0px.onrender.com"
 ).replace(/\/api\/?$/, "");
 
-/* ---------- helpers ---------- */
+const REFRESH_MS = 60_000;
+const TOKEN_KEYS = ["token", "authToken", "access_token", "supportops_token"];
 
-function isAbortError(error) {
-  return (
-    error?.name === "AbortError" ||
-    error?.name === "CanceledError" ||
-    error?.code === "ERR_CANCELED" ||
-    error?.code === "ABORT_ERR"
-  );
-}
+/* ================= helpers ================= */
 
-async function getJSON(url, signal) {
-  if (signal?.aborted) {
-    return null;
-  }
-
-  const token =
-    localStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("access_token");
-
-  const org =
-    localStorage.getItem("activeOrgId") ||
-    localStorage.getItem("orgId");
-
-  // Never make a protected request without a session token.
-  if (!token) {
-    return null;
-  }
-
-  let fullUrl = url;
-
-  if (url?.startsWith("/")) {
-    let cleanEndpoint = url;
-
-    if (
-      cleanEndpoint !== "/api" &&
-      !cleanEndpoint.startsWith("/api/")
-    ) {
-      cleanEndpoint = `/api${cleanEndpoint}`;
-    }
-
-    fullUrl = `${API_BASE_URL}${cleanEndpoint}`;
-  }
-
+const readStore = (keys) => {
   try {
-    const response = await fetch(fullUrl, {
-      method: "GET",
-      signal,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(org ? { "X-Org-Id": org } : {}),
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (response.status === 401) {
-      // Let the central authentication provider handle session expiry.
-      // Do not dispatch another unauthorized event here.
-      return null;
+    for (const key of keys) {
+      const value = localStorage.getItem(key);
+      if (value) return value;
     }
+  } catch { /* storage blocked */ }
+  return null;
+};
+const getToken = () => (typeof window === "undefined" ? null : readStore(TOKEN_KEYS));
+const getOrg = () => (typeof window === "undefined" ? null : readStore(["activeOrgId", "orgId"]));
 
-    if (response.status === 403) {
-      console.warn(
-        `[Dashboard] Access denied for ${url}. Check the user's role and permissions.`
-      );
-      return null;
-    }
+const isAbortError = (e) =>
+  e?.name === "AbortError" || e?.name === "CanceledError" || e?.code === "ERR_CANCELED" || e?.code === "ABORT_ERR";
 
-    if (!response.ok) {
-      throw new Error(`HTTP_${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    if (isAbortError(error) || signal?.aborted) {
-      return null;
-    }
-
-    console.warn(
-      `[Dashboard] Request failed for ${url}:`,
-      error.message
-    );
-
-    return null;
-  }
+function resolveUrl(url) {
+  if (!url) return null;
+  if (!url.startsWith("/")) return url;
+  const path = url === "/api" || url.startsWith("/api/") ? url : `/api${url}`;
+  return `${API_BASE_URL}${path}`;
 }
 
+/** One request function for everything. Throws Error with .status on failure. */
+async function api(url, { method = "GET", body, signal } = {}) {
+  const token = getToken();
+  const full = resolveUrl(url);
+  if (!full) throw Object.assign(new Error("Missing endpoint."), { status: 0 });
+  if (!token) throw Object.assign(new Error("Your session has expired. Sign in again to continue."), { status: 401 });
+  const org = getOrg();
 
-/** Authenticated JSON mutation helper for existing SupportOps API route groups. */
-async function requestJSON(url, { method = "GET", body, signal } = {}) {
-  const token =
-    localStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("access_token");
-  const org =
-    localStorage.getItem("activeOrgId") ||
-    localStorage.getItem("orgId");
-
-  if (!token) throw new Error("Your session has expired. Sign in again to continue.");
-
-  const response = await fetch(url, {
+  const response = await fetch(full, {
     method,
     signal,
     headers: {
@@ -273,79 +108,72 @@ async function requestJSON(url, { method = "GET", body, signal } = {}) {
       ...(org ? { "X-Org-Id": org } : {}),
       "X-App-Slug": "supportops",
       Accept: "application/json",
-      "Content-Type": "application/json",
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
 
-  const data = await response.json().catch(() => ({}));
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+
   if (!response.ok || data?.success === false) {
     const message =
-      data?.message || data?.error ||
-      (response.status === 403
-        ? "Only the workspace administrator can manage invitations."
-        : `Request failed (${response.status}). Please try again.`);
-    throw new Error(message);
+      response.status === 401 ? "Your session has expired. Sign in again to continue."
+        : response.status === 403 ? "You don't have permission to do that."
+          : data?.message || data?.error || `Request failed (${response.status})`;
+    throw Object.assign(new Error(message), { status: response.status });
   }
   return data;
 }
 
-const inviteList = (data) => {
+// The invites config may be a function or an object depending on paths.js; support both.
+const invitesRoot = () => {
+  const inv = SUPPORTOPS_API?.invites;
+  if (typeof inv === "function") return inv("");
+  return inv?.root || "/api/supportops/invites";
+};
+const inviteItemUrl = (id) => `${String(invitesRoot()).replace(/\/$/, "")}/${encodeURIComponent(id)}`;
+
+const asList = (data, keys) => {
   if (Array.isArray(data)) return data;
-  return data?.items ?? data?.invites ?? data?.invitations ?? data?.data?.items ?? data?.data?.invites ?? [];
+  for (const key of keys) {
+    const found = data?.[key] ?? data?.data?.[key];
+    if (Array.isArray(found)) return found;
+  }
+  return Array.isArray(data?.data) ? data.data : [];
 };
 
-const toList = (data) =>
-  Array.isArray(data)
-    ? data
-    : data?.items ?? data?.tickets ?? [];
+const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+const fmt = (v) => (num(v) === null ? "—" : num(v).toLocaleString());
+const val = (v, f = (x) => x) => (v === undefined || v === null ? "—" : f(v));
+const delta = (v) => {
+  if (v === undefined || v === null) return undefined;
+  const n = num(v);
+  return n === null ? String(v) : `${n > 0 ? "+" : ""}${n}% vs previous`;
+};
 
-const val = (value, format = (x) => x) =>
-  value === undefined || value === null
-    ? "—"
-    : format(value);
-
-const slaMins = (ticket) =>
-  typeof ticket.slaMins === "number"
+const slaMins = (ticket, now = Date.now()) =>
+  typeof ticket?.slaMins === "number"
     ? ticket.slaMins
-    : ticket.slaDueAt
-      ? Math.round(
-        (new Date(ticket.slaDueAt).getTime() - Date.now()) /
-        60000
-      )
+    : ticket?.slaDueAt
+      ? Math.round((new Date(ticket.slaDueAt).getTime() - now) / 60000)
       : null;
 
-/* ---------- shared UI components ---------- */
+/* ================= shared UI ================= */
+
+const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70";
 
 function SlaPill({ mins }) {
-  if (mins === null) {
-    return (
-      <span className="text-[11px] text-slate-500">
-        No SLA
-      </span>
-    );
-  }
-
-  const className =
-    mins < 0
-      ? "text-red-300 bg-red-500/10 border-red-500/30"
-      : mins <= 60
-        ? "text-amber-300 bg-amber-500/10 border-amber-500/30"
+  if (mins === null || Number.isNaN(mins)) return <span className="text-[11px] text-slate-500">No SLA</span>;
+  const tone =
+    mins < 0 ? "text-red-300 bg-red-500/10 border-red-500/30"
+      : mins <= 60 ? "text-amber-300 bg-amber-500/10 border-amber-500/30"
         : "text-slate-300 bg-slate-500/10 border-slate-500/30";
-
-  const label =
-    mins < 0
-      ? `Breached ${Math.abs(mins)}m`
-      : mins < 120
-        ? `${mins}m left`
-        : `${Math.round(mins / 60)}h left`;
-
+  const label = mins < 0 ? `Breached ${Math.abs(mins)}m` : mins < 120 ? `${mins}m left` : `${Math.round(mins / 60)}h left`;
   return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium ${className}`}
-    >
-      <Clock className="h-3 w-3" />
-      {label}
+    <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${tone}`}>
+      <Clock className="h-3 w-3" aria-hidden="true" />{label}
     </span>
   );
 }
@@ -353,36 +181,22 @@ function SlaPill({ mins }) {
 function ChannelBadge({ channel }) {
   const config = CHANNELS[channel] ?? CHANNELS.web;
   const Icon = config.icon;
-
   return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] ${config.tone}`}
-    >
-      <Icon className="h-3 w-3" />
-      {config.label}
+    <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] ${config.tone}`}>
+      <Icon className="h-3 w-3" aria-hidden="true" />{config.label}
     </span>
   );
 }
 
-function Card({
-  title,
-  icon: Icon,
-  action,
-  children,
-  className = "",
-}) {
+function Card({ title, icon: Icon, action, children, className = "" }) {
   return (
-    <section
-      className={`rounded-2xl bg-slate-900/40 border border-slate-800/80 p-5 backdrop-blur-xl ${className}`}
-    >
-      <header className="flex items-center justify-between mb-4">
+    <section className={`rounded-2xl border border-slate-800/80 bg-slate-900/40 p-5 backdrop-blur-xl ${className}`}>
+      <header className="mb-4 flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
-          <Icon className="h-4 w-4 text-cyan-400" />
-          {title}
+          <Icon className="h-4 w-4 text-cyan-400" aria-hidden="true" />{title}
         </h2>
         {action}
       </header>
-
       {children}
     </section>
   );
@@ -390,26 +204,13 @@ function Card({
 
 function Kpi({ label, value, hint, icon: Icon }) {
   return (
-    <div className="rounded-2xl bg-slate-900/40 border border-slate-800/80 p-5">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-medium text-slate-400">
-          {label}
-        </span>
-
-        <span className="p-2 rounded-lg bg-white/5 border border-white/10">
-          <Icon className="h-4 w-4 text-cyan-400" />
-        </span>
+    <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-xs font-medium text-slate-400">{label}</span>
+        <span className="rounded-lg border border-white/10 bg-white/5 p-2"><Icon className="h-4 w-4 text-cyan-400" aria-hidden="true" /></span>
       </div>
-
-      <div className="text-3xl font-extrabold tracking-tight text-white">
-        {value}
-      </div>
-
-      {hint && (
-        <div className="mt-1 text-xs text-slate-500">
-          {hint}
-        </div>
-      )}
+      <div className="text-3xl font-extrabold tracking-tight text-white">{value}</div>
+      {hint !== undefined && hint !== null && <div className="mt-1 text-xs text-slate-500">{hint}</div>}
     </div>
   );
 }
@@ -417,204 +218,122 @@ function Kpi({ label, value, hint, icon: Icon }) {
 function Empty({ icon: Icon, title, text }) {
   return (
     <div className="py-10 text-center">
-      <Icon className="h-8 w-8 mx-auto mb-2 text-slate-600" />
+      <Icon className="mx-auto mb-2 h-8 w-8 text-slate-600" aria-hidden="true" />
+      <p className="text-sm font-medium text-slate-300">{title}</p>
+      <p className="mt-1 text-xs text-slate-500">{text}</p>
+    </div>
+  );
+}
 
-      <p className="text-sm font-medium text-slate-300">
-        {title}
-      </p>
-
-      <p className="text-xs text-slate-500 mt-1">
-        {text}
-      </p>
+function Skeleton() {
+  const block = "motion-safe:animate-pulse rounded-2xl bg-slate-900/60 border border-slate-800/60";
+  return (
+    <div aria-busy="true" aria-label="Loading your workspace">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => <div key={i} className={`${block} h-32`} />)}
+      </div>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className={`${block} h-80 xl:col-span-2`} />
+        <div className={`${block} h-80`} />
+      </div>
     </div>
   );
 }
 
 function AccessRequired() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#030712] px-6 text-slate-100">
-      <div className="max-w-md w-full rounded-2xl border border-slate-800 bg-slate-900/70 p-8 text-center">
-        <LockKeyhole className="h-10 w-10 mx-auto mb-4 text-cyan-400" />
-
-        <h1 className="text-2xl font-bold text-white">
-          Sign in to continue
-        </h1>
-
+    <div className="flex min-h-screen items-center justify-center bg-[#030712] px-6 text-slate-100">
+      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 p-8 text-center">
+        <LockKeyhole className="mx-auto mb-4 h-10 w-10 text-cyan-400" aria-hidden="true" />
+        <h1 className="text-2xl font-bold text-white">Sign in to continue</h1>
         <p className="mt-3 text-sm leading-6 text-slate-400">
-          Dashboard data, tickets, and workspace activity are
-          available to authorized team members only.
+          Dashboard data, tickets and workspace activity are available to authorized team members only.
         </p>
-
-        <Link
-          to={ROUTES?.login || "/supportops/login"}
-          className="mt-6 inline-flex items-center justify-center rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500"
-        >
+        <Link to={ROUTES?.login || "/supportops/login"} className={`mt-6 inline-flex items-center justify-center rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500 ${focusRing}`}>
           Sign in
-        </Link>
-
-        <Link
-          to="/supportops"
-          className="mt-4 block text-sm text-slate-400 hover:text-white"
-        >
-          Return to website
         </Link>
       </div>
     </div>
   );
 }
 
-/* ---------- dashboard panels ---------- */
+/* ================= panels ================= */
 
-function TicketList({ tickets }) {
+function TicketList({ tickets = [], now }) {
   if (!tickets.length) {
-    return (
-      <Empty
-        icon={CheckCircle2}
-        title="No open tickets"
-        text="New tickets will appear here when they arrive."
-      />
-    );
+    return <Empty icon={CheckCircle2} title="Queue is clear" text="New tickets appear here the moment they arrive." />;
   }
-
   return (
     <ul className="divide-y divide-slate-800/80">
-      {tickets.map((ticket) => (
-        <li
-          key={ticket.id}
-          className="py-3 flex items-center justify-between gap-3"
-        >
+      {tickets.map((t, i) => (
+        <li key={t?.id ?? `${t?.subject}-${i}`} className="flex items-center justify-between gap-3 py-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <ChannelBadge channel={ticket.channel} />
-
-              <span className="text-[11px] font-mono text-slate-500">
-                {ticket.id}
-              </span>
-
-              {["urgent", "high"].includes(ticket.priority) && (
-                <span className="text-[11px] font-semibold text-red-400 uppercase">
-                  {ticket.priority}
-                </span>
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <ChannelBadge channel={t?.channel} />
+              <span className="font-mono text-[11px] text-slate-500">{t?.id}</span>
+              {["urgent", "high"].includes(t?.priority) && (
+                <span className="text-[11px] font-semibold uppercase text-red-400">{t.priority}</span>
               )}
             </div>
-
-            <p className="text-sm text-slate-100 truncate">
-              {ticket.subject}
-            </p>
-
-            <p className="text-xs text-slate-500">
-              {ticket.customer}
-            </p>
+            <p className="truncate text-sm text-slate-100">{t?.subject}</p>
+            <p className="text-xs text-slate-500">{t?.customer}</p>
           </div>
-
-          <SlaPill mins={slaMins(ticket)} />
+          <SlaPill mins={slaMins(t, now)} />
         </li>
       ))}
     </ul>
   );
 }
 
-function ChannelMix({ tickets, byChannel }) {
+function ChannelMix({ tickets = [], byChannel }) {
   const counts = useMemo(() => {
-    if (byChannel) {
-      return byChannel;
-    }
-
-    return tickets.reduce(
-      (result, ticket) => ({
-        ...result,
-        [ticket.channel]:
-          (result[ticket.channel] ?? 0) + 1,
-      }),
-      {}
-    );
+    if (byChannel && typeof byChannel === "object") return byChannel;
+    return tickets.reduce((acc, t) => {
+      const key = t?.channel || "web";
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
   }, [tickets, byChannel]);
 
-  const total = Object.values(counts).reduce(
-    (sum, count) => sum + Number(count || 0),
-    0
-  );
-
-  if (!total) {
-    return (
-      <Empty
-        icon={Inbox}
-        title="No volume yet"
-        text="Channel statistics appear when ticket data is available."
-      />
-    );
-  }
+  const total = Object.values(counts).reduce((s, c) => s + (num(c) ?? 0), 0);
+  if (!total) return <Empty icon={Inbox} title="No volume yet" text="Channel statistics appear once tickets come in." />;
 
   return (
     <ul className="space-y-3">
-      {Object.entries(counts).map(([channel, count]) => (
-        <li key={channel}>
-          <div className="flex justify-between text-xs mb-1">
-            <ChannelBadge channel={channel} />
-
-            <span className="text-slate-400">
-              {count} · {Math.round((count / total) * 100)}%
-            </span>
-          </div>
-
-          <div className="h-1.5 rounded-full bg-slate-800">
-            <div
-              className="h-full rounded-full bg-cyan-500"
-              style={{
-                width: `${(count / total) * 100}%`,
-              }}
-            />
-          </div>
-        </li>
-      ))}
+      {Object.entries(counts).map(([channel, count]) => {
+        const pct = ((num(count) ?? 0) / total) * 100;
+        return (
+          <li key={channel}>
+            <div className="mb-1 flex justify-between text-xs">
+              <ChannelBadge channel={channel} />
+              <span className="text-slate-400">{fmt(count)} · {Math.round(pct)}%</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-slate-800" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
+              <div className="h-full rounded-full bg-cyan-500" style={{ width: `${pct}%` }} />
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-function ChannelConnections({ channels }) {
+function ChannelConnections({ channels = {} }) {
   return (
-    <ul className="grid sm:grid-cols-2 gap-3">
+    <ul className="grid gap-3 sm:grid-cols-2">
       {Object.entries(CHANNELS).map(([key, channel]) => {
         const Icon = channel.icon;
-        const connected = Boolean(
-          channels[key]?.connected
-        );
-
+        const connected = Boolean(channels?.[key]?.connected);
         return (
-          <li
-            key={key}
-            className="flex items-center justify-between p-3 rounded-xl border border-slate-800 bg-slate-800/20"
-          >
+          <li key={key} className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-800/20 p-3">
             <div className="flex items-center gap-3">
-              <span
-                className={`p-2 rounded-lg border ${channel.tone}`}
-              >
-                <Icon className="h-4 w-4" />
-              </span>
-
+              <span className={`rounded-lg border p-2 ${channel.tone}`}><Icon className="h-4 w-4" aria-hidden="true" /></span>
               <div>
-                <p className="text-sm text-slate-100">
-                  {channel.label}
-                </p>
-
-                <p
-                  className={`text-[11px] ${connected
-                    ? "text-emerald-400"
-                    : "text-slate-500"
-                    }`}
-                >
-                  {connected ? "Connected" : "Not connected"}
-                </p>
+                <p className="text-sm text-slate-100">{channel.label}</p>
+                <p className={`text-[11px] ${connected ? "text-emerald-400" : "text-slate-500"}`}>{connected ? "Connected" : "Not connected"}</p>
               </div>
             </div>
-
-            <Link
-              to={
-                ROUTES?.admin?.channels ||
-                "/supportops/admin/channels"
-              }
-              className="px-3 py-1.5 rounded-lg text-xs border border-slate-700 text-slate-200 hover:bg-white/5"
-            >
+            <Link to={ROUTES?.admin?.channels || "/supportops/admin/channels"} className={`rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/5 ${focusRing}`}>
               {connected ? "Manage" : "Connect"}
             </Link>
           </li>
@@ -624,840 +343,474 @@ function ChannelConnections({ channels }) {
   );
 }
 
-function LiveActivity({ events }) {
-  if (!events.length) {
-    return (
-      <Empty
-        icon={Activity}
-        title="No recent activity"
-        text="New agent and AI activity will appear here."
-      />
-    );
-  }
-
+function LiveActivity({ events = [] }) {
+  const list = Array.isArray(events) ? events.slice(0, 6) : [];
+  if (!list.length) return <Empty icon={Activity} title="No recent activity" text="Agent and AI actions show up here in real time." />;
   return (
     <ul className="space-y-2">
-      {events.slice(0, 5).map((event, index) => (
-        <li
-          key={event.id || index}
-          className="flex items-center gap-2 text-xs text-slate-300 p-2 rounded-lg bg-slate-800/30"
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
-
-          <span className="truncate">
-            {event.description}
-          </span>
+      {list.map((e, i) => (
+        <li key={e?.id ?? i} className="flex items-center gap-2 rounded-lg bg-slate-800/30 p-2 text-xs text-slate-300">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 motion-safe:animate-pulse" />
+          <span className="truncate">{e?.description || "Activity recorded"}</span>
         </li>
       ))}
     </ul>
   );
 }
 
+/** Plain-language read of the live data, so a leader knows what to do first. No invented numbers. */
+function Briefing({ current, tickets, now, metrics, connected, totalChannels, invites }) {
+  const items = [];
+  const breached = tickets.filter((t) => (slaMins(t, now) ?? Infinity) < 0).length;
+  const atRisk = tickets.filter((t) => { const m = slaMins(t, now); return m !== null && m >= 0 && m <= 60; }).length;
+  const ai = num(metrics?.aiResolutionRate);
 
-/* ---------- executive onboarding and team invitations ---------- */
+  if (breached) items.push({ tone: "text-red-300", text: `${breached} ticket${breached === 1 ? " has" : "s have"} breached SLA. Reassign or reply to these first.` });
+  if (atRisk) items.push({ tone: "text-amber-300", text: `${atRisk} more ${atRisk === 1 ? "is" : "are"} due within the hour.` });
+  if (!breached && !atRisk && tickets.length) items.push({ tone: "text-emerald-300", text: "Every open ticket is inside its SLA window." });
 
-const INVITABLE_ROLES = [
-  { value: "agent", label: "Support agent", description: "Works customer conversations and tickets." },
-  { value: "management", label: "Manager", description: "Oversees teams, queues and service performance." },
-  { value: "investor", label: "Investor", description: "Views business and performance reporting." },
-];
+  if (current === "management" && ai !== null) items.push({ tone: "text-slate-300", text: `AI is resolving ${ai}% of conversations without an agent.` });
+  if (current === "admin") {
+    if (connected < totalChannels) items.push({ tone: "text-slate-300", text: `${totalChannels - connected} channel${totalChannels - connected === 1 ? " is" : "s are"} not connected. Each one is a place customers can't reach you.` });
+    if (!invites.length) items.push({ tone: "text-slate-300", text: "No teammates invited yet. Invite your first agent to start routing tickets." });
+  }
+  if (current === "investor") {
+    const g = num(metrics?.mrrChange);
+    if (g !== null) items.push({ tone: g >= 0 ? "text-emerald-300" : "text-red-300", text: `Monthly recurring revenue moved ${g > 0 ? "+" : ""}${g}% against the previous period.` });
+    if (ai !== null) items.push({ tone: "text-slate-300", text: `AI handles ${ai}% of support volume, which is the main driver of cost savings.` });
+  }
+  if (!items.length) return null;
 
-function formatInviteDate(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "—"
-    : date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  return (
+    <Card title="Today's briefing" icon={Lightbulb} className="mb-6">
+      <ul className="space-y-2" aria-live="polite">
+        {items.slice(0, 4).map((item, i) => <li key={i} className={`text-sm ${item.tone}`}>{item.text}</li>)}
+      </ul>
+    </Card>
+  );
 }
 
-function ExecutiveOnboarding({ user, channels, invites, invitesLoading, onInvite, onRevoke, inviteBusy, revokeBusyId }) {
+/* ================= executive onboarding ================= */
+
+function ExecutiveOnboarding({ user, channels, invites, invitesLoading, onInvite, onRevoke, revokeBusyId }) {
   const [email, setEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("agent");
   const [inviteError, setInviteError] = useState("");
   const [inviteSuccess, setInviteSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [inviteLink, setInviteLink] = useState("");
+  const [copied, setCopied] = useState(false);
 
-  const connectedChannels = Object.values(channels || {}).filter((item) => item?.connected).length;
-  const pendingInvites = invites.filter((invite) => (invite.status || "pending").toLowerCase() === "pending");
-  const trialEndsAt = typeof window !== "undefined" ? localStorage.getItem("supportops_trial_ends_at") : null;
-  const trialDate = trialEndsAt ? new Date(trialEndsAt) : null;
-  const trialDays = trialDate && !Number.isNaN(trialDate.getTime())
-    ? Math.max(0, Math.ceil((trialDate.getTime() - Date.now()) / 86400000))
-    : null;
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setInviteError("Couldn't copy automatically. Select the link and copy it manually.");
+    }
+  }
+
+  const connectedChannels = Object.values(channels || {}).filter((c) => c?.connected).length;
+  const pending = invites.filter((i) => (i?.status || "pending").toLowerCase() === "pending");
 
   async function submitInvite(event) {
     event.preventDefault();
     setInviteError("");
     setInviteSuccess("");
-    const cleanEmail = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setInviteError("Enter a valid email address.");
-      return;
-    }
+    setInviteLink("");
+    const clean = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) return setInviteError("Enter a valid email address.");
     setSubmitting(true);
     try {
-      await onInvite({ email: cleanEmail, role: inviteRole });
-      setInviteSuccess(`Invitation sent to ${cleanEmail}. It expires in 7 days.`);
+      const res = await onInvite({ email: clean, role: inviteRole });
+      const d = res?.data ?? res ?? {};
+      const token = d.token ?? d.inviteToken;
+      const link =
+        d.inviteUrl ?? d.inviteLink ?? d.url ?? d.link ??
+        (token && ROUTES?.acceptInvite ? `${window.location.origin}${ROUTES.acceptInvite}?token=${encodeURIComponent(token)}` : "");
+      setInviteLink(link || "");
+      setInviteSuccess(`Invitation created for ${clean}. It expires in 7 days.`);
       setEmail("");
     } catch (error) {
-      setInviteError(error.message || "Invitation could not be sent.");
+      setInviteError(error.message || "Invitation could not be sent. Try again.");
     } finally {
       setSubmitting(false);
     }
   }
 
   const steps = [
-    { title: "Workspace administrator", detail: user?.name ? `${user.name} is the workspace owner` : "Your administrator account is active", done: true, icon: ShieldCheck },
-    { title: "Connect a support channel", detail: connectedChannels ? `${connectedChannels} channel${connectedChannels === 1 ? "" : "s"} connected` : "Connect email, WhatsApp, voice or web chat", done: connectedChannels > 0, href: ROUTES?.admin?.channels || "/supportops/admin/channels", icon: Plug },
-    { title: "Invite your team", detail: invites.length ? `${invites.length} invitation${invites.length === 1 ? "" : "s"} created` : "Add agents, managers and investor viewers", done: invites.length > 0, icon: Users },
-    { title: "Review business performance", detail: "Explore your executive analytics", done: false, href: ROUTES?.admin?.analytics || "/supportops/admin/analytics", icon: Activity },
+    user?.name || true,
+    connectedChannels > 0,
+    invites.length > 0,
   ];
-  const completedSteps = steps.filter((step) => step.done).length;
+  const done = steps.filter(Boolean).length;
+  const input = `w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-500 ${focusRing}`;
 
   return (
     <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-3xl border border-cyan-500/20 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/50 p-6 sm:p-8">
-        <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-cyan-500/10 blur-3xl" />
-        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <section className="rounded-3xl border border-cyan-500/20 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/50 p-6 sm:p-8">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
             <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
-              <Check className="h-3.5 w-3.5" /> Workspace administrator active
+              <Check className="h-3.5 w-3.5" aria-hidden="true" /> Workspace administrator active
             </div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">Your command center</p>
-            <h2 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">Build your customer operations team.</h2>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">Your workspace is ready. Connect your customer channels, invite the people you trust, and bring every support operation into one place.</p>
-            <div className="mt-5 flex flex-wrap items-center gap-3 text-xs text-slate-300">
-              <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2"><Building2 className="h-4 w-4 text-cyan-300" />{user?.organization?.name || user?.orgName || "Your workspace"}</span>
-              {trialDays !== null && <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2"><CalendarDays className="h-4 w-4 text-cyan-300" />{trialDays} trial days remaining</span>}
-              <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2"><ShieldCheck className="h-4 w-4 text-emerald-300" />Admin-controlled access</span>
-            </div>
+            <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Build your customer operations team</h2>
+            <p className="mt-3 text-sm text-slate-300">Connect your channels, invite teammates and oversee every conversation from one place.</p>
           </div>
           <div className="w-full max-w-xs rounded-2xl border border-white/10 bg-slate-950/50 p-4">
-            <div className="flex items-center justify-between text-xs text-slate-400"><span>Workspace setup</span><strong className="text-white">{completedSteps}/{steps.length}</strong></div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-cyan-400 transition-all" style={{ width: `${(completedSteps / steps.length) * 100}%` }} /></div>
-            <p className="mt-2 text-xs text-slate-400">Complete these steps to prepare your team for launch.</p>
+            <div className="flex items-center justify-between text-xs text-slate-400"><span>Setup progress</span><strong className="text-white">{done}/{steps.length}</strong></div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-cyan-400 transition-all" style={{ width: `${(done / steps.length) * 100}%` }} /></div>
           </div>
         </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-        <section className="space-y-4 xl:col-span-2">
-          <Card title="Workspace launch checklist" icon={CheckCircle2}>
-            <ol className="space-y-4">
-              {steps.map((step, index) => {
-                const Icon = step.icon;
-                const content = (
-                  <div className="flex items-start gap-3">
-                    <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${step.done ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-slate-700 bg-slate-800 text-slate-400"}`}>
-                      {step.done ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium text-slate-100">{index + 1}. {step.title}</span>
-                      <span className="mt-1 block text-xs leading-5 text-slate-500">{step.detail}</span>
-                    </span>
-                    {step.href && <ArrowRight className="mt-2 h-4 w-4 shrink-0 text-slate-500" />}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <Card title="Invite your team" icon={UserPlus}>
+          <form onSubmit={submitInvite} className="space-y-3" noValidate>
+            <div>
+              <label htmlFor="invite-email" className="mb-1.5 block text-xs font-medium text-slate-400">Work email</label>
+              <input id="invite-email" type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="teammate@company.com" className={input} />
+            </div>
+            <div>
+              <label htmlFor="invite-role" className="mb-1.5 block text-xs font-medium text-slate-400">Workspace role</label>
+              <select id="invite-role" value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} className={input}>
+                {INVITABLE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+            </div>
+            <button type="submit" disabled={submitting} className={`inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-cyan-400 disabled:opacity-60 ${focusRing}`}>
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}Send invitation
+            </button>
+            <div aria-live="polite">
+              {inviteError && <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">{inviteError}</p>}
+              {inviteSuccess && <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">{inviteSuccess}</p>}
+              {inviteLink && (
+                <div className="mt-2 flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 p-2">
+                  <input readOnly value={inviteLink} aria-label="Invite link" onFocus={(e) => e.target.select()} className="min-w-0 flex-1 bg-transparent text-xs text-slate-300 outline-none" />
+                  <button type="button" onClick={copyLink} className={`shrink-0 rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-white/5 ${focusRing}`}>
+                    {copied ? "Copied" : "Copy link"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </form>
+        </Card>
+
+        <Card title="Pending invitations" icon={Mail} action={<span className="text-xs text-slate-400">{pending.length} pending</span>}>
+          {invitesLoading ? (
+            <div className="flex items-center justify-center py-8 text-xs text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />Loading…</div>
+          ) : invites.length === 0 ? (
+            <Empty icon={Users} title="No invitations yet" text="Invite an agent or manager to join your workspace." />
+          ) : (
+            <div className="max-h-72 space-y-3 overflow-y-auto">
+              {invites.map((invite, i) => {
+                const id = invite?.id || invite?.inviteId;
+                const isPending = (invite?.status || "pending").toLowerCase() === "pending";
+                return (
+                  <div key={id ?? `${invite?.email}-${i}`} className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-xs">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-white">{invite?.email}</p>
+                      <p className="capitalize text-slate-400">{invite?.role} · {invite?.status || "pending"}</p>
+                    </div>
+                    {id && isPending && (
+                      <button type="button" onClick={() => onRevoke(id)} disabled={revokeBusyId === id} className={`inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2.5 py-1 text-slate-300 hover:border-red-500 hover:text-red-300 disabled:opacity-60 ${focusRing}`}>
+                        {revokeBusyId === id ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> : <X className="h-3 w-3" aria-hidden="true" />}Revoke
+                      </button>
+                    )}
                   </div>
                 );
-                return <li key={step.title}>{step.href ? <Link to={step.href} className="block rounded-xl p-2 transition hover:bg-white/5">{content}</Link> : <div className="p-2">{content}</div>}</li>;
               })}
-            </ol>
-          </Card>
-          <Card title="Access policy" icon={ShieldCheck}>
-            <p className="text-xs leading-5 text-slate-400">You control who joins this workspace. Agents, managers and investor viewers cannot self-register into your organization. Invitations are email-bound, expire after seven days and can be revoked by an administrator.</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {INVITABLE_ROLES.map((item) => <span key={item.value} className="rounded-lg border border-slate-700 bg-slate-800/50 px-2.5 py-1.5 text-[11px] text-slate-300">{item.label}</span>)}
             </div>
-          </Card>
-        </section>
-
-        <section className="space-y-4 xl:col-span-3">
-          <Card title="Invite your team" icon={UserPlus}>
-            <p className="mb-4 text-xs leading-5 text-slate-400">Send a secure invitation to each teammate. Choose the least-privileged role they need; permissions are enforced by your workspace.</p>
-            <form onSubmit={submitInvite} className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_190px_auto]">
-              <label className="block"><span className="mb-1.5 block text-xs font-medium text-slate-400">Work email</span><input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="teammate@company.com" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-500" /></label>
-              <label className="block"><span className="mb-1.5 block text-xs font-medium text-slate-400">Workspace role</span><select value={inviteRole} onChange={(event) => setInviteRole(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-500">{INVITABLE_ROLES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-              <div className="flex items-end"><button type="submit" disabled={submitting || inviteBusy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60 md:w-auto">{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Send invite</button></div>
-            </form>
-            {inviteError && <p role="alert" className="mt-3 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">{inviteError}</p>}
-            {inviteSuccess && <p role="status" className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">{inviteSuccess}</p>}
-          </Card>
-
-          <Card title="Invitation activity" icon={Mail} action={<span className="text-[11px] text-slate-500">{pendingInvites.length} pending</span>}>
-            {invitesLoading ? <div className="flex items-center justify-center py-8 text-xs text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading invitations…</div> : invites.length === 0 ? <Empty icon={Users} title="Your team starts here" text="Invitations you send will appear here. Only invited people can join this workspace." /> : (
-              <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-xs"><thead><tr className="border-b border-slate-800 text-slate-500"><th className="pb-3 pr-3 font-medium">Person</th><th className="pb-3 pr-3 font-medium">Role</th><th className="pb-3 pr-3 font-medium">Status</th><th className="pb-3 pr-3 font-medium">Expires</th><th className="pb-3 text-right font-medium">Action</th></tr></thead><tbody className="divide-y divide-slate-800/80">{invites.map((invite) => {
-                const status = (invite.status || "pending").toLowerCase();
-                const id = invite.id || invite.inviteId || invite.invitationId;
-                const canRevoke = status === "pending" && Boolean(id);
-                return <tr key={id || invite.email} className="text-slate-300"><td className="py-3 pr-3"><span className="block font-medium text-slate-100">{invite.email || invite.invitedEmail || "Invited teammate"}</span><span className="mt-1 block text-[10px] text-slate-500">{invite.createdAt || invite.created_at ? `Sent ${formatInviteDate(invite.createdAt || invite.created_at)}` : ""}</span></td><td className="py-3 pr-3 capitalize">{invite.role || invite.appRole || invite.app_role || "agent"}</td><td className="py-3 pr-3"><span className={`rounded-full px-2 py-1 text-[10px] capitalize ${status === "accepted" ? "bg-emerald-500/10 text-emerald-300" : status === "revoked" || status === "expired" ? "bg-slate-700 text-slate-400" : "bg-amber-500/10 text-amber-300"}`}>{status}</span></td><td className="py-3 pr-3">{formatInviteDate(invite.expiresAt || invite.expires_at)}</td><td className="py-3 text-right">{canRevoke ? <button type="button" onClick={() => onRevoke(id)} disabled={revokeBusyId === id} aria-label={`Revoke invitation for ${invite.email || "teammate"}`} className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2 py-1.5 text-[11px] text-slate-300 hover:border-red-500/40 hover:text-red-300 disabled:opacity-50">{revokeBusyId === id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}Revoke</button> : <span className="text-slate-600">—</span>}</td></tr>;
-              })}</tbody></table></div>
-            )}
-          </Card>
-        </section>
+          )}
+        </Card>
       </div>
     </div>
   );
 }
 
-/* ---------- main dashboard ---------- */
+/* ================= main dashboard ================= */
 
-export default function WorkspaceDashboard({
-  view,
-  role: suppliedRole,
-  user: suppliedUser,
-}) {
-  const {
-    user: authUser,
-    role: authRole,
-    isAuth,
-    loading: authLoading,
-  } = useAuth();
-
+export default function WorkspaceDashboard({ view, role: suppliedRole, user: suppliedUser }) {
+  const { user: authUser, role: authRole, isAuth, loading: authLoading } = useAuth();
   const role = suppliedRole || authRole;
   const user = suppliedUser || authUser;
 
   const [preview, setPreview] = useState(null);
   const [timeframe, setTimeframe] = useState("30d");
-
   const [metrics, setMetrics] = useState(null);
   const [health, setHealth] = useState(null);
   const [tickets, setTickets] = useState([]);
   const [channels, setChannels] = useState({});
   const [invites, setInvites] = useState([]);
   const [invitesLoading, setInvitesLoading] = useState(false);
-  const [inviteBusy, setInviteBusy] = useState(false);
   const [revokeBusyId, setRevokeBusyId] = useState(null);
 
   const [demo, setDemo] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
+  const [failed, setFailed] = useState([]);
+  const [actionError, setActionError] = useState(null);
+  const [updatedAt, setUpdatedAt] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
+  const controllerRef = useRef(null);
 
-  const tokenPresent =
-    typeof window !== "undefined" &&
-    Boolean(
-      localStorage.getItem("token") ||
-      localStorage.getItem("authToken") ||
-      localStorage.getItem("access_token")
-    );
+  const authorized = Boolean(isAuth && getToken() && role !== "guest");
+  const ownView = ALIAS[role] || "agent";
+  const allowed = ALLOWED[ownView] ?? ["agent"];
+  const requested = preview ?? view ?? ownView;
+  const current = allowed.includes(requested) ? requested : ownView;
+  const canPreview = ownView === "admin";
+  const isWorkspaceAdmin = ownView === "admin" && current === "admin";
 
-  const authorized =
-    Boolean(isAuth && tokenPresent && role !== "guest");
-
-  const normalizedRole = ALIAS[role] || "agent";
-
-  // Administrators can preview other views without changing their actual role.
-  const current = preview ?? view ?? normalizedRole;
-
-  const canPreview = role === "admin";
-
-  const allowedViews = {
-    agent: ["agent"],
-    user: ["agent"],
-    management: ["management"],
-    investor: ["investor"],
-    admin: ["admin", "agent", "management", "investor"],
-  };
-
-  const hasViewPermission =
-    allowedViews[role]?.includes(current) ?? false;
-
-
-  const isWorkspaceAdmin = normalizedRole === "admin" && current === "admin";
+  const { events = [], isConnected = false } = useAgentStream(API_ENDPOINTS.activityStream, { enabled: authorized });
 
   const loadInvites = useCallback(async (signal) => {
     if (!authorized || !isWorkspaceAdmin) return;
     setInvitesLoading(true);
     try {
-      const data = await getJSON(SUPPORTOPS_API.invites(""), signal);
-      if (!signal?.aborted) setInvites(inviteList(data));
-    } catch (inviteLoadError) {
-      if (!isAbortError(inviteLoadError)) {
-        console.warn("[Dashboard] Invitation list unavailable:", inviteLoadError.message);
-      }
+      const data = await api(invitesRoot(), { signal });
+      if (!signal?.aborted) setInvites(asList(data, ["items", "invites", "invitations"]));
+    } catch (e) {
+      if (!isAbortError(e)) console.warn("[Dashboard] Invitations unavailable:", e.message);
     } finally {
       if (!signal?.aborted) setInvitesLoading(false);
     }
   }, [authorized, isWorkspaceAdmin]);
 
   const createInvite = useCallback(async ({ email, role: inviteRole }) => {
-    setInviteBusy(true);
-    try {
-      await requestJSON(SUPPORTOPS_API.invites(""), {
-        method: "POST",
-        body: { email, role: inviteRole },
-      });
-      await loadInvites();
-    } finally {
-      setInviteBusy(false);
-    }
+    const data = await api(invitesRoot(), { method: "POST", body: { email, role: inviteRole } });
+    await loadInvites();
+    return data;
   }, [loadInvites]);
 
-  const revokeInvite = useCallback(async (inviteId) => {
-    if (!inviteId) return;
-    setRevokeBusyId(inviteId);
+  const revokeInvite = useCallback(async (id) => {
+    if (!id) return;
+    setRevokeBusyId(id);
+    setActionError(null);
     try {
-      await requestJSON(`${SUPPORTOPS_API.invites.root}/${encodeURIComponent(inviteId)}`, {
-        method: "DELETE",
-      });
+      await api(inviteItemUrl(id), { method: "DELETE" });
       await loadInvites();
-    } catch (revokeError) {
-      setError(revokeError.message || "Invitation could not be revoked.");
+    } catch (e) {
+      setActionError(e.message || "Invitation could not be revoked.");
     } finally {
       setRevokeBusyId(null);
     }
   }, [loadInvites]);
 
-  /*
-   * IMPORTANT:
-   * Do not create a live stream for guests or unauthorized users.
-   *
-   * This requires useAgentStream to support an `enabled` option.
-   * The updated hook is provided below.
-   */
-  const {
-    events = [],
-    isConnected = false,
-  } = useAgentStream(API_ENDPOINTS.activityStream, {
-    enabled: authorized && hasViewPermission,
-  });
-
-  const load = useCallback(
-    async (signal) => {
-      if (!authorized || !hasViewPermission) {
-        setMetrics(null);
-        setHealth(null);
-        setTickets([]);
-        setChannels({});
-        setDemo(false);
-        setLoading(false);
-        setRefreshing(false);
-        return;
-      }
-
-      setLoading(true);
-      setRefreshing(true);
-      setError(null);
-
-      try {
-        const results = await Promise.all([
-          getJSON(
-            API_ENDPOINTS.metrics(timeframe),
-            signal
-          ),
-          getJSON(API_ENDPOINTS.health, signal),
-          getJSON(
-            SUPPORTOPS_API.tickets("", {
-              status: "open",
-              limit: 10,
-            }),
-            signal
-          ),
-          getJSON(
-            SUPPORTOPS_API.tickets("/channels"),
-            signal
-          ),
-        ]);
-
-        if (signal?.aborted) {
-          return;
-        }
-
-        const [metricsData, healthData, ticketData, channelData] =
-          results;
-
-        setMetrics(metricsData);
-        setHealth(healthData);
-
-        const list = ticketData
-          ? toList(ticketData)
-          : [];
-
-        // Fake data is opt-in only.
-        const demoEnabled =
-          import.meta.env.DEV &&
-          import.meta.env.VITE_SUPPORTOPS_DEMO === "true";
-
-        setDemo(demoEnabled && !list.length);
-
-        const visibleTickets =
-          demoEnabled && !list.length
-            ? SAMPLE
-            : list;
-
-        setTickets(
-          [...visibleTickets].sort(
-            (a, b) =>
-              (slaMins(a) ?? Number.MAX_SAFE_INTEGER) -
-              (slaMins(b) ?? Number.MAX_SAFE_INTEGER)
-          )
-        );
-
-        const rawChannels = channelData
-          ? channelData.channels ?? channelData
-          : [];
-
-        setChannels(
-          Array.isArray(rawChannels)
-            ? Object.fromEntries(
-              rawChannels.map((channel) => [
-                channel.key,
-                channel,
-              ])
-            )
-            : rawChannels ?? {}
-        );
-
-        if (!metricsData && !healthData && !ticketData) {
-          setError(
-            "Dashboard data is currently unavailable. Check your session and backend connection, then try again."
-          );
-        }
-      } catch (loadError) {
-        if (!isAbortError(loadError)) {
-          setError(
-            "Unable to load workspace data. Please try again."
-          );
-
-          console.error(
-            "[Dashboard] Failed to load workspace:",
-            loadError
-          );
-        }
-      } finally {
-        if (!signal?.aborted) {
-          setLoading(false);
-          setRefreshing(false);
-        }
-      }
-    },
-    [
-      authorized,
-      hasViewPermission,
-      timeframe,
-    ]
-  );
-
-  useEffect(() => {
-    if (authLoading) {
-      return undefined;
-    }
-
-    if (!authorized || !hasViewPermission) {
-      setLoading(false);
-      setRefreshing(false);
-      return undefined;
-    }
-
+  const load = useCallback(async () => {
+    if (!authorized) return;
+    controllerRef.current?.abort();
     const controller = new AbortController();
+    controllerRef.current = controller;
+    const { signal } = controller;
 
-    load(controller.signal);
+    setRefreshing(true);
+    const jobs = [
+      ["metrics", () => api(API_ENDPOINTS.metrics(timeframe), { signal })],
+      ["health", () => api(API_ENDPOINTS.health, { signal })],
+      ["tickets", () => api(SUPPORTOPS_API.tickets("", { status: "open", limit: 10 }), { signal })],
+      ["channels", () => api(SUPPORTOPS_API.tickets("/channels"), { signal })],
+    ];
 
-    return () => {
-      controller.abort();
+    const results = await Promise.allSettled(jobs.map(([, run]) => { try { return run(); } catch (e) { return Promise.reject(e); } }));
+    if (signal.aborted) return;
+
+    const bad = [];
+    const pick = (i) => {
+      const r = results[i];
+      if (r.status === "fulfilled") return r.value;
+      if (!isAbortError(r.reason)) bad.push({ name: jobs[i][0], status: r.reason?.status });
+      return undefined;
     };
-  }, [
-    authLoading,
-    authorized,
-    hasViewPermission,
-    load,
-  ]);
 
+    const m = pick(0); if (m !== undefined) setMetrics(m);
+    const h = pick(1); if (h !== undefined) setHealth(h);
+
+    const t = pick(2);
+    if (t !== undefined) {
+      const list = asList(t, ["items", "tickets"]);
+      const demoOn = import.meta.env.DEV && import.meta.env.VITE_SUPPORTOPS_DEMO === "true" && !list.length;
+      setDemo(demoOn);
+      setTickets(demoOn ? SAMPLE : list);
+    }
+
+    const c = pick(3);
+    if (c !== undefined) {
+      const raw = c?.channels ?? c ?? [];
+      setChannels(Array.isArray(raw) ? Object.fromEntries(raw.filter((x) => x?.key).map((x) => [x.key, x])) : raw);
+    }
+
+    setFailed(bad);
+    setUpdatedAt(Date.now());
+    setLoaded(true);
+    setRefreshing(false);
+  }, [authorized, timeframe]);
+
+  // initial load + reload on timeframe change
+  useEffect(() => {
+    if (authLoading || !authorized) return undefined;
+    load();
+    return () => controllerRef.current?.abort();
+  }, [authLoading, authorized, load]);
+
+  // keep SLA timers honest and refresh data quietly while the tab is visible
+  useEffect(() => {
+    if (!authorized) return undefined;
+    const tick = setInterval(() => setNow(Date.now()), 30_000);
+    const poll = setInterval(() => { if (document.visibilityState === "visible") load(); }, REFRESH_MS);
+    return () => { clearInterval(tick); clearInterval(poll); };
+  }, [authorized, load]);
 
   useEffect(() => {
-    if (!authLoading && authorized && isWorkspaceAdmin) {
-      const controller = new AbortController();
-      loadInvites(controller.signal);
-      return () => controller.abort();
-    }
-    return undefined;
+    if (authLoading || !authorized || !isWorkspaceAdmin) return undefined;
+    const controller = new AbortController();
+    loadInvites(controller.signal);
+    return () => controller.abort();
   }, [authLoading, authorized, isWorkspaceAdmin, loadInvites]);
 
-  // Show the login prompt without starting API requests.
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#030712] text-slate-300">
-        <RefreshCw className="h-6 w-6 animate-spin mr-3 text-cyan-400" />
-        Checking your session…
+      <div className="flex min-h-screen items-center justify-center bg-[#030712] text-slate-300">
+        <RefreshCw className="mr-3 h-6 w-6 animate-spin text-cyan-400" aria-hidden="true" />Checking your session…
       </div>
     );
   }
+  if (!authorized) return <AccessRequired />;
 
-  if (!authorized) {
-    return <AccessRequired />;
-  }
+  const sorted = [...tickets].sort((a, b) => (slaMins(a, now) ?? Number.MAX_SAFE_INTEGER) - (slaMins(b, now) ?? Number.MAX_SAFE_INTEGER));
+  const atRisk = sorted.filter((t) => (slaMins(t, now) ?? Infinity) <= 60);
+  const connected = Object.keys(CHANNELS).filter((k) => channels?.[k]?.connected).length;
+  const sessionExpired = failed.length > 0 && failed.every((f) => f.status === 401);
 
-  if (!hasViewPermission) {
-    const destination =
-      role === "admin"
-        ? "/supportops/admin/executive"
-        : role === "management"
-          ? "/supportops/agent/dashboard"
-          : role === "investor"
-            ? "/supportops/investor"
-            : "/supportops/agent/dashboard";
-
-    return <Navigate to={destination} replace />;
-  }
-
-  const atRisk = tickets.filter(
-    (ticket) => (slaMins(ticket) ?? Infinity) <= 60
-  );
-
-  const connected = Object.keys(CHANNELS).filter(
-    (key) => channels[key]?.connected
-  ).length;
-
-  const mrrGrowth = metrics?.mrrChange;
-
-  const nextAction = {
-    agent: atRisk.length
-      ? `${atRisk.length} ticket${atRisk.length > 1 ? "s" : ""} will breach SLA within the hour. Start with ${atRisk[0].id}.`
-      : "Review your open tickets and prioritize the oldest unresolved request.",
-
-    management: atRisk.length
-      ? `${atRisk.length} open ticket${atRisk.length > 1 ? "s are" : " is"} at SLA risk. Consider rebalancing the queue.`
-      : "Review SLA health and workload distribution across channels.",
-
-    admin:
-      connected < 3
-        ? `Only ${connected} of ${Object.keys(CHANNELS).length} channels are connected. Review your workspace integrations.`
-        : "Review workspace health, seat usage, and integrations.",
-
-    investor: mrrGrowth
-      ? `MRR is ${mrrGrowth} for this period.`
-      : "Business metrics will appear when revenue data is available.",
-  }[current];
-
-  const kpis = {
+  const kpis = ({
     agent: [
-      [
-        "Open tickets",
-        tickets.length,
-        "Tickets returned by the API",
-        Ticket,
-      ],
-      [
-        "SLA at risk",
-        atRisk.length,
-        "Due within 60 min",
-        AlertTriangle,
-      ],
-      [
-        "Avg first response",
-        val(metrics?.avgFirstResponseMin, (value) => `${value} min`),
-        "This period",
-        Clock,
-      ],
-      [
-        "Customer satisfaction",
-        val(metrics?.csat, (value) => `${value}%`),
-        "CSAT",
-        Sparkles,
-      ],
+      ["Open tickets", sorted.length, "Assigned queue", Ticket],
+      ["SLA at risk", atRisk.length, "Due within 60 min", AlertTriangle],
+      ["Avg first response", val(metrics?.avgFirstResponseMin, (v) => `${v} min`), "This period", Clock],
+      ["CSAT", val(metrics?.csat, (v) => `${v}%`), "Customer satisfaction", Sparkles],
     ],
-
     management: [
-      [
-        "Backlog",
-        val(metrics?.backlog ?? tickets.length),
-        "Open across channels",
-        Inbox,
-      ],
-      [
-        "SLA compliance",
-        val(metrics?.slaCompliance, (value) => `${value}%`),
-        "Resolved on time",
-        CheckCircle2,
-      ],
-      [
-        "Avg resolution",
-        val(metrics?.avgResolutionHours, (value) => `${value} h`),
-        "This period",
-        Clock,
-      ],
-      [
-        "AI resolution rate",
-        val(metrics?.aiResolutionRate, (value) => `${value}%`),
-        "Handled without an agent",
-        Sparkles,
-      ],
+      ["Backlog", val(metrics?.backlog ?? sorted.length, fmt), "Open across channels", Inbox],
+      ["SLA compliance", val(metrics?.slaCompliance, (v) => `${v}%`), "Resolved on time", CheckCircle2],
+      ["Avg resolution", val(metrics?.avgResolutionHours, (v) => `${v} h`), "This period", Clock],
+      ["AI resolution rate", val(metrics?.aiResolutionRate, (v) => `${v}%`), "Handled without an agent", Sparkles],
     ],
-
     admin: [
-      [
-        "Channels connected",
-        `${connected}/${Object.keys(CHANNELS).length}`,
-        "Configured channels",
-        Plug,
-      ],
-      [
-        "Seats used",
-        val(metrics?.seatsUsed, (value) =>
-          `${value}${metrics?.seatLimit ? `/${metrics.seatLimit}` : ""}`
-        ),
-        "This workspace",
-        Users,
-      ],
-      [
-        "Tickets processed",
-        val(metrics?.tickets, (value) =>
-          value.toLocaleString()
-        ),
-        timeframe,
-        Ticket,
-      ],
-      [
-        "API latency",
-        val(health?.apiLatencyMs, (value) => `${value} ms`),
-        health?.uptime ?? "System health",
-        Activity,
-      ],
+      ["Channels connected", `${connected}/${Object.keys(CHANNELS).length}`, "Configured channels", Plug],
+      ["Seats used", val(metrics?.seatsUsed, (v) => `${v}${metrics?.seatLimit ? `/${metrics.seatLimit}` : ""}`), "Workspace seats", Users],
+      ["Total tickets", val(metrics?.tickets, fmt), timeframe, Ticket],
+      ["API latency", val(health?.apiLatencyMs, (v) => `${v} ms`), health?.uptime ?? "System", Activity],
     ],
-
     investor: [
-      [
-        "Monthly recurring revenue",
-        val(metrics?.mrr, (value) =>
-          `$${value.toLocaleString()}`
-        ),
-        metrics?.mrrChange,
-        DollarSign,
-      ],
-      [
-        "Active customers",
-        val(metrics?.customers, (value) =>
-          value.toLocaleString()
-        ),
-        metrics?.customersChange,
-        Users,
-      ],
-      [
-        "Tickets handled",
-        val(metrics?.tickets, (value) =>
-          value.toLocaleString()
-        ),
-        metrics?.ticketsChange,
-        Ticket,
-      ],
-      [
-        "AI resolution rate",
-        val(metrics?.aiResolutionRate, (value) => `${value}%`),
-        "Cost saved by automation",
-        Sparkles,
-      ],
+      ["Monthly recurring revenue", val(metrics?.mrr, (v) => `$${fmt(v)}`), delta(metrics?.mrrChange), DollarSign],
+      ["Active customers", val(metrics?.customers, fmt), delta(metrics?.customersChange), Users],
+      ["Tickets handled", val(metrics?.tickets, fmt), delta(metrics?.ticketsChange), Ticket],
+      ["AI resolution rate", val(metrics?.aiResolutionRate, (v) => `${v}%`), "Drives cost savings", Sparkles],
     ],
-  }[current];
+  })[current] ?? [];
 
   return (
-    <div className="min-h-screen bg-[#030712] text-slate-100 px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-
-      <div className="mb-6 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+    <div className="min-h-screen bg-[#030712] px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs text-slate-500 mb-1">
-            Welcome back
-            {user?.name ? `, ${user.name}` : ""}
-          </p>
-
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            {TITLES[current][0]}
-          </h1>
-
-          <p className="text-sm text-slate-400">
-            {TITLES[current][1]}
-          </p>
+          <p className="mb-1 text-xs text-slate-500">Welcome back{user?.name ? `, ${user.name}` : ""}</p>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">{TITLES[current]?.[0] ?? "Dashboard"}</h1>
+          <p className="text-sm text-slate-400">{TITLES[current]?.[1] ?? ""}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {canPreview && (
-            <div className="flex flex-wrap rounded-xl border border-slate-800 bg-slate-900 p-1">
+            <div className="flex flex-wrap rounded-xl border border-slate-800 bg-slate-900 p-1" role="tablist" aria-label="Dashboard view">
               {Object.entries(VIEWS).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setPreview(key)}
-                  className={`px-3 py-1.5 text-xs rounded-lg transition ${current === key
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-400 hover:text-white"
-                    }`}
-                >
+                <button key={key} type="button" role="tab" aria-selected={current === key} onClick={() => setPreview(key)} className={`rounded-lg px-3 py-1.5 text-xs transition ${focusRing} ${current === key ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}>
                   {label}
                 </button>
               ))}
             </div>
           )}
-
-          <select
-            value={timeframe}
-            onChange={(event) =>
-              setTimeframe(event.target.value)
-            }
-            className="px-3 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-slate-300 focus:outline-none"
-          >
+          <select aria-label="Timeframe" value={timeframe} onChange={(e) => setTimeframe(e.target.value)} className={`rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300 ${focusRing}`}>
             <option value="7d">Last 7 days</option>
             <option value="30d">Last 30 days</option>
             <option value="90d">Last 90 days</option>
           </select>
-
-          <button
-            type="button"
-            onClick={() => {
-              const controller = new AbortController();
-              load(controller.signal);
-            }}
-            disabled={refreshing}
-            aria-label="Refresh dashboard"
-            className="p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 hover:text-white disabled:opacity-50"
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${refreshing ? "animate-spin" : ""
-                }`}
-            />
+          <button type="button" aria-label="Refresh dashboard" onClick={load} disabled={refreshing} className={`rounded-xl border border-slate-800 bg-slate-900 p-2 text-slate-300 hover:text-white disabled:opacity-60 ${focusRing}`}>
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />
           </button>
         </div>
       </div>
 
       <PlanBanner />
 
-      {/* Status banners */}
+      <div aria-live="polite">
+        {demo && <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">Showing sample tickets because your workspace has none yet.</div>}
+        {actionError && <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{actionError}</div>}
+        {failed.length > 0 && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            <span>
+              {sessionExpired
+                ? "Your session has expired. Sign in again to see live data."
+                : `Couldn't load ${failed.map((f) => f.name).join(", ")}. Showing the last data we had.`}
+            </span>
+            {sessionExpired
+              ? <Link to={ROUTES?.login || "/supportops/login"} className="font-semibold underline">Sign in</Link>
+              : <button type="button" onClick={load} className="font-semibold underline">Retry</button>}
+          </div>
+        )}
+      </div>
 
-      {nextAction && (
-        <div className="mb-6 flex items-start gap-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-100">
-          <Zap className="h-4 w-4 mt-0.5 shrink-0 text-cyan-400" />
-          <span>{nextAction}</span>
-        </div>
-      )}
-
-      {error && (
-        <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-          {error}
-        </div>
-      )}
-
-      {demo && (
-        <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
-          Demo mode is enabled. The displayed sample tickets are not live customer data.
-        </div>
-      )}
-
-      {/* Dashboard body */}
-
-      {loading ? (
-        <div className="flex items-center justify-center py-24 text-slate-400">
-          <RefreshCw className="h-6 w-6 animate-spin mr-3 text-cyan-400" />
-          Loading your workspace…
-        </div>
+      {!loaded ? (
+        <Skeleton />
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-            {kpis.map(([label, value, hint, icon]) => (
-              <Kpi
-                key={label}
-                label={label}
-                value={value}
-                hint={hint}
-                icon={icon}
-              />
-            ))}
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {kpis.map(([label, value, hint, icon]) => <Kpi key={label} label={label} value={value} hint={hint} icon={icon} />)}
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <div className="xl:col-span-2 space-y-6">
-              {current === "agent" && (
-                <Card
-                  title="Priority queue"
-                  icon={Inbox}
-                  action={
-                    <Link
-                      to={
-                        ROUTES?.agent?.tickets ||
-                        "/supportops/agent/tickets"
-                      }
-                      className="text-xs text-cyan-400 hover:underline"
-                    >
-                      Open tickets
-                    </Link>
-                  }
-                >
-                  <TicketList tickets={tickets} />
-                </Card>
-              )}
+          <Briefing current={current} tickets={sorted} now={now} metrics={metrics} connected={connected} totalChannels={Object.keys(CHANNELS).length} invites={invites} />
 
-              {current === "management" && (
-                <>
-                  <Card
-                    title="Tickets at SLA risk"
-                    icon={AlertTriangle}
-                  >
-                    <TicketList tickets={atRisk} />
-                  </Card>
-
-                  <Card title="Channel mix" icon={Inbox}>
-                    <ChannelMix
-                      tickets={tickets}
-                      byChannel={metrics?.byChannel}
-                    />
-                  </Card>
-                </>
-              )}
-
-              {current === "admin" && isWorkspaceAdmin && (
-                <ExecutiveOnboarding
-                  user={user}
-                  channels={channels}
-                  invites={invites}
-                  invitesLoading={invitesLoading}
-                  onInvite={createInvite}
-                  onRevoke={revokeInvite}
-                  inviteBusy={inviteBusy}
-                  revokeBusyId={revokeBusyId}
-                />
-              )}
-
-              {current === "admin" && !isWorkspaceAdmin && (
-                <Card title="Workspace administration" icon={ShieldCheck}>
-                  <p className="text-sm text-slate-400">Administrator tools are available only to the workspace owner or an authorized administrator.</p>
-                </Card>
-              )}
-
-              {current === "admin" && isWorkspaceAdmin && (
-                <Card title="Connected channels" icon={Plug}>
-                  <ChannelConnections channels={channels} />
-                </Card>
-              )}
-
-              {current === "investor" && (
-                <div className="rounded-2xl bg-slate-900/40 border border-slate-800/80 p-1">
-                  <RevenueChart timeframe={timeframe} />
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-6">
-              {["management", "investor"].includes(current) && (
-                <div className="rounded-2xl bg-slate-900/40 border border-slate-800/80 p-1">
-                  <AIImpact timeframe={timeframe} />
-                </div>
-              )}
-
-              <Card
-                title="Live activity"
-                icon={Activity}
-                action={
-                  <span
-                    className={`text-[11px] ${isConnected
-                      ? "text-emerald-400"
-                      : "text-slate-500"
-                      }`}
-                  >
-                    {isConnected ? "Live" : "Offline"}
-                  </span>
-                }
-              >
+          {current === "agent" && (
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+              <div className="xl:col-span-2">
+                <Card title="My priority queue" icon={Inbox}><TicketList tickets={sorted} now={now} /></Card>
+              </div>
+              <Card title="Live activity" icon={Activity} action={<span className={`text-[11px] ${isConnected ? "text-emerald-400" : "text-slate-500"}`}>{isConnected ? "Live" : "Offline"}</span>}>
                 <LiveActivity events={events} />
               </Card>
             </div>
-          </div>
+          )}
+
+          {current === "management" && (
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+              <div className="space-y-6 xl:col-span-2">
+                <Card title="Tickets at SLA risk" icon={AlertTriangle}><TicketList tickets={atRisk} now={now} /></Card>
+                <Card title="Channel workload mix" icon={Inbox}><ChannelMix tickets={sorted} byChannel={metrics?.byChannel} /></Card>
+              </div>
+              <div className="space-y-6">
+                <AIImpact timeframe={timeframe} />
+                <Card title="Live activity" icon={Activity}><LiveActivity events={events} /></Card>
+              </div>
+            </div>
+          )}
+
+          {current === "admin" && (isWorkspaceAdmin ? (
+            <div className="space-y-6">
+              <ExecutiveOnboarding user={user} channels={channels} invites={invites} invitesLoading={invitesLoading} onInvite={createInvite} onRevoke={revokeInvite} revokeBusyId={revokeBusyId} />
+              <Card title="Support channel integrations" icon={Plug}><ChannelConnections channels={channels} /></Card>
+            </div>
+          ) : (
+            <Card title="Workspace administration" icon={ShieldCheck}>
+              <p className="text-sm text-slate-400">Administrator tools are available only to workspace owners and authorized administrators.</p>
+            </Card>
+          ))}
+
+          {current === "investor" && (
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-1 xl:col-span-2"><RevenueChart timeframe={timeframe} /></div>
+              <AIImpact timeframe={timeframe} />
+            </div>
+          )}
+
+          {updatedAt && <p className="mt-6 text-right text-[11px] text-slate-600">Updated {new Date(updatedAt).toLocaleTimeString()} · refreshes every minute</p>}
         </>
       )}
     </div>
