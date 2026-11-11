@@ -74,7 +74,7 @@ export function AuthProvider({ children }) {
       setUser(data.user || { email, role: 'Super Admin' });
       setWorkspace(data.workspace || null);
 
-      const redirectPath = data.redirectUrl || '/supportops/admin/executive';
+      const redirectPath = data.redirectUrl || '/supportops/admin';
       window.location.assign(redirectPath);
       return data;
     } catch (err) {
