@@ -1,100 +1,120 @@
-import { createContext, useContext, useState, useEffect } from "react";
-
-const API_BASE_URL =
-  import.meta.env.VITE_BACKEND_API_URL ||
-  "https://nexus-core-a0px.onrender.com/api/v1";
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext(null);
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://nexus-core-a0px.onrender.com/api/v1').replace(/\/$/, '');
+
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(null);
-  const [role, setRole] = useState(null);
   const [user, setUser] = useState(null);
+  const [workspace, setWorkspace] = useState(null);
+  const [token, setToken] = useState(() => localStorage.getItem('supportops_token'));
+  const [loading, setLoading] = useState(true);
 
-  // Load persisted auth
+  // Validate session token on mount or when token changes
   useEffect(() => {
-    const t = localStorage.getItem("access_token");
-    const r = localStorage.getItem("role");
-    const u = localStorage.getItem("user");
+    const verifySession = async () => {
+      const storedToken = localStorage.getItem('supportops_token');
+      if (!storedToken) {
+        setUser(null);
+        setWorkspace(null);
+        setLoading(false);
+        return;
+      }
 
-    if (t) setToken(t);
-    if (r) setRole(r);
-    if (u) setUser(JSON.parse(u));
-  }, []);
+      try {
+        const res = await fetch(`${API_BASE}/supportops/me`, {
+          headers: {
+            'Authorization': `Bearer ${storedToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
 
-  // Login
-  const login = (payload) => {
-    if (!payload) throw new Error("Invalid login payload");
-
-    const accessToken = payload.access_token || payload.token;
-    const userRole = payload.role;
-
-    const userObj = {
-      email: payload.email ?? "unknown@example.com",
-      name: payload.name ?? "User",
-      role: userRole,
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setUser(data.user);
+          setWorkspace(data.workspace || null);
+        } else {
+          // Token expired or invalid
+          localStorage.removeItem('supportops_token');
+          setToken(null);
+          setUser(null);
+          setWorkspace(null);
+        }
+      } catch (err) {
+        console.error('[SupportOps Auth Verification Error]:', err);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    localStorage.setItem("access_token", accessToken);
-    localStorage.setItem("role", userRole);
-    localStorage.setItem("user", JSON.stringify(userObj));
+    verifySession();
+  }, [token]);
 
-    setToken(accessToken);
-    setRole(userRole);
-    setUser(userObj);
+  // Login handler
+  const login = async (email, password) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/supportops/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
 
-    return { access_token: accessToken, role: userRole, user: userObj };
-  };
+      const data = await res.json();
 
-  // Signup
-  const signup = async ({ email, password, name }) => {
-    console.log("API_BASE_URL:", API_BASE_URL);
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Authentication failed.');
+      }
 
-    const res = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email, password, name }),
-    });
+      if (data.token) {
+        localStorage.setItem('supportops_token', data.token);
+        setToken(data.token);
+      }
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || "Signup failed");
+      setUser(data.user || { email, role: 'Super Admin' });
+      setWorkspace(data.workspace || null);
+
+      const redirectPath = data.redirectUrl || '/supportops/admin/executive';
+      window.location.assign(redirectPath);
+      return data;
+    } catch (err) {
+      console.error('[SupportOps Login Error]:', err);
+      throw err;
+    } finally {
+      setLoading(false);
     }
-
-    const data = await res.json();
-    return login(data);
   };
 
+  // Logout handler
   const logout = () => {
-    localStorage.clear();
+    localStorage.removeItem('supportops_token');
     setToken(null);
-    setRole(null);
     setUser(null);
+    setWorkspace(null);
+    window.location.assign('/supportops/login');
+  };
+
+  const value = {
+    user,
+    workspace,
+    token,
+    isAuthenticated: !!token,
+    loading,
+    login,
+    logout,
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        token,
-        role,
-        user,
-        login,
-        signup,
-        logout,
-        isAuth: !!token,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth must be used within AuthProvider");
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
   }
-  return ctx;
-};
+  return context;
+}

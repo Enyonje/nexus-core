@@ -305,6 +305,220 @@ fastify.post('/api/v1/supportops/contact-sales', async (req, res) => {
   }
 });
 
+// ==========================================
+// 1. WORKSPACE METRICS ENDPOINT (GET)
+// ==========================================
+fastify.get('/api/v1/supportops/metrics', async (request, reply) => {
+  try {
+    const { timeframe = '30d' } = request.query;
+    fastify.log.info({ timeframe }, '[Metrics] Fetching workspace KPIs');
+
+    return reply.status(200).send({
+      success: true,
+      avgFirstResponseMin: 4.2,
+      csat: 96.5,
+      backlog: 18,
+      slaCompliance: 98.2,
+      avgResolutionHours: 1.8,
+      aiResolutionRate: 84.5,
+      seatsUsed: 12,
+      seatLimit: 25,
+      tickets: 1420,
+      mrr: 14500,
+      customers: 340,
+      mrrChange: '+14.2% vs last month',
+      customersChange: '+8.4% new accounts',
+      ticketsChange: '+12.1% volume',
+      byChannel: {
+        whatsapp: 540,
+        email: 380,
+        voice: 220,
+        web: 180,
+        sms: 60,
+        social: 40,
+      },
+    });
+  } catch (err) {
+    fastify.log.error('[Metrics Error]:', err.message);
+    return reply.status(500).send({ success: false, error: 'Failed to fetch metrics.' });
+  }
+});
+
+// ==========================================
+// 2. SYSTEM HEALTH ENDPOINT (GET)
+// ==========================================
+fastify.get('/api/v1/health', async (request, reply) => {
+  return reply.status(200).send({
+    success: true,
+    apiLatencyMs: 38,
+    uptime: '99.98% operational',
+  });
+});
+
+// ==========================================
+// 3. TICKETS LIST ENDPOINT (GET)
+// ==========================================
+fastify.get('/api/v1/supportops/tickets', async (request, reply) => {
+  try {
+    const { status = 'open', limit = 10 } = request.query;
+
+    const mockTickets = [
+      {
+        id: 'T-1042',
+        subject: 'Payment failed twice at checkout',
+        customer: 'Amina K.',
+        channel: 'whatsapp',
+        priority: 'high',
+        slaMins: 12,
+      },
+      {
+        id: 'T-1041',
+        subject: 'Missed call: delivery not received',
+        customer: 'Brian O.',
+        channel: 'voice',
+        priority: 'urgent',
+        slaMins: -8, // Breached
+      },
+      {
+        id: 'T-1039',
+        subject: 'Invoice copy request',
+        customer: 'Nia Traders',
+        channel: 'email',
+        priority: 'low',
+        slaMins: 190,
+      },
+      {
+        id: 'T-1037',
+        subject: 'Cannot reset password',
+        customer: 'Joy M.',
+        channel: 'web',
+        priority: 'normal',
+        slaMins: 55,
+      },
+    ];
+
+    return reply.status(200).send({
+      success: true,
+      items: mockTickets.slice(0, Number(limit)),
+    });
+  } catch (err) {
+    return reply.status(500).send({ success: false, error: 'Failed to fetch tickets.' });
+  }
+});
+
+// ==========================================
+// 4. CHANNELS STATUS ENDPOINT (GET)
+// ==========================================
+fastify.get('/api/v1/supportops/tickets/channels', async (request, reply) => {
+  return reply.status(200).send({
+    success: true,
+    channels: [
+      { key: 'whatsapp', connected: true },
+      { key: 'voice', connected: true },
+      { key: 'email', connected: true },
+      { key: 'sms', connected: false },
+      { key: 'web', connected: true },
+      { key: 'social', connected: false },
+    ],
+  });
+});
+
+// ==========================================
+// 5. TEAM INVITATIONS ENDPOINTS (GET, POST, DELETE)
+// ==========================================
+const mockInvites = [
+  {
+    id: 'inv_101',
+    email: 'agent.lead@company.com',
+    role: 'agent',
+    status: 'pending',
+    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    expiresAt: new Date(Date.now() + 86400000 * 5).toISOString(),
+  },
+];
+
+fastify.get('/api/v1/supportops/invites', async (request, reply) => {
+  return reply.status(200).send({
+    success: true,
+    items: mockInvites,
+  });
+});
+
+fastify.post('/api/v1/supportops/invites', async (request, reply) => {
+  const { email, role } = request.body || {};
+  if (!email) {
+    return reply.status(400).send({ success: false, error: 'Email is required.' });
+  }
+
+  const newInvite = {
+    id: 'inv_' + Date.now(),
+    email,
+    role: role || 'agent',
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 86400000 * 7).toISOString(),
+  };
+
+  mockInvites.push(newInvite);
+
+  return reply.status(201).send({
+    success: true,
+    message: `Invitation sent to ${email}`,
+    invite: newInvite,
+  });
+});
+
+fastify.delete('/api/v1/supportops/invites/:id', async (request, reply) => {
+  const { id } = request.params;
+  const index = mockInvites.findIndex((inv) => inv.id === id);
+
+  if (index !== -1) {
+    mockInvites.splice(index, 1);
+  }
+
+  return reply.status(200).send({
+    success: true,
+    message: 'Invitation revoked successfully.',
+  });
+});
+
+// ==========================================
+// 6. LIVE ACTIVITY STREAM (Server-Sent Events)
+// ==========================================
+fastify.get('/api/v1/activity/stream', async (request, reply) => {
+  reply.raw.setHeader('Content-Type', 'text/event-stream');
+  reply.raw.setHeader('Cache-Control', 'no-cache');
+  reply.raw.setHeader('Connection', 'keep-alive');
+
+  const sendEvent = (description) => {
+    const payload = JSON.stringify({
+      id: Date.now(),
+      description,
+      timestamp: new Date().toISOString(),
+    });
+    reply.raw.write(`data: ${payload}\n\n`);
+  };
+
+  // Send initial connected event
+  sendEvent('Agent workspace stream connected');
+
+  // Send periodic mock updates
+  const interval = setInterval(() => {
+    const eventsList = [
+      'AI resolved WhatsApp ticket #T-1042 automatically',
+      'New voice inquiry queued from Brian O.',
+      'Agent accepted ticket #T-1037',
+      'SLA warning triggered for urgent ticket #T-1041',
+    ];
+    const randomEvent = eventsList[Math.floor(Math.random() * eventsList.length)];
+    sendEvent(randomEvent);
+  }, 15000);
+
+  request.raw.on('close', () => {
+    clearInterval(interval);
+  });
+});
+
 // ========================= IMMEDIATE HEALTH CHECK ROUTE =========================
 const healthHandler = async (_req, reply) => {
   return reply.code(200).send({

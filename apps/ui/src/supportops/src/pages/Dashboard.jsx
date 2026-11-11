@@ -27,6 +27,15 @@ import {
   Plug,
   Zap,
   LockKeyhole,
+  Building2,
+  UserPlus,
+  Send,
+  X,
+  Check,
+  ArrowRight,
+  ShieldCheck,
+  CalendarDays,
+  Loader2,
 } from "lucide-react";
 
 import RevenueChart from "../components/RevenueChart";
@@ -96,8 +105,8 @@ const TITLES = {
     "Backlog, SLA health and workload across all channels",
   ],
   admin: [
-    "Workspace admin",
-    "Channels, integrations, seats and system health",
+    "Executive command center",
+    "Set up your workspace, bring your team together and oversee customer operations",
   ],
   investor: [
     "Business performance",
@@ -147,7 +156,9 @@ const SAMPLE = [
 /* ---------- backend configuration ---------- */
 
 const API_BASE_URL = (
+  import.meta.env.VITE_SUPPORTOPS_API_URL ||
   import.meta.env.VITE_BACKEND_API_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_URL ||
   "https://nexus-core-a0px.onrender.com"
 ).replace(/\/api\/?$/, "");
@@ -240,6 +251,49 @@ async function getJSON(url, signal) {
     return null;
   }
 }
+
+
+/** Authenticated JSON mutation helper for existing SupportOps API route groups. */
+async function requestJSON(url, { method = "GET", body, signal } = {}) {
+  const token =
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("access_token");
+  const org =
+    localStorage.getItem("activeOrgId") ||
+    localStorage.getItem("orgId");
+
+  if (!token) throw new Error("Your session has expired. Sign in again to continue.");
+
+  const response = await fetch(url, {
+    method,
+    signal,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(org ? { "X-Org-Id": org } : {}),
+      "X-App-Slug": "supportops",
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.success === false) {
+    const message =
+      data?.message || data?.error ||
+      (response.status === 403
+        ? "Only the workspace administrator can manage invitations."
+        : `Request failed (${response.status}). Please try again.`);
+    throw new Error(message);
+  }
+  return data;
+}
+
+const inviteList = (data) => {
+  if (Array.isArray(data)) return data;
+  return data?.items ?? data?.invites ?? data?.invitations ?? data?.data?.items ?? data?.data?.invites ?? [];
+};
 
 const toList = (data) =>
   Array.isArray(data)
@@ -599,6 +653,151 @@ function LiveActivity({ events }) {
   );
 }
 
+
+/* ---------- executive onboarding and team invitations ---------- */
+
+const INVITABLE_ROLES = [
+  { value: "agent", label: "Support agent", description: "Works customer conversations and tickets." },
+  { value: "management", label: "Manager", description: "Oversees teams, queues and service performance." },
+  { value: "investor", label: "Investor", description: "Views business and performance reporting." },
+];
+
+function formatInviteDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function ExecutiveOnboarding({ user, channels, invites, invitesLoading, onInvite, onRevoke, inviteBusy, revokeBusyId }) {
+  const [email, setEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("agent");
+  const [inviteError, setInviteError] = useState("");
+  const [inviteSuccess, setInviteSuccess] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const connectedChannels = Object.values(channels || {}).filter((item) => item?.connected).length;
+  const pendingInvites = invites.filter((invite) => (invite.status || "pending").toLowerCase() === "pending");
+  const trialEndsAt = typeof window !== "undefined" ? localStorage.getItem("supportops_trial_ends_at") : null;
+  const trialDate = trialEndsAt ? new Date(trialEndsAt) : null;
+  const trialDays = trialDate && !Number.isNaN(trialDate.getTime())
+    ? Math.max(0, Math.ceil((trialDate.getTime() - Date.now()) / 86400000))
+    : null;
+
+  async function submitInvite(event) {
+    event.preventDefault();
+    setInviteError("");
+    setInviteSuccess("");
+    const cleanEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setInviteError("Enter a valid email address.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await onInvite({ email: cleanEmail, role: inviteRole });
+      setInviteSuccess(`Invitation sent to ${cleanEmail}. It expires in 7 days.`);
+      setEmail("");
+    } catch (error) {
+      setInviteError(error.message || "Invitation could not be sent.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const steps = [
+    { title: "Workspace administrator", detail: user?.name ? `${user.name} is the workspace owner` : "Your administrator account is active", done: true, icon: ShieldCheck },
+    { title: "Connect a support channel", detail: connectedChannels ? `${connectedChannels} channel${connectedChannels === 1 ? "" : "s"} connected` : "Connect email, WhatsApp, voice or web chat", done: connectedChannels > 0, href: ROUTES?.admin?.channels || "/supportops/admin/channels", icon: Plug },
+    { title: "Invite your team", detail: invites.length ? `${invites.length} invitation${invites.length === 1 ? "" : "s"} created` : "Add agents, managers and investor viewers", done: invites.length > 0, icon: Users },
+    { title: "Review business performance", detail: "Explore your executive analytics", done: false, href: ROUTES?.admin?.analytics || "/supportops/admin/analytics", icon: Activity },
+  ];
+  const completedSteps = steps.filter((step) => step.done).length;
+
+  return (
+    <div className="space-y-6">
+      <section className="relative overflow-hidden rounded-3xl border border-cyan-500/20 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/50 p-6 sm:p-8">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-cyan-500/10 blur-3xl" />
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
+              <Check className="h-3.5 w-3.5" /> Workspace administrator active
+            </div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">Your command center</p>
+            <h2 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">Build your customer operations team.</h2>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">Your workspace is ready. Connect your customer channels, invite the people you trust, and bring every support operation into one place.</p>
+            <div className="mt-5 flex flex-wrap items-center gap-3 text-xs text-slate-300">
+              <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2"><Building2 className="h-4 w-4 text-cyan-300" />{user?.organization?.name || user?.orgName || "Your workspace"}</span>
+              {trialDays !== null && <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2"><CalendarDays className="h-4 w-4 text-cyan-300" />{trialDays} trial days remaining</span>}
+              <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2"><ShieldCheck className="h-4 w-4 text-emerald-300" />Admin-controlled access</span>
+            </div>
+          </div>
+          <div className="w-full max-w-xs rounded-2xl border border-white/10 bg-slate-950/50 p-4">
+            <div className="flex items-center justify-between text-xs text-slate-400"><span>Workspace setup</span><strong className="text-white">{completedSteps}/{steps.length}</strong></div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-cyan-400 transition-all" style={{ width: `${(completedSteps / steps.length) * 100}%` }} /></div>
+            <p className="mt-2 text-xs text-slate-400">Complete these steps to prepare your team for launch.</p>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+        <section className="space-y-4 xl:col-span-2">
+          <Card title="Workspace launch checklist" icon={CheckCircle2}>
+            <ol className="space-y-4">
+              {steps.map((step, index) => {
+                const Icon = step.icon;
+                const content = (
+                  <div className="flex items-start gap-3">
+                    <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${step.done ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-slate-700 bg-slate-800 text-slate-400"}`}>
+                      {step.done ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-slate-100">{index + 1}. {step.title}</span>
+                      <span className="mt-1 block text-xs leading-5 text-slate-500">{step.detail}</span>
+                    </span>
+                    {step.href && <ArrowRight className="mt-2 h-4 w-4 shrink-0 text-slate-500" />}
+                  </div>
+                );
+                return <li key={step.title}>{step.href ? <Link to={step.href} className="block rounded-xl p-2 transition hover:bg-white/5">{content}</Link> : <div className="p-2">{content}</div>}</li>;
+              })}
+            </ol>
+          </Card>
+          <Card title="Access policy" icon={ShieldCheck}>
+            <p className="text-xs leading-5 text-slate-400">You control who joins this workspace. Agents, managers and investor viewers cannot self-register into your organization. Invitations are email-bound, expire after seven days and can be revoked by an administrator.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {INVITABLE_ROLES.map((item) => <span key={item.value} className="rounded-lg border border-slate-700 bg-slate-800/50 px-2.5 py-1.5 text-[11px] text-slate-300">{item.label}</span>)}
+            </div>
+          </Card>
+        </section>
+
+        <section className="space-y-4 xl:col-span-3">
+          <Card title="Invite your team" icon={UserPlus}>
+            <p className="mb-4 text-xs leading-5 text-slate-400">Send a secure invitation to each teammate. Choose the least-privileged role they need; permissions are enforced by your workspace.</p>
+            <form onSubmit={submitInvite} className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_190px_auto]">
+              <label className="block"><span className="mb-1.5 block text-xs font-medium text-slate-400">Work email</span><input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="teammate@company.com" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-500" /></label>
+              <label className="block"><span className="mb-1.5 block text-xs font-medium text-slate-400">Workspace role</span><select value={inviteRole} onChange={(event) => setInviteRole(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-500">{INVITABLE_ROLES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+              <div className="flex items-end"><button type="submit" disabled={submitting || inviteBusy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60 md:w-auto">{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Send invite</button></div>
+            </form>
+            {inviteError && <p role="alert" className="mt-3 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">{inviteError}</p>}
+            {inviteSuccess && <p role="status" className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">{inviteSuccess}</p>}
+          </Card>
+
+          <Card title="Invitation activity" icon={Mail} action={<span className="text-[11px] text-slate-500">{pendingInvites.length} pending</span>}>
+            {invitesLoading ? <div className="flex items-center justify-center py-8 text-xs text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading invitations…</div> : invites.length === 0 ? <Empty icon={Users} title="Your team starts here" text="Invitations you send will appear here. Only invited people can join this workspace." /> : (
+              <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-xs"><thead><tr className="border-b border-slate-800 text-slate-500"><th className="pb-3 pr-3 font-medium">Person</th><th className="pb-3 pr-3 font-medium">Role</th><th className="pb-3 pr-3 font-medium">Status</th><th className="pb-3 pr-3 font-medium">Expires</th><th className="pb-3 text-right font-medium">Action</th></tr></thead><tbody className="divide-y divide-slate-800/80">{invites.map((invite) => {
+                const status = (invite.status || "pending").toLowerCase();
+                const id = invite.id || invite.inviteId || invite.invitationId;
+                const canRevoke = status === "pending" && Boolean(id);
+                return <tr key={id || invite.email} className="text-slate-300"><td className="py-3 pr-3"><span className="block font-medium text-slate-100">{invite.email || invite.invitedEmail || "Invited teammate"}</span><span className="mt-1 block text-[10px] text-slate-500">{invite.createdAt || invite.created_at ? `Sent ${formatInviteDate(invite.createdAt || invite.created_at)}` : ""}</span></td><td className="py-3 pr-3 capitalize">{invite.role || invite.appRole || invite.app_role || "agent"}</td><td className="py-3 pr-3"><span className={`rounded-full px-2 py-1 text-[10px] capitalize ${status === "accepted" ? "bg-emerald-500/10 text-emerald-300" : status === "revoked" || status === "expired" ? "bg-slate-700 text-slate-400" : "bg-amber-500/10 text-amber-300"}`}>{status}</span></td><td className="py-3 pr-3">{formatInviteDate(invite.expiresAt || invite.expires_at)}</td><td className="py-3 text-right">{canRevoke ? <button type="button" onClick={() => onRevoke(id)} disabled={revokeBusyId === id} aria-label={`Revoke invitation for ${invite.email || "teammate"}`} className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2 py-1.5 text-[11px] text-slate-300 hover:border-red-500/40 hover:text-red-300 disabled:opacity-50">{revokeBusyId === id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}Revoke</button> : <span className="text-slate-600">—</span>}</td></tr>;
+              })}</tbody></table></div>
+            )}
+          </Card>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- main dashboard ---------- */
 
 export default function WorkspaceDashboard({
@@ -623,6 +822,10 @@ export default function WorkspaceDashboard({
   const [health, setHealth] = useState(null);
   const [tickets, setTickets] = useState([]);
   const [channels, setChannels] = useState({});
+  const [invites, setInvites] = useState([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [revokeBusyId, setRevokeBusyId] = useState(null);
 
   const [demo, setDemo] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -657,6 +860,52 @@ export default function WorkspaceDashboard({
 
   const hasViewPermission =
     allowedViews[role]?.includes(current) ?? false;
+
+
+  const isWorkspaceAdmin = normalizedRole === "admin" && current === "admin";
+
+  const loadInvites = useCallback(async (signal) => {
+    if (!authorized || !isWorkspaceAdmin) return;
+    setInvitesLoading(true);
+    try {
+      const data = await getJSON(SUPPORTOPS_API.invites(""), signal);
+      if (!signal?.aborted) setInvites(inviteList(data));
+    } catch (inviteLoadError) {
+      if (!isAbortError(inviteLoadError)) {
+        console.warn("[Dashboard] Invitation list unavailable:", inviteLoadError.message);
+      }
+    } finally {
+      if (!signal?.aborted) setInvitesLoading(false);
+    }
+  }, [authorized, isWorkspaceAdmin]);
+
+  const createInvite = useCallback(async ({ email, role: inviteRole }) => {
+    setInviteBusy(true);
+    try {
+      await requestJSON(SUPPORTOPS_API.invites(""), {
+        method: "POST",
+        body: { email, role: inviteRole },
+      });
+      await loadInvites();
+    } finally {
+      setInviteBusy(false);
+    }
+  }, [loadInvites]);
+
+  const revokeInvite = useCallback(async (inviteId) => {
+    if (!inviteId) return;
+    setRevokeBusyId(inviteId);
+    try {
+      await requestJSON(`${SUPPORTOPS_API.invites.root}/${encodeURIComponent(inviteId)}`, {
+        method: "DELETE",
+      });
+      await loadInvites();
+    } catch (revokeError) {
+      setError(revokeError.message || "Invitation could not be revoked.");
+    } finally {
+      setRevokeBusyId(null);
+    }
+  }, [loadInvites]);
 
   /*
    * IMPORTANT:
@@ -812,6 +1061,16 @@ export default function WorkspaceDashboard({
     hasViewPermission,
     load,
   ]);
+
+
+  useEffect(() => {
+    if (!authLoading && authorized && isWorkspaceAdmin) {
+      const controller = new AbortController();
+      loadInvites(controller.signal);
+      return () => controller.abort();
+    }
+    return undefined;
+  }, [authLoading, authorized, isWorkspaceAdmin, loadInvites]);
 
   // Show the login prompt without starting API requests.
   if (authLoading) {
@@ -1142,8 +1401,27 @@ export default function WorkspaceDashboard({
                 </>
               )}
 
-              {current === "admin" && (
-                <Card title="Channels" icon={Plug}>
+              {current === "admin" && isWorkspaceAdmin && (
+                <ExecutiveOnboarding
+                  user={user}
+                  channels={channels}
+                  invites={invites}
+                  invitesLoading={invitesLoading}
+                  onInvite={createInvite}
+                  onRevoke={revokeInvite}
+                  inviteBusy={inviteBusy}
+                  revokeBusyId={revokeBusyId}
+                />
+              )}
+
+              {current === "admin" && !isWorkspaceAdmin && (
+                <Card title="Workspace administration" icon={ShieldCheck}>
+                  <p className="text-sm text-slate-400">Administrator tools are available only to the workspace owner or an authorized administrator.</p>
+                </Card>
+              )}
+
+              {current === "admin" && isWorkspaceAdmin && (
+                <Card title="Connected channels" icon={Plug}>
                   <ChannelConnections channels={channels} />
                 </Card>
               )}
