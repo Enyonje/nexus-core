@@ -5,7 +5,6 @@ const SESSION_COOKIE_NAME = 'nexus_core_session';
 
 export const verifyNexusAuth = (req, res, next) => {
   try {
-    // Extract token strictly from the Nexus Core cookie or authorization header
     let token = req.cookies?.[SESSION_COOKIE_NAME];
 
     if (!token && req.headers.authorization) {
@@ -26,3 +25,28 @@ export const verifyNexusAuth = (req, res, next) => {
     return res.status(403).json({ error: 'Forbidden: Invalid or expired Nexus Core session token.' });
   }
 };
+
+// Optional authentication middleware (populates req.user if token valid, but does not block request if missing)
+export const optionalAuth = (req, res, next) => {
+  try {
+    let token = req.cookies?.[SESSION_COOKIE_NAME];
+
+    if (!token && req.headers.authorization) {
+      const authHeader = req.headers.authorization.split(' ');
+      if (authHeader[0] === 'Bearer') {
+        token = authHeader[1];
+      }
+    }
+
+    if (token) {
+      const decoded = jwt.verify(token, NEXUS_JWT_SECRET);
+      req.user = decoded;
+    }
+  } catch (err) {
+    // Silently ignore token failure for optional authentication routes
+  }
+  next();
+};
+
+// Alias export for backward compatibility across route dependencies
+export const requireAuth = verifyNexusAuth;

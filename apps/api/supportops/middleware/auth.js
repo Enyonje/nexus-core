@@ -9,7 +9,7 @@ export const verifySupportOpsAuth = (req, res, next) => {
 
         if (!token && req.headers.authorization) {
             const authHeader = req.headers.authorization.split(' ');
-            if (authHeader[0] === 'Bearer' && req.headers['x-client-context'] === 'supportops') {
+            if (authHeader[0] === 'Bearer') {
                 token = authHeader[1];
             }
         }
@@ -20,8 +20,36 @@ export const verifySupportOpsAuth = (req, res, next) => {
 
         const decoded = jwt.verify(token, SO_JWT_SECRET);
         req.supportOpsUser = decoded;
+        req.user = decoded; // Alias for standard compatibility
         next();
     } catch (err) {
         return res.status(403).json({ error: 'Forbidden: Invalid or expired SupportOps session token.' });
     }
 };
+
+export const optionalAuth = (req, res, next) => {
+    try {
+        let token = req.cookies?.[SUPPORTOPS_COOKIE_NAME];
+
+        if (!token && req.headers.authorization) {
+            const authHeader = req.headers.authorization.split(' ');
+            if (authHeader[0] === 'Bearer') {
+                token = authHeader[1];
+            }
+        }
+
+        if (token) {
+            const decoded = jwt.verify(token, SO_JWT_SECRET);
+            req.supportOpsUser = decoded;
+            req.user = decoded;
+        }
+    } catch (err) {
+        // Silently ignore for optional routes
+    }
+    next();
+};
+
+export const requireAuth = verifySupportOpsAuth;
+
+// Default export mapping to support default imports (e.g., import auth from "../middleware/auth.js")
+export default verifySupportOpsAuth;
