@@ -610,7 +610,7 @@ async function start() {
   fastify.register(resolvePlugin(webhooksRoutesMod, "webhooks"));
 
   /* ========================= SUPPORTOPS ROUTES ========================= */
-  mountBoth("supportops/tickets", ticketsRoutesMod, "supportops/tickets");
+  /*mountBoth("supportops/tickets", ticketsRoutesMod, "supportops/tickets");
   mountBoth("supportops/channels", channelsRoutesMod, "supportops/tickets/channels");
   mountBoth("supportops/chat", chatRoutesMod, "supportops/chat");
   mountBoth("supportops/invites", inviteRoutesMod, "supportops/invites");
@@ -623,7 +623,7 @@ async function start() {
   mountBoth("supportops/analytics", orgAnalyticsRoutesMod, "supportops/analytics");
   mountBoth("supportops/webhooks-stripe", stripeWebhookRoutesMod, "supportops/webhooks/stripe");
   mountBoth("supportops/supportops", supportopsRoutesMod, "supportops");
-  mountBoth("billing-v1", billingV1Mod, "billing");
+  mountBoth("billing-v1", billingV1Mod, "billing");*/
 
 
   /* ========================= ERROR HANDLERS ========================= */
