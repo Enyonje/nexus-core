@@ -306,6 +306,41 @@ fastify.post('/api/v1/supportops/contact-sales', async (req, res) => {
 });
 
 // ==========================================
+// EXECUTIVE OVERVIEW ENDPOINT (GET)
+// ==========================================
+fastify.get('/api/v1/executive/overview', async (request, reply) => {
+  try {
+    return reply.status(200).send({
+      success: true,
+      metrics: {
+        totalTickets: 1420,
+        aiResolutionRate: '88.4%',
+        activeAgents: 14,
+        avgResponseTime: '1.2m',
+        monthlyRecurringRevenue: '$14,500',
+      },
+      tickets: [
+        {
+          id: 'T-1042',
+          subject: 'Payment failed twice at checkout',
+          customer: 'Amina K.',
+          channel: 'whatsapp',
+          priority: 'high',
+          slaMins: 12,
+        }
+      ],
+      systemHealth: 'Optimal',
+    });
+  } catch (err) {
+    fastify.log.error('[Executive Overview Error]:', err.message);
+    return reply.status(500).send({
+      success: false,
+      error: 'Failed to retrieve executive overview metrics.',
+    });
+  }
+});
+
+// ==========================================
 // 1. WORKSPACE METRICS ENDPOINT (GET)
 // ==========================================
 fastify.get('/api/v1/supportops/metrics', async (request, reply) => {
