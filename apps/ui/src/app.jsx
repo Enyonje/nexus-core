@@ -1,15 +1,15 @@
 import { Routes, Route, Link, useLocation } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Toaster } from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
 
-// SupportOps (separate project embedded in this app, with its own auth context)
-import SupportOpsRoutes from "./supportops/src/routes/SupportOpsRoutes";
 
 // Components
 import Navbar from "./components/Navbar.jsx";
 import CareersPage from "./components/CareersPage.jsx";
 import ContactPage from "./components/ContactPage.jsx";
+import TermsOfServicePage from "./components/TermsOfService.jsx";
+import PrivacyPolicyPage from "./components/PrivacyPolicy.jsx";
 import ArchitecturePage from "./components/ArchitecturePage.jsx";
 import Layout from "./components/Layout.jsx";
 import ExecutionLogsStreamModal from "./components/ExecutionLogsStreamModal.jsx";
@@ -42,6 +42,19 @@ import { lightTheme, darkTheme } from "./theme";
 // guard stay mounted while the user moves between them (a per-path key remounts both on every click).
 const WORKSPACE_PREFIXES = ["/dashboard", "/goals", "/executions", "/admin"];
 
+function SupportOpsRedirect() {
+  const location = useLocation();
+  useEffect(() => {
+    const destination = `https://supportops.nexusthecore.com${location.pathname}${location.search}${location.hash}`;
+    window.location.replace(destination);
+  }, [location.pathname, location.search, location.hash]);
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 px-6 text-slate-200">
+      <p>Opening SupportOps…</p>
+    </div>
+  );
+}
+
 function NotFound() {
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-6 text-slate-200">
@@ -68,8 +81,7 @@ export default function App() {
   const theme = isDark ? darkTheme : lightTheme;
 
   const hideNavbarRoutes = ["/", "/agents"];
-  const isSupportOps = location.pathname.startsWith("/supportops");
-  const showNavbar = !isSupportOps && !hideNavbarRoutes.includes(location.pathname);
+  const showNavbar = !hideNavbarRoutes.includes(location.pathname);
 
   const inWorkspace = WORKSPACE_PREFIXES.some(
     (p) => location.pathname === p || location.pathname.startsWith(`${p}/`)
@@ -116,6 +128,8 @@ export default function App() {
             <Route path="/architecture" element={<ArchitecturePage />} />
             <Route path="/careers" element={<CareersPage />} />
             <Route path="/blog" element={<BlogPage />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+            <Route path="/terms-of-service" element={<TermsOfServicePage />} />
             <Route path="/blog/:slug" element={<BlogPage />} />
             <Route path="/contact" element={<ContactPage />} />
             <Route path="/pricing" element={<Subscription />} />
@@ -134,8 +148,8 @@ export default function App() {
             <Route path="/tools/webhook-validator" element={<WebhookValidator />} />
             <Route path="/tools/auditloganalyzer" element={<AuditLogAnalyzer />} />
 
-            {/* SupportOps has its own auth context and guards */}
-            <Route path="/supportops/*" element={<SupportOpsRoutes />} />
+            {/* Legacy SupportOps URLs now hand off to the independently hosted application. */}
+            <Route path="/supportops/*" element={<SupportOpsRedirect />} />
 
             {/* ================= PROTECTED: sign-in required ================= */}
             <Route element={<ProtectedRoute />}>

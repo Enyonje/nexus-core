@@ -38,8 +38,6 @@ export default defineConfig({
         "/subscription",
         "/agents",
         "/agents/cross-border-compliance",
-        "/supportops",
-        "/supportops/demo",
         "/tools",
         "/tools/webhook-validator",
         "/tools/auditloganalyzer"

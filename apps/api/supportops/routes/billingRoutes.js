@@ -7,8 +7,8 @@ import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import { prisma } from "../config/prisma.js";
 import { requireAuth } from "../lib/deps.js";
-import { createAccessToken } from "../../src/services/authService.js";
-import { generateRandomToken, hashToken } from "../../src/lib/crypto.js";
+import { createAccessToken } from "../services/authTokens.js";
+import { generateRandomToken, hashToken } from "../services/authTokens.js";
 import { AccessError, invalidateSubscription } from "../security/entitlements.js";
 import { mapStripeStatus, trialEnd } from "../security/entitlementRules.js";
 
@@ -181,8 +181,9 @@ export default async function billingRoutes(app) {
             // A guest account is provisioned with a random unknown password. Send a
             // one-time password setup link before completing checkout so the owner
             // can recover access after the initial browser session expires.
-            const { sendPasswordResetEmail } = await import("../../src/services/mailer.js");
-            const setupUrl = `${(process.env.FRONTEND_URL || process.env.APP_URL || "https://nexusthecore.com").replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(rawSetupToken)}`;
+            const { sendPasswordResetEmail } = await import("../services/mailer.js");
+            const identityFrontendUrl = process.env.IDENTITY_FRONTEND_URL || "https://nexusthecore.com";
+            const setupUrl = `${identityFrontendUrl.replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(rawSetupToken)}`;
             await sendPasswordResetEmail(cleanEmail, setupUrl, { purpose: "setup" });
 
             let checkoutUrl = null;
@@ -417,10 +418,15 @@ export async function stripeWebhookPlugin(app) {
             ) {
                 await syncSubscription(obj, event.type === "customer.subscription.deleted");
             } else if (event.type === "invoice.payment_failed" && obj.subscription) {
+                const linked = await prisma.subscription.findFirst({
+                    where: { stripe_subscription_id: obj.subscription },
+                    select: { org_id: true, app_id: true },
+                });
                 await prisma.subscription.updateMany({
                     where: { stripe_subscription_id: obj.subscription },
                     data: { status: "past_due" },
                 });
+                if (linked) invalidateSubscription(linked.org_id, linked.app_id);
             }
         } catch (err) {
             await prisma.stripeEvent.delete({ where: { id: event.id } }).catch(() => { });

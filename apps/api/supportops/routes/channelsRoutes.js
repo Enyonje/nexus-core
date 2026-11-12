@@ -35,7 +35,7 @@ import crypto from "node:crypto";
 import { prisma } from "../lib/deps.js";
 import { guard } from "../security/entitlements.js";
 import { createTicketFromInbound } from "./ticketService.js";
-import { normalize, verifyMetaSignature, verifyTwilioSignature } from "./inbound.js";
+import { normalize, verifyMetaSignature, verifyTwilioSignature, verifySharedSecret, verifyPostmarkAuth } from "./inbound.js";
 
 const SECRETS = {
     whatsapp: ["accessToken", "appSecret", "phoneNumberId"],
@@ -62,8 +62,17 @@ export const decrypt = (s) => {
 };
 const rand = (n) => crypto.randomBytes(n).toString("hex");
 
+const publicApiUrl = () => {
+    const configured = process.env.PUBLIC_API_URL || (
+        process.env.NODE_ENV === "production"
+            ? "https://supportops-ai.onrender.com"
+            : "http://localhost:10000"
+    );
+    return configured.replace(/\/+$/, "");
+};
+
 const urlFor = (row) =>
-    `${process.env.PUBLIC_API_URL || "https://nexus-core-a0px.onrender.com"}/api/v1/supportops/tickets/channels/webhook/${row.key}/${row.webhook_token}`;
+    `${publicApiUrl()}/api/v1/supportops/tickets/channels/webhook/${row.key}/${row.webhook_token}`;
 
 const view = (row, isAdmin) => ({
     key: row.key,
@@ -87,8 +96,10 @@ async function firstTime(channelId, externalId) {
 }
 
 export default async function channelsRoutes(app) {
+    // Never generate an ephemeral encryption key: doing so would make stored
+    // channel credentials undecryptable after a restart or deploy.
     if (KEY.length !== 32) {
-        console.warn("[Channels Warning] CHANNELS_ENC_KEY is not 32 bytes base64. Generating secure ephemeral key for session.");
+        throw new Error("CHANNELS_ENC_KEY must be a persistent base64-encoded 32-byte key");
     }
 
     // Keep the raw body so provider signatures can be verified
@@ -218,13 +229,36 @@ export default async function channelsRoutes(app) {
         if (!row) return reply.code(404).send({ error: "CHANNEL_NOT_FOUND" });
         if (row.key === "web") return reply.code(405).send({ message: "Web chat uses the active widget client API" });
 
-        const secrets = decrypt(row.config_enc);
-        const trusted =
-            row.key === "whatsapp" || row.key === "social"
-                ? verifyMetaSignature(req.rawBody, req.headers["x-hub-signature-256"], secrets.appSecret)
-                : row.key === "voice"
-                    ? verifyTwilioSignature(urlFor(row), req.body, req.headers["x-twilio-signature"], secrets.authToken)
-                    : true;
+        let secrets;
+        try {
+            secrets = decrypt(row.config_enc);
+        } catch (error) {
+            req.log.error({ err: error, channelId: row.id }, "Unable to decrypt channel credentials");
+            return reply.code(503).send({ error: "CHANNEL_CREDENTIALS_UNAVAILABLE" });
+        }
+
+        // Fail closed for every provider. In particular, email and SMS must
+        // never accept unauthenticated public POSTs just because no signature
+        // implementation was previously supplied.
+        const authorization = req.headers.authorization;
+        const bearer = typeof authorization === "string" && authorization.startsWith("Bearer ")
+            ? authorization.slice(7).trim()
+            : null;
+        const trusted = (() => {
+            switch (row.key) {
+                case "whatsapp":
+                case "social":
+                    return verifyMetaSignature(req.rawBody, req.headers["x-hub-signature-256"], secrets.appSecret);
+                case "voice":
+                    return verifyTwilioSignature(urlFor(row), req.body, req.headers["x-twilio-signature"], secrets.authToken);
+                case "email":
+                    return verifyPostmarkAuth(req.headers, secrets.postmarkToken);
+                case "sms":
+                    return verifySharedSecret(req.headers["x-channel-api-key"] || bearer, secrets.apiKey);
+                default:
+                    return false;
+            }
+        })();
 
         if (!trusted) return reply.code(401).send({ error: "UNAUTHORIZED_SIGNATURE" });
 

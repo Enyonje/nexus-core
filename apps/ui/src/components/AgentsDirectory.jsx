@@ -60,7 +60,7 @@ export default function AgentsDirectory() {
             accentGlow: "from-blue-500/20 via-indigo-500/10 to-transparent",
             badgeColor: "from-blue-400 to-indigo-500",
             icon: Bot,
-            path: "/supportops/*",
+            path: "https://supportops.nexusthecore.com/supportops",
             isLive: true,
             desc: "Autonomous triage, self-healing integration setups, and SLA escalation tracking powered by internal engineering context.",
             metrics: { latency: "42ms", throughput: "3.1k/s", accuracy: "98.5%" },
@@ -273,13 +273,22 @@ export default function AgentsDirectory() {
                                         </div>
 
                                         {agent.isLive ? (
-                                            <Link
-                                                to={agent.path}
-                                                state={{ from: location.pathname }}
-                                                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 group-hover:shadow-blue-500/40"
-                                            >
-                                                Launch Operative <ArrowRight className="w-3.5 h-3.5" />
-                                            </Link>
+                                            agent.path.startsWith("https://") ? (
+                                                <a
+                                                    href={agent.path}
+                                                    className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 group-hover:shadow-blue-500/40"
+                                                >
+                                                    Launch Operative <ArrowRight className="w-3.5 h-3.5" />
+                                                </a>
+                                            ) : (
+                                                <Link
+                                                    to={agent.path}
+                                                    state={{ from: location.pathname }}
+                                                    className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 group-hover:shadow-blue-500/40"
+                                                >
+                                                    Launch Operative <ArrowRight className="w-3.5 h-3.5" />
+                                                </Link>
+                                            )
                                         ) : (
                                             <button
                                                 disabled

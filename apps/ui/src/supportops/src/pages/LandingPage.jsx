@@ -18,6 +18,7 @@ import {
 // ============================================================
 
 const SUPPORTOPS_HOME = "/supportops";
+const SIGN_IN_ROUTE = "/supportops/login";
 const DEMO_ROUTE = "/supportops/demo";
 const PRICING_ROUTE = "/supportops/pricing";
 
@@ -192,6 +193,14 @@ export default function LandingPage() {
         </nav>
 
         <div className="flex items-center gap-3">
+
+          <button
+            type="button"
+            onClick={() => safeNavigate(SIGN_IN_ROUTE)}
+            className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-slate-300 transition-colors hover:text-white"
+          >
+            Sign in
+          </button>
 
           <button
             type="button"

@@ -1,15 +1,23 @@
-# db.py
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+"""Legacy SQLAlchemy engine compatibility module.
+
+The previous version embedded a live database credential in source code.
+All connection details now come from validated deployment settings.
+"""
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-DATABASE_URL = "postgresql+asyncpg://postgres:BOZfPljyeFEy0pOd@db.jjqrqsxxwhcisjbwjlzl.supabase.co:5432/postgres"
+from app.core.config import settings
 
-engine = create_async_engine(DATABASE_URL, echo=True)
+engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+)
 
 AsyncSessionLocal = sessionmaker(
     bind=engine,
     class_=AsyncSession,
-    expire_on_commit=False
+    expire_on_commit=False,
 )
 
 Base = declarative_base()

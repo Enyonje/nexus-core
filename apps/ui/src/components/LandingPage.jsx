@@ -332,7 +332,9 @@ export default function LandingPage() {
           </div>
           <nav className="flex flex-wrap justify-center gap-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
             <Link to="/blog" className="hover:text-white transition">Blog</Link>
+            <Link to="/privacy-policy" className="hover:text-white transition">Privacy Policy</Link>
             <Link to="/agents" className="hover:text-white transition">Specialised Agents</Link>
+            <Link to="/terms-of-service" className="hover:text-white transition">Terms of Service</Link>
             <Link to="/architecture" className="hover:text-white transition">Architecture</Link>
             <Link to="/contact" className="hover:text-white transition">Contact</Link>
           </nav>
