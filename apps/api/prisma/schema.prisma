@@ -510,17 +510,12 @@ model StripeEvent {
 model Session {
   id        String    @id @default(uuid())
   userId    String
-  // Which product issued this refresh session (nexus-core, supportops, compliance).
-  product   String    @default("nexus-core")
   tokenHash String    @unique
   familyId  String
   expiresAt DateTime
   revokedAt DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, product])
-  @@index([familyId])
 }
 
 // ============================================================

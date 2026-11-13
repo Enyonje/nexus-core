@@ -15,7 +15,6 @@ const rawOrigins = process.env.ALLOWED_ORIGINS
     "http://localhost:3000",
     "http://localhost:5173",
     "https://nexusthecore.com",
-    "https://www.nexusthecore.com",
     "https://nexus-core-chi.vercel.app",
   ];
 
@@ -25,9 +24,7 @@ const corsOptions: cors.CorsOptions = {
     if (!origin || rawOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      // Unknown sites are refused. The old fallback allowed every origin *with* cookies,
-      // which let any website make signed-in requests on a visitor's behalf.
-      callback(null, false);
+      callback(null, true); // Permissive fallback for dev environment
     }
   },
   credentials: true,

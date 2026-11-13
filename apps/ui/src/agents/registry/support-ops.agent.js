@@ -13,5 +13,5 @@ export default defineAgent({
   description: "SupportOps triages incoming conversations, drafts replies for review, and flags tickets at risk of breaching SLA. It is hosted as its own application with its own sign-in.",
   capabilities: ["Autonomous Triage", "Contextual Escalation", "API Health Sync"],
   metrics: { latency: "42ms", throughput: "3.1k/s", accuracy: "98.5%" },
-  launch: { href: "https://supportops.nexusthecore.com/supportops", label: "Open SupportOps" },
+  launch: { to: "/supportops", label: "Open SupportOps" },
 });

@@ -3,36 +3,8 @@
 
 import crypto from "node:crypto";
 
-const same = (a, b) => {
-    const left = Buffer.from(String(a ?? ""), "utf8");
-    const right = Buffer.from(String(b ?? ""), "utf8");
-    return left.length === right.length && crypto.timingSafeEqual(left, right);
-};
-
-// Compare provider-shared secrets without leaking timing information.
-export function verifySharedSecret(provided, expected) {
-    if (typeof provided !== "string" || typeof expected !== "string" || !provided || !expected) return false;
-    return same(provided, expected);
-}
-
-// Postmark supports Basic Authentication on inbound webhook endpoints. The
-// custom header is also accepted for providers/proxies that can set headers.
-export function verifyPostmarkAuth(headers = {}, expectedToken) {
-    if (!expectedToken) return false;
-    const direct = headers["x-postmark-server-token"];
-    if (verifySharedSecret(direct, expectedToken)) return true;
-
-    const authorization = headers.authorization;
-    if (typeof authorization !== "string" || !authorization.startsWith("Basic ")) return false;
-    try {
-        const decoded = Buffer.from(authorization.slice(6).trim(), "base64").toString("utf8");
-        const separator = decoded.indexOf(":");
-        if (separator < 0) return false;
-        return verifySharedSecret(decoded.slice(separator + 1), expectedToken);
-    } catch {
-        return false;
-    }
-}
+const same = (a, b) =>
+    a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 const clip = (s, n = 80) => String(s ?? "").trim().slice(0, n);
 

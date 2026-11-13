@@ -13,10 +13,7 @@
     "postinstall": "prisma generate",
     "postbuild": "node scripts/generate-sitemap.js",
     "prisma:migrate": "prisma migrate deploy",
-    "test": "node --test test/*.test.js",
-    "dev:sandbox": "node scripts/sandbox-server.js",
-    "agent:new": "node scripts/new-agent.js",
-    "test:all": "node --test"
+    "test": "node --test"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

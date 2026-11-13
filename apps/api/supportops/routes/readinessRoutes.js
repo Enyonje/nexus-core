@@ -2,7 +2,6 @@
 // A channel counts as WORKING only after it has received a real message.
 import { prisma } from "../lib/deps.js";
 import { guard } from "../security/entitlements.js";
-import { getRealtimeStatus } from "./realtime.js";
 
 const CHANNELS = { email: "Email", web: "In-app chat", sms: "SMS", whatsapp: "WhatsApp", voice: "Phone", social: "Social inbox" };
 
@@ -17,14 +16,6 @@ export default async function readinessRoutes(app) {
         add("public_url", "Public https address for webhooks", (process.env.PUBLIC_API_URL ?? "").startsWith("https://"), "Set PUBLIC_API_URL to your https API address");
         add("app_url", "App address for invites and checkout", has("APP_URL"), "Set APP_URL to your frontend address");
         add("stripe", "Stripe payments", has("STRIPE_SECRET_KEY") && has("STRIPE_WEBHOOK_SECRET"), "Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET");
-
-        const realtime = getRealtimeStatus();
-        add(
-            "realtime_bus",
-            "Distributed realtime event bus",
-            realtime.distributed,
-            "Configure REDIS_URL with a managed Redis service; local in-memory streaming is single-instance only"
-        );
 
         const unpriced = await prisma.plan.count({ where: { app_id: req.access.app.id, active: true, price_cents: { not: null }, stripe_price_id: null } });
         add("prices", "Stripe prices attached to every paid plan", unpriced === 0, `${unpriced} paid plan(s) have no Stripe price id`);

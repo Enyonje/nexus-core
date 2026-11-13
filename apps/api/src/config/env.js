@@ -15,9 +15,7 @@ const envSchema = z.object({
     COOKIE_SECRET: z.string().min(16, { message: "COOKIE_SECRET must be at least 16 characters long" }),
 
     // External Services
-    // Optional: without it billing endpoints answer 503 instead of the whole API refusing to boot.
-    STRIPE_SECRET_KEY: z.string().optional(),
-    STRIPE_WEBHOOK_SECRET: z.string().optional(),
+    STRIPE_SECRET_KEY: z.string().min(1, { message: "STRIPE_SECRET_KEY is required" }),
     STRIPE_PRO_PRICE_ID: z.string().optional(),
     STRIPE_ENTERPRISE_PRICE_ID: z.string().optional(),
 
@@ -25,8 +23,7 @@ const envSchema = z.object({
     FRONTEND_URL: z.string().url().default("http://localhost:3000"),
     PING_SECRET_KEY: z
         .string()
-        .min(16, { message: "PING_SECRET_KEY must be at least 16 characters for secure cron endpoints" })
-        .optional(),
+        .min(16, { message: "PING_SECRET_KEY must be at least 16 characters for secure cron endpoints" }),
 });
 
 const _env = envSchema.safeParse(process.env);

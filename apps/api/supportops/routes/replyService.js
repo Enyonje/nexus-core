@@ -128,7 +128,6 @@ export async function addNote(params) {
     const note = await prisma.supportTicketMessage.create({
         data: { ticket_id: ticket.id, direction: "note", channel: ticket.channel, author_id: authorId, body },
     });
-    push(staff, orgId, { type: "ticket", event: "ticket_note", ticket: toView(ticket, ticket.customer) });
     return view(note);
 }
 
