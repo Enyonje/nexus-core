@@ -2,7 +2,7 @@
 // Turns every inbound message into a ticket (or a reply on an open one).
 
 import { prisma } from "../config/prisma.js";
-import { staff, push } from "./realtime.js";
+import { broadcastTicketEvent as push, supportOpsBus } from "./realtime.js";
 import { canAppend, priorityFor, slaDueAt } from "./ticketRules.js";
 
 export const toView = (t, customer) => ({

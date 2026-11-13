@@ -48,7 +48,7 @@ const WORKSPACE_PREFIXES = ["/dashboard", "/goals", "/executions", "/admin", "/b
 // Pages that draw their own full-screen chrome and must not get the marketing navbar on top
 // (it used to push the sign-in card ~500px down the page).
 const NO_NAVBAR = ["/", "/agents", "/login", "/register", "/forgot-password", "/reset-password"];
-const NO_NAVBAR_PREFIXES = ["/compliance", "/agents/"];
+const NO_NAVBAR_PREFIXES = ["/compliance", "/agents/", "/supportops"];
 
 /*function SupportOpsRedirect() {
   const location = useLocation();
