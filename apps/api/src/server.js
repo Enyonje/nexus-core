@@ -643,7 +643,6 @@ async function start() {
   mountBoth("stripe", stripeRoutesMod, "stripe");
   mountBoth("dashboard", dashboardRoutesMod, ""); // <--- Registers /api/metrics, /api/dashboard/metrics, etc.
   // Sales Assistant is an independent, tenant-scoped product module.
-  fastify.register(salesAssistantRoutes, { prefix: "/api/sales-assistant" });
 
   fastify.register(resolvePlugin(webhooksRoutesMod, "webhooks"));
 
