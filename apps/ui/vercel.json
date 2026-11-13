@@ -6,7 +6,7 @@
     },
     {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": "/app.html"
     }
   ],
   "headers": [
@@ -20,7 +20,16 @@
       ]
     },
     {
-      "source": "/(executions|goals|admin|subscription|dashboard|login|register|forgot-password|reset-password)(.*)",
+      "source": "/(executions|goals|admin|subscription|billing|dashboard|login|register|forgot-password|reset-password)(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
+      "source": "/compliance/(login|register|forgot-password|reset-password|billing)(.*)",
       "headers": [
         {
           "key": "X-Robots-Tag",
@@ -49,6 +58,18 @@
           "value": "strict-origin-when-cross-origin"
         }
       ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/agent",
+      "destination": "/agents",
+      "permanent": true
+    },
+    {
+      "source": "/agent/:slug*",
+      "destination": "/agents/:slug*",
+      "permanent": true
     }
   ]
 }

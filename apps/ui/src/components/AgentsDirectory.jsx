@@ -1,22 +1,31 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-    ShieldCheck,
-    Bot,
-    Search,
-    Sparkles,
-    ArrowRight,
-    Filter,
-    Cpu,
-    Zap,
-    Terminal,
-    Clock,
-    Layers,
-    Lock,
-    Workflow,
-    ExternalLink,
-} from "lucide-react";
+import { Search, Sparkles, ArrowRight, Cpu, Clock, ExternalLink } from "lucide-react";
+import { AGENTS, CATEGORIES, STATUSES } from "../agents/index.js";
+import { iconFor } from "../agents/icons.js";
+import { ACCENT_STYLES } from "../agents/accents.js";
+
+// Cards come from src/agents/registry/*.agent.js — add a file there to list a new agent.
+const toCard = (a) => {
+    const accent = ACCENT_STYLES[a.accent] || ACCENT_STYLES.cyan;
+    return {
+        id: a.slug,
+        title: a.name,
+        category: a.category,
+        status: STATUSES[a.status],
+        statusColor: accent.status,
+        accentGlow: accent.glow,
+        badgeColor: accent.title,
+        icon: iconFor(a.icon),
+        path: a.launch?.href || a.launch?.to || `/agents/${a.slug}`,
+        detailPath: `/agents/${a.slug}`,
+        isLive: a.isLive,
+        desc: a.summary,
+        metrics: a.metrics,
+        capabilities: a.capabilities,
+    };
+};
 
 export default function AgentsDirectory() {
     const [searchQuery, setSearchQuery] = useState("");
@@ -25,116 +34,20 @@ export default function AgentsDirectory() {
 
     const categories = [
         { id: "all", label: "All Operatives" },
-        { id: "security", label: "Security & Legal" },
-        { id: "support", label: "DevOps & Support" },
-        { id: "finance", label: "FinTech & Payments" },
-        { id: "analytics", label: "Data Intelligence" },
+        ...Object.entries(CATEGORIES)
+            .filter(([id]) => AGENTS.some((a) => a.category === id))
+            .map(([id, label]) => ({ id, label })),
     ];
 
-    const agents = [
-        {
-            id: "compliance",
-            title: "Cross-Border Compliance System",
-            category: "security",
-            status: "Production Ready",
-            statusColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
-            accentGlow: "from-emerald-500/20 via-teal-500/10 to-transparent",
-            badgeColor: "from-emerald-400 to-teal-500",
-            icon: ShieldCheck,
-            path: "/compliance",
-            isLive: true,
-            desc: "Real-time international statutory screening, localized regulatory risk mitigation, and automated cross-border legal checks.",
-            metrics: { latency: "14ms", throughput: "12.4k/s", accuracy: "99.9%" },
-            capabilities: [
-                "Statutory Screening",
-                "GDPR/HIPAA Auditing",
-                "Auto-Remediation",
-            ],
-        },
-        {
-            id: "support",
-            title: "Support-Ops AI",
-            category: "support",
-            status: "Beta Access",
-            statusColor: "text-blue-400 bg-blue-500/10 border-blue-500/30",
-            accentGlow: "from-blue-500/20 via-indigo-500/10 to-transparent",
-            badgeColor: "from-blue-400 to-indigo-500",
-            icon: Bot,
-            path: "https://supportops.nexusthecore.com/supportops",
-            isLive: true,
-            desc: "Autonomous triage, self-healing integration setups, and SLA escalation tracking powered by internal engineering context.",
-            metrics: { latency: "42ms", throughput: "3.1k/s", accuracy: "98.5%" },
-            capabilities: [
-                "Autonomous Triage",
-                "Contextual Escalation",
-                "API Health Sync",
-            ],
-        },
-        {
-            id: "sentra-cyber",
-            title: "Sentra Graph Threat Sentinel",
-            category: "security",
-            status: "In Development",
-            statusColor: "text-purple-400 bg-purple-500/10 border-purple-500/30",
-            accentGlow: "from-purple-500/20 via-pink-500/10 to-transparent",
-            badgeColor: "from-purple-400 to-pink-500",
-            icon: Lock,
-            path: "#",
-            isLive: false,
-            desc: "Graph-based cyber threat vector modeling using Neo4j to simulate zero-day attack paths before breach deployment.",
-            metrics: { latency: "< 50ms", throughput: "Planned", accuracy: "Target 99.5%" },
-            capabilities: [
-                "Graph Attack Vectors",
-                "Zero-Day Emulation",
-                "SIEM Live Feeds",
-            ],
-        },
-        {
-            id: "settle-flow",
-            title: "M-Pesa & Multi-Rail Settlement Swarm",
-            category: "finance",
-            status: "In Development",
-            statusColor: "text-amber-400 bg-amber-500/10 border-amber-500/30",
-            accentGlow: "from-amber-500/20 via-orange-500/10 to-transparent",
-            badgeColor: "from-amber-400 to-orange-500",
-            icon: Workflow,
-            path: "#",
-            isLive: false,
-            desc: "High-throughput payment orchestration agent automating multi-currency clearing and webhook reconciliation.",
-            metrics: { latency: "< 30ms", throughput: "Planned", accuracy: "Target 100%" },
-            capabilities: [
-                "Ledger Reconciliation",
-                "Fallback Retry Swarm",
-                "Fraud Shield",
-            ],
-        },
-        {
-            id: "data-mesh",
-            title: "Self-Cleaning Data Mesh Operative",
-            category: "analytics",
-            status: "Roadmap Q4",
-            statusColor: "text-slate-400 bg-slate-500/10 border-slate-500/30",
-            accentGlow: "from-slate-500/20 via-cyan-500/10 to-transparent",
-            badgeColor: "from-cyan-400 to-blue-500",
-            icon: Layers,
-            path: "#",
-            isLive: false,
-            desc: "Autonomous ETL pipeline optimizer that continuously cleans incoming unstructured data streams and corrects schema drifts.",
-            metrics: { latency: "TBD", throughput: "TBD", accuracy: "Target 99.9%" },
-            capabilities: [
-                "Schema Drift Fix",
-                "Anomaly Detection",
-                "Automated Lineage",
-            ],
-        },
-    ];
+    const agents = AGENTS.map(toCard);
 
     const filteredAgents = agents.filter((agent) => {
         const matchesCategory =
             selectedCategory === "all" || agent.category === selectedCategory;
         const matchesSearch =
             agent.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            agent.desc.toLowerCase().includes(searchQuery.toLowerCase());
+            agent.desc.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            agent.capabilities.some((c) => c.toLowerCase().includes(searchQuery.toLowerCase()));
         return matchesCategory && matchesSearch;
     });
 
@@ -234,7 +147,7 @@ export default function AgentsDirectory() {
                                         <h3
                                             className={`text-xl font-black tracking-tight mb-2 bg-gradient-to-r ${agent.badgeColor} bg-clip-text text-transparent`}
                                         >
-                                            {agent.title}
+                                            <Link to={agent.detailPath} className="hover:underline decoration-white/30">{agent.title}</Link>
                                         </h3>
 
                                         {/* Description */}
@@ -290,12 +203,12 @@ export default function AgentsDirectory() {
                                                 </Link>
                                             )
                                         ) : (
-                                            <button
-                                                disabled
-                                                className="w-full py-3 rounded-xl bg-slate-800/50 border border-white/5 text-slate-500 text-[11px] font-black uppercase tracking-widest cursor-not-allowed flex items-center justify-center gap-2"
+                                            <Link
+                                                to={agent.detailPath}
+                                                className="w-full py-3 rounded-xl bg-slate-800/50 border border-white/5 text-slate-400 hover:text-white text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2"
                                             >
-                                                <Clock className="w-3.5 h-3.5" /> In Sandbox Pipeline
-                                            </button>
+                                                <Clock className="w-3.5 h-3.5" /> In Sandbox Pipeline · Details
+                                            </Link>
                                         )}
                                     </div>
                                 </motion.div>

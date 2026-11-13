@@ -1,231 +1,108 @@
-// src/lib/api.js
+// src/lib/api.js — one HTTP client for every product.
+//
+// Requests go to the same origin by default (/api/...). On Vercel, vercel.json forwards /api to the
+// API server, and in development Vite proxies it, so the per-product refresh cookies are first-party.
+// Set VITE_API_URL only if the API must be called cross-origin.
+//
+//   apiFetch("/goals")                                  -> Nexus Core session
+//   apiFetch("/compliance/billing/subscription", { product: "compliance" })
 import axios from "axios";
+import { tokenStore } from "../auth/tokenStore";
 
-const API_BASE_URL = (
-  import.meta.env.VITE_SUPPORTOPS_API_URL ||
-  import.meta.env.VITE_BACKEND_API_URL ||
-  import.meta.env.VITE_API_URL ||
-  "https://nexus-core-a0px.onrender.com"
-).replace(/\/api\/?$/, "");
-
-const TOKEN_KEYS = ["token", "authToken", "access_token"];
-
-let refreshPromise = null;
-let unauthorizedDispatched = false;
-
-function getStoredToken() {
-  for (const key of TOKEN_KEYS) {
-    const token = localStorage.getItem(key);
-    if (token) return token;
-  }
-
-  return null;
-}
-
-function storeToken(token) {
-  if (!token) return;
-
-  localStorage.setItem("token", token);
-  localStorage.setItem("authToken", token);
-}
-
-function clearStoredAuth() {
-  TOKEN_KEYS.forEach((key) => localStorage.removeItem(key));
-  localStorage.removeItem("user");
-  localStorage.removeItem("subscription");
-  localStorage.removeItem("activeOrgId");
-  localStorage.removeItem("orgId");
-}
-
-function dispatchUnauthorized() {
-  if (unauthorizedDispatched) return;
-
-  unauthorizedDispatched = true;
-  clearStoredAuth();
-  window.dispatchEvent(new Event("auth:unauthorized"));
-}
+export const API_BASE_URL = (import.meta.env.VITE_API_URL || "").replace(/\/api\/?$/, "").replace(/\/$/, "");
+const DEFAULT_PRODUCT = "nexus-core";
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 45000,
-  headers: {
-    "Content-Type": "application/json",
-  },
+  timeout: 30000,
+  withCredentials: true,
+  headers: { "Content-Type": "application/json" },
 });
 
-// Attach the access token to requests.
+const refreshing = new Map();
+
+/** Exchanges the product's refresh cookie for a new access token. Resolves to the session body or null. */
+export function refreshSession(product = DEFAULT_PRODUCT) {
+  if (refreshing.has(product)) return refreshing.get(product);
+  const promise = axios
+    .post(`${API_BASE_URL}/api/${product}/auth/refresh`, {}, { withCredentials: true, timeout: 20000 })
+    .then((res) => {
+      tokenStore.set(product, res.data?.token || null);
+      return res.data?.token ? res.data : null;
+    })
+    .catch(() => {
+      tokenStore.clear(product);
+      return null;
+    })
+    .finally(() => refreshing.delete(product));
+  refreshing.set(product, promise);
+  return promise;
+}
+
 apiClient.interceptors.request.use((config) => {
-  const token = getStoredToken();
-
-  if (token) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
-  const orgId =
-    localStorage.getItem("activeOrgId") ||
-    localStorage.getItem("orgId");
-
-  if (orgId) {
-    config.headers = config.headers || {};
-    config.headers["X-Org-Id"] = orgId;
-  }
-
-  if (window.location.pathname.startsWith("/supportops")) {
-    config.headers = config.headers || {};
-    config.headers["X-App-Slug"] = "supportops";
-  }
-
+  const product = config.product || DEFAULT_PRODUCT;
+  const token = tokenStore.get(product);
+  config.headers = config.headers || {};
+  if (token && !config.headers.Authorization) config.headers.Authorization = `Bearer ${token}`;
+  config.headers["X-App-Slug"] = product;
   return config;
 });
 
-const AUTH_ENDPOINTS = [
-  "/auth/login",
-  "/auth/register",
-  "/auth/refresh",
-  "/auth/logout",
-  "/crossborder/auth/login",
-  "/crossborder/auth/register",
-];
-
-function isAuthEndpoint(url = "") {
-  return AUTH_ENDPOINTS.some((endpoint) => url.includes(endpoint));
-}
-
-async function refreshAccessToken() {
-  if (refreshPromise) return refreshPromise;
-
-  refreshPromise = axios
-    .post(
-      `${API_BASE_URL}/api/auth/refresh`,
-      {},
-      {
-        withCredentials: true,
-        timeout: 45000,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    )
-    .then((response) => {
-      const token =
-        response.data?.token ||
-        response.data?.accessToken ||
-        response.data?.data?.token;
-
-      if (!token) {
-        throw new Error("Refresh response did not include an access token");
-      }
-
-      storeToken(token);
-      unauthorizedDispatched = false;
-
-      return token;
-    })
-    .finally(() => {
-      refreshPromise = null;
-    });
-
-  return refreshPromise;
-}
+const isAuthEndpoint = (url = "") => /\/auth\/(login|register|refresh|logout|forgot-password|reset-password)/.test(url);
 
 apiClient.interceptors.response.use(
-  (response) => {
-    // Axios interceptor consumers receive the response body.
-    return response.data;
-  },
-
+  (response) => response.data,
   async (error) => {
     const status = error.response?.status;
-    const originalRequest = error.config || {};
-    const url = originalRequest.url || "";
+    const original = error.config || {};
+    const product = original.product || DEFAULT_PRODUCT;
 
-    // Refresh only once for a failed authenticated request.
-    if (
-      status === 401 &&
-      !originalRequest._retry &&
-      !isAuthEndpoint(url)
-    ) {
-      originalRequest._retry = true;
-
-      try {
-        const token = await refreshAccessToken();
-
-        originalRequest.headers = originalRequest.headers || {};
-        originalRequest.headers.Authorization = `Bearer ${token}`;
-
-        return apiClient(originalRequest);
-      } catch (refreshError) {
-        dispatchUnauthorized();
-        throw refreshError;
+    if (status === 401 && !original._retry && !isAuthEndpoint(original.url)) {
+      original._retry = true;
+      const session = await refreshSession(product);
+      if (session?.token) {
+        original.headers = { ...(original.headers || {}), Authorization: `Bearer ${session.token}` };
+        return apiClient(original);
       }
+      window.dispatchEvent(new CustomEvent(`${product}:auth:unauthorized`));
     }
 
-    // A failed login is not the same as an expired existing session.
-    // A 403 indicates forbidden access and should not automatically log out.
-    const message =
-      error.response?.data?.message ||
-      error.response?.data?.error ||
-      error.message ||
-      "API request failed";
-
-    return Promise.reject(new Error(message));
+    const data = error.response?.data || {};
+    const err = new Error(data.message || data.error || error.message || "Request failed");
+    err.status = status;
+    err.code = data.error;
+    err.data = data;
+    return Promise.reject(err);
   }
 );
 
-export const apiFetch = async (endpoint, options = {}) => {
-  const method = (options.method || "GET").toLowerCase();
+export const apiFetch = (endpoint, options = {}) => {
+  const isAbsolute = /^https?:\/\//i.test(endpoint);
+  let url = isAbsolute ? endpoint : endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  if (!isAbsolute && !url.startsWith("/api/") && url !== "/api") url = `/api${url}`;
 
-  const isAbsoluteUrl = /^https?:\/\//i.test(endpoint);
-  let cleanEndpoint = isAbsoluteUrl
-    ? endpoint
-    : (endpoint.startsWith("/") ? endpoint : `/${endpoint}`);
-
-  if (!isAbsoluteUrl && !cleanEndpoint.startsWith("/api/") && cleanEndpoint !== "/api") {
-    cleanEndpoint = `/api${cleanEndpoint}`;
-  }
-
-  let requestData =
-    options.body !== undefined
-      ? options.body
-      : options.data;
-
-  if (typeof requestData === "string") {
-    try {
-      requestData = JSON.parse(requestData);
-    } catch {
-      // Preserve non-JSON string bodies.
-    }
+  let data = options.body !== undefined ? options.body : options.data;
+  if (typeof data === "string") {
+    try { data = JSON.parse(data); } catch { /* keep raw string */ }
   }
 
   return apiClient({
-    url: cleanEndpoint,
-    method,
-    data: requestData,
+    url,
+    method: (options.method || "GET").toLowerCase(),
+    data,
     params: options.params,
-    timeout: options.timeout || 45000,
+    timeout: options.timeout || 30000,
     headers: options.headers || {},
-    withCredentials: true,
     signal: options.signal,
+    product: options.product || DEFAULT_PRODUCT,
   });
 };
 
-export const safeApiFetch = async (
-  endpoint,
-  options = {},
-  addToast = null
-) => {
+export const safeApiFetch = async (endpoint, options = {}, addToast = null) => {
   try {
-    const data = await apiFetch(endpoint, options);
-    return { data, error: null };
+    return { data: await apiFetch(endpoint, options), error: null };
   } catch (err) {
-    const message =
-      err.message || "An unexpected error occurred";
-
-    if (typeof addToast === "function") {
-      addToast(message, "error");
-    }
-
+    if (typeof addToast === "function") addToast(err.message || "An unexpected error occurred", "error");
     return { data: null, error: err };
   }
 };

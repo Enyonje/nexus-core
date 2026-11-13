@@ -12,9 +12,10 @@ export default function Layout({ theme }) {
   const navItems = [
     { name: "Dashboard", path: "/dashboard", allowed: ["free", "pro", "enterprise", "admin"] },
     { name: "Special Agents", path: "/agents", allowed: ["free", "pro", "enterprise", "admin"] },
-    { name: "Dev Tools", path: "/dev-tools", allowed: ["pro", "enterprise", "admin"] },
+    { name: "Dev Tools", path: "/tools", allowed: ["free", "pro", "enterprise", "admin"] },
     { name: "Goals", path: "/goals", allowed: ["free", "pro", "enterprise", "admin"] },
     { name: "Executions", path: "/executions", allowed: ["pro", "enterprise", "admin"] },
+    { name: "Billing", path: "/billing", allowed: ["free", "pro", "enterprise", "admin"] },
     { name: "Admin Panel", path: "/admin", allowed: ["admin"] },
   ];
 

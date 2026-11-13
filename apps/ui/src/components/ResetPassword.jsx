@@ -1,10 +1,14 @@
 import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
+import { useSearchParams } from "react-router-dom";
 import { useToast } from "./ToastContext.jsx";
 
 export default function ResetPassword() {
-  const { token } = useParams(); // reset token from URL
+  const params = useParams();
+  const [search] = useSearchParams();
+  // The emailed link is /reset-password?token=...; the old code only read a path param, so every reset failed.
+  const token = search.get("token") || params.token;
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);

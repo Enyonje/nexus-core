@@ -15,7 +15,7 @@ function nexusCorePath(value) {
   if (typeof value !== "string" || !value.startsWith("/")) return "";
   const path = safeNext(value, "");
   if (!path || path === "/" || path.startsWith("//")) return "";
-  const blocked = ["/supportops", "/crossborder", "/login", "/register"];
+  const blocked = ["/supportops", "/crossborder", "/compliance", "/login", "/register"];
   if (blocked.some((prefix) => path === prefix || path.startsWith(`${prefix}/`) || path.startsWith(`${prefix}?`))) return "";
   return path;
 }

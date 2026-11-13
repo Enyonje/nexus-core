@@ -1,8 +1,7 @@
+// Fastify preHandler: requireRole("admin", "owner")
 export function requireRole(...allowed) {
-  return (req, res, next) => {
-    if (!allowed.includes(req.identity.role)) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-    next();
+  return async (req, reply) => {
+    const role = req.user?.role || req.identity?.role;
+    if (!allowed.includes(role)) return reply.code(403).send({ error: "FORBIDDEN" });
   };
 }

@@ -5,7 +5,7 @@ services:
     rootDir: apps/api
     buildCommand: npm ci && npm run build
     startCommand: npm start
-    healthCheckPath: /health
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
@@ -39,5 +39,42 @@ services:
         value: https://nexusthecore.com,https://nexus-core-chi.vercel.app
       - key: APP_URL
         value: https://nexusthecore.com
+      # The site calls the API through Vercel's /api rewrite, so sign-in cookies are first-party.
       - key: COOKIE_SAMESITE
-        value: none
+        value: lax
+      # Optional: a separate signing key per product (otherwise derived from JWT_SECRET).
+      - key: NEXUS_CORE_JWT_SECRET
+        sync: false
+      - key: SUPPORTOPS_JWT_SECRET
+        sync: false
+      - key: COMPLIANCE_JWT_SECRET
+        sync: false
+      # Stripe price IDs: STRIPE_PRICE_<PRODUCT>_<PLAN>_<MONTHLY|ANNUAL>
+      - key: STRIPE_PRICE_NEXUS_CORE_STARTER_MONTHLY
+        sync: false
+      - key: STRIPE_PRICE_NEXUS_CORE_STARTER_ANNUAL
+        sync: false
+      - key: STRIPE_PRICE_NEXUS_CORE_PRO_MONTHLY
+        sync: false
+      - key: STRIPE_PRICE_NEXUS_CORE_PRO_ANNUAL
+        sync: false
+      - key: STRIPE_PRICE_SUPPORTOPS_STARTER_MONTHLY
+        sync: false
+      - key: STRIPE_PRICE_SUPPORTOPS_GROWTH_MONTHLY
+        sync: false
+      - key: STRIPE_PRICE_COMPLIANCE_PRO_MONTHLY
+        sync: false
+      - key: STRIPE_PRICE_COMPLIANCE_PRO_ANNUAL
+        sync: false
+      - key: MPESA_CONSUMER_KEY
+        sync: false
+      - key: MPESA_CONSUMER_SECRET
+        sync: false
+      - key: MPESA_ENV
+        value: sandbox
+      - key: MPESA_BUSINESS_SHORTCODE
+        sync: false
+      - key: MPESA_PASSKEY
+        sync: false
+      - key: MPESA_CALLBACK_URL
+        value: https://nexus-core-a0px.onrender.com/api/payments/mpesa/callback

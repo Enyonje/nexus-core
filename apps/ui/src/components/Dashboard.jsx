@@ -141,7 +141,7 @@ export default function Dashboard() {
               Pricing Plans
             </Link>
             <button
-              onClick={() => navigate("/subscription")}
+              onClick={() => navigate("/pricing")}
               className="bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold uppercase tracking-wider px-6 py-3 rounded-xl transition-all shadow-lg shadow-cyan-900/30 text-center active:scale-95"
             >
               {isFreeUser ? "Select Package / Upgrade Tier →" : "Manage Subscription"}
@@ -161,7 +161,7 @@ export default function Dashboard() {
             label="Neural Executions"
             value={isFreeUser ? "FREE TIER LIMITED" : executions.length}
             locked={isFreeUser}
-            onUnlock={() => navigate("/subscription")}
+            onUnlock={() => navigate("/pricing")}
           />
         </section>
 
@@ -254,7 +254,7 @@ export default function Dashboard() {
                       Upgrade to unlock real-time streaming, automated decision trees, and complete execution audit traces.
                     </p>
                     <button
-                      onClick={() => navigate("/subscription")}
+                      onClick={() => navigate("/pricing")}
                       className="text-cyan-400 text-xs font-bold border border-cyan-500/30 bg-cyan-500/10 px-6 py-2.5 rounded-lg hover:bg-cyan-500/20 transition-all uppercase tracking-wider shadow-lg shadow-cyan-950/50 hover:scale-105 active:scale-95"
                     >
                       Select Package to Unlock Full Access →

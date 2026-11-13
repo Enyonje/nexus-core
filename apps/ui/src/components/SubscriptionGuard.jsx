@@ -1,58 +1,15 @@
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth"; // ✅ Correct import path
+import { Navigate } from "react-router-dom";
+import { useAuth } from "../hooks/useAuth";
+import { TIER_RANK } from "../auth/createProductAuth.jsx";
 
 /**
- * SubscriptionGuard
- * Wraps restricted pages/components and ensures only users
- * with the required subscription tiers can access them.
- *
- * @param {Array<string>} required - Allowed subscription tiers
- * @param {string} message - Custom fallback message when access is denied
- * @param {string} redirectTo - Custom redirect path when blocked
- * @param {number} graceDays - Number of days new users can access without subscription
+ * Hides children unless the Nexus Core plan is one of `required` (or ranks above them).
+ * The old version compared the subscription object to strings, so it never blocked anyone.
  */
-export default function SubscriptionGuard({
-  children,
-  required = ["pro", "enterprise"],
-  message = "SUBSCRIPTION REQUIRED",
-  redirectTo = "/subscription",
-  graceDays = 0,
-}) {
-  const { subscription, loading, user, requiresSubscription } = useAuth();
-  const navigate = useNavigate();
-
-  // Calculate account age in days
-  const accountAgeDays = user?.createdAt
-    ? Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24))
-    : null;
-
-  const isWithinGrace = graceDays > 0 && accountAgeDays !== null && accountAgeDays <= graceDays;
-
-  // Use backend flag if available, otherwise fall back to subscription check
-  const hasAccess = !requiresSubscription || required.includes(subscription) || isWithinGrace;
-
-  useEffect(() => {
-    if (!loading && !hasAccess) {
-      navigate(redirectTo, { replace: true });
-    }
-  }, [subscription, loading, navigate, required, redirectTo, hasAccess, requiresSubscription]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#020617] flex items-center justify-center text-blue-400 font-mono text-xs tracking-[0.5em]">
-        VERIFYING SUBSCRIPTION...
-      </div>
-    );
-  }
-
-  if (!hasAccess) {
-    return (
-      <div className="min-h-screen bg-[#020617] flex items-center justify-center text-red-400 font-mono text-xs tracking-[0.5em]">
-        {message}
-      </div>
-    );
-  }
-
+export default function SubscriptionGuard({ children, required = ["pro", "enterprise"], redirectTo = "/pricing" }) {
+  const { tier, role, loading } = useAuth();
+  if (loading) return <div className="min-h-[40vh] flex items-center justify-center text-xs text-slate-400">Checking your plan…</div>;
+  const minRank = Math.min(...required.map((t) => TIER_RANK[t] ?? 99));
+  if (role !== "admin" && (TIER_RANK[tier] ?? 0) < minRank) return <Navigate to={redirectTo} replace state={{ needed: required[0] }} />;
   return children;
 }

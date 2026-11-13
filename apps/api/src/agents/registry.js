@@ -1,87 +1,39 @@
 import { db } from "../db/db.js";
 import { publishEvent } from "../routes/executions.js";
-import { enqueueExecution } from "../agents/queue.js"; // BullMQ/RabbitMQ integration
+import { enqueueExecution } from "../agents/queue.js";
+import { loadAgentPlugins } from "./loader.js";
 
 /**
- * Ensure system agents exist and are up-to-date.
- * Inserts missing agents, updates capabilities if changed,
- * and auto-spawns worker jobs for operational agents.
+ * Make sure every agent plugin in src/agents/plugins has a row in the agents table.
+ * Inserts new agents, updates capabilities that changed, and keeps WORKER agents queued.
+ * Adding an agent = adding a plugin file; nothing to edit here.
  */
 export async function ensureSystemAgents() {
-  const agents = [
-    {
-      name: "Architect",
-      agent_type: "ARCHITECT",
-      capabilities: { planning: true },
-    },
-    {
-      name: "Worker-API",
-      agent_type: "WORKER",
-      capabilities: { api: true },
-    },
-    {
-      name: "Worker-DB",
-      agent_type: "WORKER",
-      capabilities: { database: true },
-    },
-    {
-      name: "Sentinel",
-      agent_type: "GOVERNANCE",
-      capabilities: { validation: true },
-    },
-  ];
+  const agents = await loadAgentPlugins();
 
   for (const agent of agents) {
     const { rows } = await db.query(
-      `SELECT id, capabilities
-       FROM agents
-       WHERE name = $1 AND agent_type = $2`,
-      [agent.name, agent.agent_type]
+      `SELECT id, capabilities FROM agents WHERE name = $1 AND agent_type = $2`,
+      [agent.name, agent.agentType]
     );
 
+    let agentId;
     if (rows.length === 0) {
-      // Insert new agent
       const { rows: inserted } = await db.query(
-        `INSERT INTO agents (name, agent_type, capabilities, created_at)
-         VALUES ($1, $2, $3, NOW())
-         RETURNING id`,
-        [agent.name, agent.agent_type, agent.capabilities]
+        `INSERT INTO agents (name, agent_type, capabilities, created_at) VALUES ($1, $2, $3, NOW()) RETURNING id`,
+        [agent.name, agent.agentType, agent.capabilities]
       );
-
-      publishEvent("system", {
-        event: "agent_registered",
-        agentId: inserted[0].id,
-        name: agent.name,
-        type: agent.agent_type,
-      });
-
-      // 🔥 Auto-spawn worker jobs for operational agents
-      if (agent.agent_type === "WORKER") {
-        await enqueueExecution(inserted[0].id);
-      }
+      agentId = inserted[0].id;
+      publishEvent("system", { event: "agent_registered", agentId, name: agent.name, type: agent.agentType });
     } else {
-      // Update capabilities if changed
-      const existing = rows[0];
-      if (JSON.stringify(existing.capabilities) !== JSON.stringify(agent.capabilities)) {
-        await db.query(
-          `UPDATE agents
-           SET capabilities = $3, updated_at = NOW()
-           WHERE id = $1`,
-          [existing.id, agent.name, agent.capabilities]
-        );
-
-        publishEvent("system", {
-          event: "agent_updated",
-          agentId: existing.id,
-          name: agent.name,
-          type: agent.agent_type,
-        });
-      }
-
-      // 🔥 Ensure workers are active
-      if (agent.agent_type === "WORKER") {
-        await enqueueExecution(existing.id);
+      agentId = rows[0].id;
+      if (JSON.stringify(rows[0].capabilities) !== JSON.stringify(agent.capabilities)) {
+        // Previously passed three parameters for a two-parameter statement, which Postgres rejects.
+        await db.query(`UPDATE agents SET capabilities = $2, updated_at = NOW() WHERE id = $1`, [agentId, agent.capabilities]);
+        publishEvent("system", { event: "agent_updated", agentId, name: agent.name, type: agent.agentType });
       }
     }
+
+    if (agent.agentType === "WORKER") await enqueueExecution(agentId);
   }
 }

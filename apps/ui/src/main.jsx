@@ -6,8 +6,9 @@ import { AccessProvider } from "./context/AccessProvider.jsx";
 import App from "./app.jsx";
 import { ToastProvider } from "./components/ToastContext.jsx";
 import AuthProvider from "./context/AuthProvider.jsx";
-import "../index.css"; // Ensure Tailwind is active
+import "../index.css";
 
+// Nexus Core's sign-in wraps the site. Other products mount their own provider on their own routes (see app.jsx).
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
@@ -22,5 +23,6 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   </React.StrictMode>
 );
 
-// Signal to Vite Prerenderer that client hydration is complete for SEO static snapshot generation
-document.dispatchEvent(new Event("custom-post-render-event"));
+// The pre-rendered search-engine summary is only for crawlers without JavaScript. Once the app
+// is running it would leave a second, stale <h1> for screen readers, so drop it.
+document.getElementById("seo-content")?.remove();

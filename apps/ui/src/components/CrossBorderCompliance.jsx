@@ -8,8 +8,11 @@ import {
     calculateCustomsAssessment,
     generateCustomsXmlDeclaration
 } from '../complianceui/lib/cf-engine';
+import { useComplianceAuth } from '../context/ComplianceAuth.jsx';
 
 export default function CrossBorderCompliance() {
+    // Payments go through the Compliance session (its own token), never the Nexus Core one.
+    const { api } = useComplianceAuth();
     const [file, setFile] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [pipelineStage, setPipelineStage] = useState('idle');
@@ -125,20 +128,16 @@ export default function CrossBorderCompliance() {
 
         try {
             // 1. Call Backend API to trigger Daraja STK Push
-            const res = await fetch('/api/payments/mpesa/stkpush', {
+            const data = await api('/payments/mpesa/stkpush', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+                body: {
                     phoneNumber,
                     amount: assessment.taxBreakdown.totalCustomsTaxKes,
                     accountReference: 'KRA-DUTY-DECL',
-                    transactionDesc: 'Customs Duty Payment'
-                }),
+                },
             });
 
-            const data = await res.json();
-
-            if (res.ok && data.CheckoutRequestID) {
+            if (data?.CheckoutRequestID) {
                 setPaymentStatus('polling');
                 addLog(`M-PESA STK SENT: Prompt sent to phone. Awaiting PIN entry (CheckoutID: ${data.CheckoutRequestID})...`, 'info');
 
@@ -160,14 +159,13 @@ export default function CrossBorderCompliance() {
         const interval = setInterval(async () => {
             attempts += 1;
             try {
-                const res = await fetch(`/api/payments/mpesa/query?checkoutRequestId=${checkoutRequestId}`);
-                const data = await res.json();
+                const data = await api('/payments/mpesa/query', { params: { checkoutRequestId } });
 
                 if (data.status === 'COMPLETED') {
                     clearInterval(interval);
                     setPaymentStatus('success');
-                    setMpesaReceipt(data.mpesaReceiptNumber);
-                    addLog(`M-PESA CONFIRMED: Receipt #${data.mpesaReceiptNumber}. KRA Customs Release Order (RO) Issued.`, 'success');
+                    setMpesaReceipt(data.mpesaReceiptNumber || checkoutRequestId.slice(-10));
+                    addLog(`M-PESA CONFIRMED: Receipt #${data.mpesaReceiptNumber || checkoutRequestId.slice(-10)}. KRA Customs Release Order (RO) Issued.`, 'success');
                 } else if (data.status === 'FAILED' || attempts > 12) { // 12 * 5s = 60s timeout
                     clearInterval(interval);
                     setPaymentStatus('failed');

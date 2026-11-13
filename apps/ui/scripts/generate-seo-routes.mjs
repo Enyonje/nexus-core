@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const root = path.resolve('dist');
 const origin = 'https://nexusthecore.com';
@@ -17,7 +18,28 @@ const routes = [
   { path: '/contact', title: 'Contact Nexus Core | Product & Sales Enquiries', description: 'Contact the Nexus Core team about AI agents, workflow automation and SupportOps customer support workflows.', h1: 'Contact Nexus Core', body: 'Get in touch with the team about AI agents, workflow automation and SupportOps.', links: [['Explore SupportOps', '/supportops'], ['Explore AI agents', '/ai-agents']] },
 ];
 
+// One generated page per agent manifest in src/agents/registry (plain data files, safe to import here).
+const registryDir = path.resolve('src/agents/registry');
+for (const file of (await fs.readdir(registryDir)).filter((f) => f.endsWith('.agent.js')).sort()) {
+  const agent = (await import(pathToFileURL(path.join(registryDir, file)).href)).default;
+  routes.push({
+    path: `/agents/${agent.slug}`,
+    title: `${agent.name} | Nexus Core Agents`.slice(0, 60),
+    description: agent.summary.slice(0, 155),
+    h1: agent.name,
+    body: agent.description || agent.summary,
+    links: [['All agents', '/agents'], ['Pricing', '/pricing']],
+  });
+}
+routes.push(
+  { path: '/compliance/pricing', title: 'Cross-Border Compliance Pricing | Nexus Core', description: 'Plans for clearing and forwarding agents: customs audit, duty calculation, M-Pesa duty payment and ICMS export.', h1: 'Cross-Border Compliance pricing', body: 'Compare Sandbox, Broker and Enterprise plans for customs compliance.', links: [['Compliance agent', '/agents/cross-border-compliance'], ['Contact the team', '/contact']] },
+);
+
 const template = await fs.readFile(path.join(root, 'index.html'), 'utf8');
+// Untouched copy of the app shell for every URL that has no generated page (sign-in, dashboard, 404 ...).
+// vercel.json rewrites unknown paths to /app.html. Before, those URLs got the homepage's HTML,
+// title and canonical, so Google saw /login, /dashboard etc. as duplicates of the homepage.
+await fs.writeFile(path.join(root, 'app.html'), template.replace('<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />', '<meta name="robots" content="noindex, follow" />'));
 const esc = (s) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
 for (const route of routes) {
@@ -63,6 +85,6 @@ const sitemapEntries = routes.map((route) => {
 }).join('\n');
 await fs.writeFile(path.join(root, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemapEntries}\n</urlset>\n`);
 
-const robots = `User-agent: *\nAllow: /\nDisallow: /dashboard\nDisallow: /executions\nDisallow: /goals\nDisallow: /admin\nDisallow: /supportops/login\nDisallow: /supportops/agent\nDisallow: /supportops/admin\nDisallow: /supportops/management\nDisallow: /supportops/investor\n\nSitemap: ${origin}/sitemap.xml\n`;
+const robots = `User-agent: *\nAllow: /\nDisallow: /dashboard\nDisallow: /executions\nDisallow: /goals\nDisallow: /admin\nDisallow: /billing\nDisallow: /compliance/login\nDisallow: /compliance/register\nDisallow: /compliance/billing\nDisallow: /supportops/login\nDisallow: /supportops/agent\nDisallow: /supportops/admin\nDisallow: /supportops/management\nDisallow: /supportops/investor\n\nSitemap: ${origin}/sitemap.xml\n`;
 await fs.writeFile(path.join(root, 'robots.txt'), robots);
 console.log(`Wrote sitemap.xml with ${routes.length} canonical public routes and robots.txt.`);

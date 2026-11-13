@@ -1,98 +1,51 @@
-// src/components/Navbar.jsx
-import React from "react";
-import { Link } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth"; // ✅ import the hook
+// src/components/Navbar.jsx — Nexus Core top bar.
+import { Link, NavLink } from "react-router-dom";
+import { useAuth } from "../hooks/useAuth";
 
 export default function Navbar({ onToggleTheme, isDark, theme }) {
-  // ✅ use the hook to access auth state
-  const { user, subscription, logout } = useAuth();
+  // The old bar checked `user`, which was a guest object for signed-out visitors, so everyone
+  // saw "Dashboard" and "Logout". isAuthenticated is the real signal.
+  const { isAuthenticated, loading, logout } = useAuth();
 
   const styles = {
     wrapper: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
+      display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap",
       padding: "0.75rem 1.5rem",
       backgroundColor: theme?.colors?.surface || "#0f172a",
       borderBottom: `1px solid ${theme?.colors?.divider || "#1e293b"}`,
     },
-    brand: {
-      fontWeight: "700",
-      fontSize: "1.25rem",
-      color: theme?.colors?.primary || "#38bdf8",
-      textDecoration: "none",
-    },
-    actions: {
-      display: "flex",
-      alignItems: "center",
-      gap: "1rem",
-    },
+    brand: { fontWeight: 700, fontSize: "1.25rem", color: theme?.colors?.primary || "#38bdf8", textDecoration: "none" },
+    actions: { display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" },
+    link: { padding: "0.45rem 0.85rem", borderRadius: 6, color: theme?.colors?.text?.secondary || "#cbd5e1", textDecoration: "none", fontSize: "0.9rem" },
     button: {
-      padding: "0.5rem 1rem",
-      borderRadius: "6px",
-      border: `1px solid ${theme?.colors?.divider || "#334155"}`,
-      backgroundColor: theme?.colors?.background || "#1e293b",
-      color: theme?.colors?.text?.primary || "#f8fafc",
-      cursor: "pointer",
-      fontSize: "0.9rem",
-      fontWeight: "500",
-      textDecoration: "none",
+      padding: "0.45rem 0.95rem", borderRadius: 6, border: `1px solid ${theme?.colors?.divider || "#334155"}`,
+      backgroundColor: theme?.colors?.background || "#1e293b", color: theme?.colors?.text?.primary || "#f8fafc",
+      cursor: "pointer", fontSize: "0.9rem", fontWeight: 500, textDecoration: "none",
     },
-    specialAgentBtn: {
-      padding: "0.5rem 1rem",
-      borderRadius: "6px",
-      border: "1px solid rgba(168, 85, 247, 0.4)",
-      backgroundColor: "rgba(168, 85, 247, 0.1)",
-      color: "#c084fc",
-      cursor: "pointer",
-      fontSize: "0.9rem",
-      fontWeight: "600",
-      textDecoration: "none",
-    },
+    primary: { padding: "0.45rem 0.95rem", borderRadius: 6, backgroundColor: "#67e8f9", color: "#020617", fontWeight: 700, fontSize: "0.9rem", textDecoration: "none" },
   };
 
-  // Safely resolve subscription tier string if it's an object or string
-  const subTier = typeof subscription === "string"
-    ? subscription.toLowerCase()
-    : (subscription?.tier || subscription?.plan_id || "").toLowerCase();
-
   return (
-    <nav style={styles.wrapper}>
+    <nav style={styles.wrapper} aria-label="Main">
       <Link to="/" style={styles.brand}>Nexus Core</Link>
       <div style={styles.actions}>
-        {/* Special Agent Directory Link available universally */}
-        <Link to="/agents" style={styles.specialAgentBtn}>
-          🤖 Special Agent
-        </Link>
-
-        {user ? (
+        <NavLink to="/agents" style={styles.link}>Agents</NavLink>
+        <NavLink to="/pricing" style={styles.link}>Pricing</NavLink>
+        <NavLink to="/docs" style={styles.link}>Docs</NavLink>
+        {loading ? null : isAuthenticated ? (
           <>
             <Link to="/dashboard" style={styles.button}>Dashboard</Link>
-
-            {subTier === "pro" && (
-              <Link to="/executions" style={styles.button}>Executions</Link>
-            )}
-
-            {subTier === "enterprise" && (
-              <>
-                <Link to="/executions" style={styles.button}>Streams</Link>
-                <Link to="/executions" style={styles.button}>Audit</Link>
-              </>
-            )}
-
-            <button style={styles.button} onClick={logout}>
-              Logout
-            </button>
+            <Link to="/billing" style={styles.button}>Billing</Link>
+            <button type="button" style={styles.button} onClick={() => logout({ redirectTo: "/" })}>Log out</button>
           </>
         ) : (
           <>
-            <Link to="/login" style={styles.button}>Login</Link>
-            <Link to="/register" style={styles.button}>Register</Link>
-            <Link to="/subscription" style={styles.button}>Subscription</Link>
+            <Link to="/login" style={styles.button}>Sign in</Link>
+            <Link to="/register" style={styles.primary}>Get started</Link>
           </>
         )}
-        <button style={styles.button} onClick={onToggleTheme}>
-          {isDark ? "Light Mode" : "Dark Mode"}
+        <button type="button" style={styles.button} onClick={onToggleTheme} aria-label="Toggle colour theme">
+          {isDark ? "Light" : "Dark"}
         </button>
       </div>
     </nav>

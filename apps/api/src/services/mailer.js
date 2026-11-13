@@ -60,3 +60,11 @@ export async function sendPasswordResetEmail(email, link, options = {}) {
 export async function verifyEmailTransport() {
     return getTransport().verify();
 }
+
+/** Adapter used by the per-product auth routes. Returns null when SMTP is not configured. */
+export async function createMailer() {
+    if (!process.env.SMTP_HOST || !process.env.SMTP_FROM) return null;
+    return {
+        sendPasswordReset: ({ to, link, product }) => sendPasswordResetEmail(to, link, { product }),
+    };
+}

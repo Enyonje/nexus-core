@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { apiFetch } from "../lib/api";
 import { useToast } from "./ToastContext.jsx";
 import { useAuth } from "../hooks/useAuth";
 
@@ -8,7 +7,7 @@ function safeNexusDestination(value) {
   if (typeof value !== "string" || !value.startsWith("/")) return "";
   if (value.startsWith("//")) return "";
   const path = value.split(/[?#]/, 1)[0];
-  if (["/", "/login", "/register", "/supportops", "/crossborder"].some((blocked) => path === blocked || path.startsWith(`${blocked}/`))) return "";
+  if (["/", "/login", "/register", "/supportops", "/crossborder", "/compliance"].some((blocked) => path === blocked || path.startsWith(`${blocked}/`))) return "";
   return value;
 }
 
@@ -34,7 +33,7 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { addToast } = useToast();
-  const { login } = useAuth();
+  const { register } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -49,26 +48,13 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      const result = await apiFetch("/auth/register", {
-        method: "POST",
-        body: JSON.stringify({
-          email: cleanEmail,
-          password,
-          accessKey: password,
-          organization: cleanOrganization,
-          intent: "nexus-core",
-        }),
-      });
+      // Registration returns a full session. (Before, the page called login() without a password
+      // afterwards, which threw, so every successful sign-up was reported as a failure.)
+      const result = await register({ email: cleanEmail, password, organization: cleanOrganization });
       if (!result?.token || !result?.user) throw new Error(result?.message || "The server returned an incomplete registration response.");
-
-      // Keep the existing auth persistence contract used by the application.
-      localStorage.setItem("authToken", result.token);
-      localStorage.setItem("token", result.token);
-      localStorage.setItem("user", JSON.stringify(result.user));
-      login({ user: result.user, token: result.token });
       addToast("Your Nexus Core account is ready.", "success");
 
-      const requested = safeNexusDestination(location.state?.from);
+      const requested = safeNexusDestination(new URLSearchParams(location.search).get("next") || location.state?.from);
       const serverTarget = safeNexusDestination(result.redirectTo);
       navigate(requested || serverTarget || "/dashboard", { replace: true });
     } catch (error) {

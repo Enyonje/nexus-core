@@ -168,20 +168,36 @@ export function getActiveStreams() {
 /**
  * Subscribe to Postgres notifications
  */
-(async () => {
-  const client = await db.connect();
-  await client.query("LISTEN execution_events");
-
-  client.on("notification", (msg) => {
-    try {
-      const payload = JSON.parse(msg.payload);
-      if (payload.executionId) {
-        emitEvent(payload.executionId, payload);
-      } else {
-        broadcastEvent(payload);
+// Listen for Postgres notifications. A database outage must not crash the whole API (it used to:
+// this promise had no catch, so an unreachable database killed the process right after boot).
+// Reconnects with backoff instead.
+let listenRetryMs = 2000;
+async function listenForExecutionEvents() {
+  try {
+    const client = await db.connect();
+    listenRetryMs = 2000;
+    client.on("error", (err) => {
+      console.error("[events] LISTEN connection lost:", err.message);
+      client.release(err);
+      setTimeout(listenForExecutionEvents, listenRetryMs);
+    });
+    await client.query("LISTEN execution_events");
+    client.on("notification", (msg) => {
+      try {
+        const payload = JSON.parse(msg.payload);
+        if (payload.executionId) {
+          emitEvent(payload.executionId, payload);
+        } else {
+          broadcastEvent(payload);
+        }
+      } catch (err) {
+        console.error("Failed to parse NOTIFY payload:", err);
       }
-    } catch (err) {
-      console.error("Failed to parse NOTIFY payload:", err);
-    }
-  });
-})();
+    });
+  } catch (err) {
+    console.error(`[events] Could not LISTEN (${err.message}); retrying in ${listenRetryMs / 1000}s`);
+    setTimeout(listenForExecutionEvents, listenRetryMs).unref?.();
+    listenRetryMs = Math.min(listenRetryMs * 2, 60000);
+  }
+}
+listenForExecutionEvents();

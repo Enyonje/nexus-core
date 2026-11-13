@@ -1,0 +1,17 @@
+// Copy to <your-slug>.agent.js in this folder. It shows up on /agents and /agents/<your-slug>.
+import { defineAgent } from "../defineAgent.js";
+
+export default defineAgent({
+  slug: "your-slug",
+  name: "Your Agent",
+  category: "operations",      // security | support | finance | analytics | operations
+  status: "beta",              // live | beta | development | roadmap
+  icon: "Bot",                 // see ../icons.js
+  accent: "cyan",              // cyan | emerald | blue | purple | amber | slate
+  product: "nexus-core",       // whose sign-in protects it: nexus-core | compliance | supportops
+  summary: "One sentence on the job this agent does.",
+  description: "Optional longer text for the agent's own page.",
+  capabilities: ["Capability one", "Capability two"],
+  metrics: { latency: "TBD", throughput: "TBD", accuracy: "TBD" },
+  // launch: { to: "/your-route", label: "Open" }   or   { href: "https://...", label: "Open" }
+});
