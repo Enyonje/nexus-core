@@ -86,6 +86,17 @@ export async function goalsRoutes(app) {
         [uuidv4(), orgId, userId, goalType, title, description, JSON.stringify(payload)]
       );
 
+      try {
+        await app.pg.query(
+          `INSERT INTO business_activities (id, org_id, user_id, event_type, title, description, source, department, metadata, created_at)
+           VALUES ($1,$2,$3,'workflow.created',$4,$5,'nexus-core','operate',$6::jsonb,NOW())`,
+          [uuidv4(), orgId, userId, `Workflow created: ${title}`,
+            description || `A ${goalType.replaceAll("_", " ")} workflow was added to the business workspace.`,
+            JSON.stringify({ goalId: result.rows[0].id, goalType })]
+        );
+      } catch (activityError) {
+        app.log.warn({ err: activityError }, "Business activity event could not be recorded");
+      }
       return reply.code(201).send(result.rows[0]);
     } catch (err) {
       app.log.error({ err }, "Create goal failed");

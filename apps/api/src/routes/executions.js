@@ -18,6 +18,19 @@ const STEP_STATUS = {
   execution_step_awaiting_approval: "awaiting_approval",
 };
 
+async function recordBusinessActivity(app, { orgId, userId, type, title, description, department = "operate", source = "nexus-core" }) {
+  if (!orgId) return;
+  try {
+    await app.pg.query(
+      `INSERT INTO business_activities (id, org_id, user_id, event_type, title, description, source, department, metadata, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'{}'::jsonb,NOW())`,
+      [uuidv4(), orgId, userId || null, type, title, description || null, source, department]
+    );
+  } catch (err) {
+    app.log.warn({ err }, "Business activity event could not be recorded");
+  }
+}
+
 async function auditLog(app, executionId, status, meta = {}) {
   try {
     await app.pg.query(
@@ -88,6 +101,9 @@ export async function executionsRoutes(app) {
         if (rowCount) {
           await publishEvent(execId, { event: "execution_completed", duration });
           await auditLog(app, execId, "completed", { duration });
+          const completed = await app.pg.query(`SELECT org_id, user_id, goal_type FROM executions WHERE id=$1`, [execId]);
+          const row = completed.rows[0];
+          await recordBusinessActivity(app, { orgId: row?.org_id, userId: row?.user_id, type: "workflow.execution.completed", title: "Automation completed", description: `${row?.goal_type || "Business workflow"} finished successfully.`, department: "operate" });
         }
       })
       .catch(async (err) => {
@@ -102,6 +118,9 @@ export async function executionsRoutes(app) {
         if (rowCount) {
           await publishEvent(execId, { event: "execution_failed", error: message });
           await auditLog(app, execId, "failed", { error: message });
+          const failed = await app.pg.query(`SELECT org_id, user_id, goal_type FROM executions WHERE id=$1`, [execId]);
+          const row = failed.rows[0];
+          await recordBusinessActivity(app, { orgId: row?.org_id, userId: row?.user_id, type: "workflow.execution.failed", title: "Automation needs attention", description: `${row?.goal_type || "Business workflow"} failed: ${message.slice(0, 300)}`, department: "operate" });
         }
       })
       .finally(() => endRun(execId));
@@ -140,11 +159,12 @@ export async function executionsRoutes(app) {
 
       const executionId = uuidv4();
       const { rows } = await app.pg.query(
-        `INSERT INTO executions (id, goal_id, goal_type, user_id, status, started_at, schedule, recurring, version)
-         VALUES ($1, $2, $3, $4, 'pending', NOW(), $5, $6, 1) RETURNING *`,
-        [executionId, goal.id, goal.goal_type, userId, schedule || null, recurring || false]
+        `INSERT INTO executions (id, goal_id, goal_type, user_id, org_id, status, started_at, schedule, recurring, version)
+         VALUES ($1, $2, $3, $4, $5, 'pending', NOW(), $6, $7, 1) RETURNING *`,
+        [executionId, goal.id, goal.goal_type, userId, req.user?.org_id || null, schedule || null, recurring || false]
       );
       await auditLog(app, executionId, "created", { goalId: goal.id, goalType: goal.goal_type });
+      await recordBusinessActivity(app, { orgId: req.user?.org_id, userId, type: "workflow.execution.created", title: "Automation queued", description: `${goal.goal_type || "Business workflow"} is ready to run.`, department: "operate" });
       return reply.code(201).send({ execution: rows[0] });
     } catch (err) {
       app.log.error(err, "Failed to create execution");

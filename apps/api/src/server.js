@@ -1,4 +1,5 @@
 // server.js
+import "dotenv/config";
 import Fastify from 'fastify';
 import Stripe from "stripe";
 import cors from "@fastify/cors";
@@ -7,8 +8,6 @@ import fastifyPostgres from "@fastify/postgres";
 import fastifyJwt from "@fastify/jwt";
 import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
-import "dotenv/config";
-
 import { env } from "./config/env.js";
 
 // Core Routes
@@ -21,6 +20,8 @@ import * as auditRoutesMod from "./routes/audit.js";
 import * as paymentsRoutesMod from "./routes/payments.js";
 import * as streamRoutesMod from "./routes/stream.js";
 import * as stripeRoutesMod from "./routes/stripe.js";
+import * as marketplaceRoutesMod from "./routes/marketplace.js";
+import * as businessRoutesMod from "./routes/business.js";
 import * as dashboardRoutesMod from "../supportops/routes/dashboard.js"; // <--- Added Dashboard Routes
 
 
@@ -68,7 +69,7 @@ function resolvePlugin(mod, label = "unknown") {
   return picked;
 }
 
-const fastify = Fastify({ logger: true, bodyLimit: 1048576 });
+const fastify = Fastify({ logger: true, bodyLimit: 30 * 1024 * 1024 });
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -641,6 +642,8 @@ async function start() {
   mountBoth("payments", paymentsRoutesMod, "payments");
   mountBoth("stream", streamRoutesMod, "stream");
   mountBoth("stripe", stripeRoutesMod, "stripe");
+  mountBoth("marketplace", marketplaceRoutesMod, "marketplace");
+  mountBoth("business", businessRoutesMod, "business");
   mountBoth("dashboard", dashboardRoutesMod, ""); // <--- Registers /api/metrics, /api/dashboard/metrics, etc.
   // Sales Assistant is an independent, tenant-scoped product module.
 

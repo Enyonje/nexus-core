@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SocialPlatform {
+  INSTAGRAM
+  FACEBOOK
+  LINKEDIN
+  TIKTOK
+  YOUTUBE
+  X
+  PINTEREST
+  THREADS
+}
+
+enum ContentStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+enum AutomationKind {
+  AGENT
+  WORKFLOW
+}
+
+enum PublicationStatus {
+  QUEUED
+  PROCESSING
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Organization {
+  id         String      @id @default(cuid())
+  name       String
+  createdAt  DateTime    @default(now())
+  workspaces Workspace[]
+}
+
+model Workspace {
+  id             String              @id @default(cuid())
+  name           String
+  organizationId String
+  createdAt      DateTime            @default(now())
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  socialAccounts SocialAccount[]
+  contentItems   ContentItem[]
+  approvals      Approval[]
+  automations Automation[]
+  agentRuns      AgentRun[]
+  publications   Publication[]
+  interactions   SocialInteraction[]
+  analytics      AnalyticsSnapshot[]
+  brandProfile   BrandProfile?
+}
+
+model SocialAccount {
+  id             String         @id @default(cuid())
+  workspaceId    String
+  platform       SocialPlatform
+  accountName    String
+  externalId     String?
+  encryptedToken String?
+  isDevelopment  Boolean        @default(true)
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  publications   Publication[]
+
+  @@unique([workspaceId, platform, accountName])
+}
+
+model ContentItem {
+  id           String         @id @default(cuid())
+  workspaceId  String
+  title        String
+  body         String         @default("")
+  platform     SocialPlatform?
+  status       ContentStatus  @default(DRAFT)
+  scheduledAt  DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  workspace    Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  publications Publication[]
+}
+
+model Publication {
+  id              String            @id @default(cuid())
+  workspaceId     String
+  contentItemId   String
+  socialAccountId String?
+  status          PublicationStatus @default(QUEUED)
+  scheduledAt     DateTime
+  attempts        Int               @default(0)
+  lastError       String?
+  createdAt       DateTime          @default(now())
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contentItem     ContentItem       @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  socialAccount   SocialAccount?    @relation(fields: [socialAccountId], references: [id], onDelete: SetNull)
+}
+
+model Approval {
+  id          String         @id @default(cuid())
+  workspaceId String
+  contentId   String
+  status      ApprovalStatus @default(PENDING)
+  note        String?
+  createdAt   DateTime       @default(now())
+  decidedAt   DateTime?
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model AgentRun {
+  id          String    @id @default(cuid())
+  workspaceId String
+  agent       String
+  task        String
+  status      String    @default("COMPLETED")
+  result      String
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model SocialInteraction {
+  id          String         @id @default(cuid())
+  workspaceId String
+  platform    SocialPlatform
+  author      String
+  message     String
+  receivedAt  DateTime       @default(now())
+  isRead      Boolean        @default(false)
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model AnalyticsSnapshot {
+  id          String          @id @default(cuid())
+  workspaceId String
+  platform    SocialPlatform?
+  metric      String
+  value       Float
+  capturedAt  DateTime        @default(now())
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+
+model BrandProfile {
+  id          String    @id @default(cuid())
+  workspaceId String    @unique
+  voice       String    @default("")
+  audience    String    @default("")
+  guidelines  String    @default("")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Automation {
+  id              String         @id @default(cuid())
+  workspaceId     String
+  name            String
+  kind            AutomationKind @default(WORKFLOW)
+  target          String
+  task            String
+  context         String         @default("")
+  intervalMinutes Int
+  isActive        Boolean        @default(true)
+  nextRunAt       DateTime
+  lastRunAt       DateTime?
+  lastResult      String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([isActive, nextRunAt])
+}

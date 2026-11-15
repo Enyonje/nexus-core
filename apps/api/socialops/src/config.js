@@ -1,0 +1,1 @@
+import "dotenv/config"; export const config={port:Number(process.env.API_PORT||4000),origin:process.env.WEB_ORIGIN||"http://localhost:5173",poll:Number(process.env.PUBLISHER_POLL_INTERVAL_MS||15000)};
