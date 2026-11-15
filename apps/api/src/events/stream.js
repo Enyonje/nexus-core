@@ -168,7 +168,7 @@ export function getActiveStreams() {
 /**
  * Subscribe to Postgres notifications
  */
-(async () => {
+/*(async () => {
   const client = await db.connect();
   await client.query("LISTEN execution_events");
 
@@ -184,4 +184,102 @@ export function getActiveStreams() {
       console.error("Failed to parse NOTIFY payload:", err);
     }
   });
-})();
+})();*/
+
+let notificationClient = null;
+let reconnectTimer = null;
+let reconnectDelay = 2000;
+let shuttingDown = false;
+
+function scheduleReconnect() {
+  if (shuttingDown || reconnectTimer) return;
+
+  console.warn(
+    `PostgreSQL notification listener reconnecting in ${reconnectDelay / 1000}s`
+  );
+
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    startNotificationListener();
+  }, reconnectDelay);
+
+  reconnectTimer.unref?.();
+
+  reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+}
+
+async function startNotificationListener() {
+  let client;
+
+  try {
+    client = await db.connect();
+    notificationClient = client;
+
+    client.on("notification", (msg) => {
+      try {
+        const payload = JSON.parse(msg.payload);
+
+        if (payload.executionId) {
+          emitEvent(payload.executionId, payload);
+        } else {
+          broadcastEvent(payload);
+        }
+      } catch (err) {
+        console.error("Failed to parse NOTIFY payload:", err);
+      }
+    });
+
+    client.on("error", (err) => {
+      console.error("PostgreSQL notification connection lost:", err.message);
+
+      if (notificationClient === client) {
+        notificationClient = null;
+      }
+
+      try {
+        client.release(true);
+      } catch { }
+
+      scheduleReconnect();
+    });
+
+    await client.query("LISTEN execution_events");
+
+    reconnectDelay = 2000;
+    console.log("PostgreSQL notification listener connected.");
+  } catch (err) {
+    console.error("PostgreSQL LISTEN setup failed:", err.message);
+
+    if (notificationClient === client) {
+      notificationClient = null;
+    }
+
+    if (client) {
+      try {
+        client.release(true);
+      } catch { }
+    }
+
+    scheduleReconnect();
+  }
+}
+
+startNotificationListener();
+
+export async function closeEventStreamListener() {
+  shuttingDown = true;
+
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  if (notificationClient) {
+    try {
+      await notificationClient.query("UNLISTEN execution_events");
+      notificationClient.release();
+    } catch { }
+
+    notificationClient = null;
+  }
+}
