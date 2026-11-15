@@ -5,27 +5,9 @@ import { Shield, LogOut, User, LayoutDashboard, Sparkles } from 'lucide-react';
 // Import dedicated SupportOps auth hook
 import { useAuth } from '../context/AuthProvider';
 
-// Safe Auth hook resolver to guarantee zero crashes
 function useSafeNavbarAuth() {
-  try {
-    if (typeof useAuth === 'function') {
-      const auth = useAuth();
-      if (auth) return auth;
-    }
-  } catch (e) {
-    // Fall through
-  }
-
-  // Fail-safe fallback checking local storage
-  const token = typeof window !== 'undefined' ? localStorage.getItem('supportops_token') : null;
-  return {
-    user: token ? { name: 'Super Admin', email: 'admin@company.com', role: 'Super Admin' } : null,
-    isAuthenticated: !!token,
-    logout: () => {
-      localStorage.removeItem('supportops_token');
-      window.location.assign('/supportops/login');
-    },
-  };
+  try { return useAuth(); }
+  catch { return { user: null, isAuthenticated: false, logout: () => window.location.assign("/supportops/login") }; }
 }
 
 export default function Navbar() {
@@ -66,8 +48,8 @@ export default function Navbar() {
                   {user?.name ? user.name.charAt(0).toUpperCase() : 'A'}
                 </div>
                 <div className="text-xs text-left">
-                  <div className="font-medium text-white">{user?.name || 'Workspace Admin'}</div>
-                  <div className="text-slate-400">{user?.role || 'Super Admin'}</div>
+                  <div className="font-medium text-white">{user?.name || user?.email || 'Workspace Member'}</div>
+                  <div className="text-slate-400">{user?.supportopsRole || 'Workspace Member'}</div>
                 </div>
               </div>
 

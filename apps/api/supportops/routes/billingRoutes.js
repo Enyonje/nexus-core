@@ -9,7 +9,7 @@ import { prisma } from "../config/prisma.js";
 import { requireAuth } from "../lib/deps.js";
 import { createAccessToken } from "../../src/services/authService.js";
 import { generateRandomToken, hashToken } from "../../src/lib/crypto.js";
-import { AccessError, invalidateSubscription } from "../security/entitlements.js";
+import { AccessError } from "../security/entitlements.js";
 import { mapStripeStatus, trialEnd } from "../security/entitlementRules.js";
 
 const stripe = async () => {
@@ -55,10 +55,11 @@ export default async function billingRoutes(app) {
         return apps.map((a) => ({
             app: a.slug,
             name: a.name,
-            plans: a.plans.map(({ key, name, price_cents, features, limits }) => ({
+            plans: a.plans.map(({ key, name, price_cents, currency, features, limits }) => ({
                 key,
                 name,
                 priceCents: price_cents,
+                currency: currency || "usd",
                 features,
                 limits,
             })),
@@ -83,6 +84,7 @@ export default async function billingRoutes(app) {
                 email,
                 workspaceName,
                 fullName,
+                password,
                 app: slug = "supportops",
                 plan: planKey,
                 mode = "checkout",
@@ -96,6 +98,9 @@ export default async function billingRoutes(app) {
                     error: "INVALID_GUEST_DETAILS",
                     message: "Enter a valid email address and a workspace name between 2 and 120 characters.",
                 });
+            }
+            if (typeof password !== "string" || password.length < 10 || password.length > 128 || Buffer.byteLength(password, "utf8") > 72) {
+                return reply.code(400).send({ error: "INVALID_PASSWORD", message: "Password must contain at least 10 characters and no more than 72 UTF-8 bytes." });
             }
             if (mode !== "trial" && mode !== "checkout") {
                 return reply.code(400).send({ error: "INVALID_CHECKOUT_MODE", message: "Unsupported checkout mode." });
@@ -125,6 +130,9 @@ export default async function billingRoutes(app) {
             if (mode === "checkout" && !plan.stripe_price_id) {
                 return reply.code(400).send({ error: "PLAN_NOT_PURCHASABLE", message: "This plan is not configured for online checkout. Contact sales." });
             }
+            if (mode === "checkout" && !process.env.STRIPE_SECRET_KEY) {
+                return reply.code(503).send({ error: "BILLING_NOT_CONFIGURED", message: "Online checkout is temporarily unavailable. Please try again later or contact sales." });
+            }
             const chosenAddons = targetApp.addons.filter((x) => addons.includes(x.key) && x.stripe_price_id);
             if (mode === "checkout" && addons.some((key) => !chosenAddons.some((x) => x.key === key))) {
                 return reply.code(400).send({ error: "ADDON_NOT_PURCHASABLE", message: "One or more selected add-ons are unavailable." });
@@ -133,8 +141,7 @@ export default async function billingRoutes(app) {
             const userId = uuidv4();
             const orgId = uuidv4();
             const rawRefreshToken = generateRandomToken(64);
-            const rawSetupToken = generateRandomToken(48);
-            const passwordHash = await bcrypt.hash(generateRandomToken(48), 12);
+            const passwordHash = await bcrypt.hash(password, 12);
             const rawName = typeof fullName === "string" ? fullName.trim().slice(0, 120) : "";
             const expiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
             const trialEndsAt = mode === "trial" ? trialEnd() : null;
@@ -154,8 +161,6 @@ export default async function billingRoutes(app) {
                         org_id: org.id,
                         refresh_token: hashToken(rawRefreshToken),
                         refresh_token_expires: expiry,
-                        reset_token: hashToken(rawSetupToken),
-                        reset_token_expires: new Date(Date.now() + 24 * 60 * 60 * 1000),
                     },
                 });
                 await tx.membership.create({ data: { org_id: org.id, user_id: user.id, org_role: "owner" } });
@@ -177,13 +182,6 @@ export default async function billingRoutes(app) {
                 return { org, user };
             });
             createdOrgId = provisioned.org.id;
-
-            // A guest account is provisioned with a random unknown password. Send a
-            // one-time password setup link before completing checkout so the owner
-            // can recover access after the initial browser session expires.
-            const { sendPasswordResetEmail } = await import("../../src/services/mailer.js");
-            const setupUrl = `${(process.env.FRONTEND_URL || process.env.APP_URL || "https://nexusthecore.com").replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(rawSetupToken)}`;
-            await sendPasswordResetEmail(cleanEmail, setupUrl, { purpose: "setup" });
 
             let checkoutUrl = null;
             if (mode === "checkout") {
@@ -212,8 +210,8 @@ export default async function billingRoutes(app) {
                     ],
                     subscription_data: { metadata },
                     metadata,
-                    success_url: `${process.env.APP_URL || process.env.FRONTEND_URL}/supportops/success?session_id={CHECKOUT_SESSION_ID}`,
-                    cancel_url: `${process.env.APP_URL || process.env.FRONTEND_URL}/supportops/cancel`,
+                    success_url: `${(process.env.APP_URL || process.env.FRONTEND_URL || "https://nexusthecore.com").replace(/\/$/, "")}/supportops/success?session_id={CHECKOUT_SESSION_ID}`,
+                    cancel_url: `${(process.env.APP_URL || process.env.FRONTEND_URL || "https://nexusthecore.com").replace(/\/$/, "")}/supportops/cancel`,
                 }, { idempotencyKey: `nexus-checkout-${provisioned.org.id}-${plan.key}` });
                 checkoutUrl = session.url;
             }
@@ -236,7 +234,6 @@ export default async function billingRoutes(app) {
                 maxAge: 30 * 24 * 60 * 60,
             });
 
-            if (mode === "trial") invalidateSubscription(provisioned.org.id, targetApp.id);
             return reply.code(201).send({
                 success: true,
                 token,
@@ -290,6 +287,7 @@ export default async function billingRoutes(app) {
                 });
             }
 
+            const trialEndsAt = trialEnd();
             await prisma.subscription.create({
                 data: {
                     org_id: org.id,
@@ -309,7 +307,7 @@ export default async function billingRoutes(app) {
                 create: { org_id: org.id, user_id: req.user.id, app_id: sup.id, app_role: "admin" },
             });
 
-            return reply.code(201).send({ ok: true, trialEndsAt: trialEnd() });
+            return reply.code(201).send({ ok: true, trialEndsAt });
         } catch (e) {
             if (fail(reply, e)) return;
             throw e;
@@ -482,5 +480,4 @@ async function syncSubscription(sub, deleted) {
             },
         });
     }
-    invalidateSubscription(orgId, app.id);
 }

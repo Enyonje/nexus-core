@@ -16,74 +16,17 @@ import {
 import { useAuth } from "../context/AuthProvider";
 import { useAccess } from "../context/AccessProvider";
 
-// Secondary fallback imports if legacy path references exist
-import * as MainAuthModule from "../context/AuthContext";
-import * as MainAccessModule from "../context/AccessProvider";
-
 /**
  * Safe hook selector for SupportOps Auth
  */
 function useSafeAuth() {
-    try {
-        // 1. Prefer dedicated SupportOps Auth
-        if (typeof useAuth === "function") {
-            const supportOpsAuth = useAuth();
-            if (supportOpsAuth) return supportOpsAuth;
-        }
-    } catch (e) {
-        // Fall through to legacy/main auth
-    }
-
-    try {
-        // 2. Main app AuthContext fallback
-        if (MainAuthModule?.useAuth) {
-            const mainAuth = MainAuthModule.useAuth();
-            if (mainAuth) return mainAuth;
-        }
-    } catch (e) {
-        // Fall through to default mock state
-    }
-
-    // 3. Fail-safe fallback object to prevent crash
-    const token = typeof window !== "undefined" ? localStorage.getItem("supportops_token") : null;
-    return {
-        user: token ? { role: "admin", email: "admin@company.com" } : null,
-        isAuthenticated: !!token,
-        loading: false,
-    };
+    try { return useAuth(); }
+    catch { return { user: null, isAuthenticated: false, loading: false }; }
 }
 
-/**
- * Safe hook selector for Access / App Context
- */
 function useSafeAccess() {
-    try {
-        if (typeof useSupportOpsAccess === "function") {
-            const supportOpsAccess = useSupportOpsAccess();
-            if (supportOpsAccess) return supportOpsAccess;
-        }
-    } catch (e) { }
-
-    try {
-        if (MainAccessModule?.useAccess) {
-            const mainAccess = MainAccessModule.useAccess();
-            if (mainAccess) return mainAccess;
-        }
-        if (MainAccessModule?.useApp) {
-            const mainApp = MainAccessModule.useApp();
-            if (mainApp) return mainApp;
-        }
-    } catch (e) { }
-
-    // Fallback defaults for plan/permissions
-    return {
-        loading: false,
-        error: null,
-        isSubscribed: true,
-        subscribed: true,
-        can: () => true,
-        hasPermission: () => true,
-    };
+    try { return useAccess(); }
+    catch { return { loading: false, error: null, isSubscribed: false, subscribed: false, can: () => false, hasPermission: () => false, canAccess: () => false }; }
 }
 
 // ============================================================
@@ -105,6 +48,8 @@ const INVESTOR_HOME = "/supportops/investor";
 
 export function normalizeRole(user) {
     return String(
+        user?.appAccess?.find?.((entry) => entry?.app?.slug === "supportops")?.app_role ||
+        user?.supportopsRole ||
         user?.role ||
         user?.user_metadata?.role ||
         user?.app_metadata?.role ||
@@ -343,7 +288,7 @@ export function RequireApp() {
     }
 
     const isSubscribed =
-        app.isSubscribed ?? app.subscribed ?? true;
+        app.isSubscribed ?? app.subscribed ?? false;
 
     if (!isSubscribed) {
         return (
@@ -407,7 +352,7 @@ export function PlanBanner() {
     const auth = useSafeAuth();
 
     const isSubscribed =
-        app.isSubscribed ?? app.subscribed ?? true;
+        app.isSubscribed ?? app.subscribed ?? false;
 
     if (!isSubscribed) return null;
 

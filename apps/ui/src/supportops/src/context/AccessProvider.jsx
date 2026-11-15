@@ -6,14 +6,20 @@ const AccessContext = createContext(null);
 // Role hierarchy definitions
 const ROLE_PERMISSIONS = {
     'Super Admin': ['manage_members', 'manage_billing', 'manage_workspace', 'manage_triage', 'view_analytics'],
-    'Workspace Admin': ['manage_workspace', 'manage_triage', 'view_analytics'],
+    'Management': ['manage_triage', 'view_analytics'],
     'Support Agent': ['manage_triage', 'view_analytics'],
+    'Investor': ['view_analytics'],
 };
 
 export function AccessProvider({ children }) {
     const { user, loading: authLoading } = useAuth();
 
-    const userRole = user?.role || 'Guest';
+    const appRole = user?.appAccess?.find((entry) => entry?.app?.slug === 'supportops')?.app_role;
+    const userRole = appRole ? ({ admin: 'Super Admin', management: 'Management', agent: 'Support Agent', investor: 'Investor' }[String(appRole).toLowerCase()] || 'Guest') : 'Guest';
+    const subscription = user?.subscription;
+    const activeStatus = ['active', 'trialing'].includes(String(subscription?.status || '').toLowerCase());
+    const trialIsCurrent = !subscription?.trialEndsAt || new Date(subscription.trialEndsAt).getTime() > Date.now();
+    const hasSupportOpsAccess = Boolean(appRole && subscription?.app === 'supportops' && activeStatus && trialIsCurrent);
 
     // Check if current user has a specific permission
     const hasPermission = (permission) => {
@@ -31,9 +37,11 @@ export function AccessProvider({ children }) {
 
     const value = {
         role: userRole,
+        isSubscribed: hasSupportOpsAccess,
+        subscribed: hasSupportOpsAccess,
         isSuperAdmin: userRole === 'Super Admin',
         isWorkspaceAdmin: userRole === 'Workspace Admin' || userRole === 'Super Admin',
-        isAgent: !!user,
+        isAgent: userRole === 'Support Agent',
         hasPermission,
         hasRole,
         loading: authLoading,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { api } from "../config/paths";
 import {
   LineChart,
   Line,
@@ -16,7 +17,7 @@ export default function RevenueChart() {
     async function fetchRevenue() {
       try {
         const res = await fetch(
-          `${import.meta.env.VITE_API_URL}/api/metrics/revenue`,
+          api("/api/v1/supportops/metrics/revenue"),
           {
             headers: {
               "Content-Type": "application/json",
@@ -29,7 +30,7 @@ export default function RevenueChart() {
 
         const json = await res.json();
         // Expecting backend to return: [{ month: "Jan", revenue: 1200 }, ...]
-        setData(json);
+        setData(Array.isArray(json?.data) ? json.data : []);
       } catch (err) {
         console.error("Revenue fetch error:", err);
       } finally {
@@ -53,7 +54,7 @@ export default function RevenueChart() {
     <div className="rounded-2xl bg-white/5 border border-white/10 p-6">
       <h2 className="text-lg font-semibold mb-4">Monthly Recurring Revenue</h2>
 
-      <div className="h-[260px]">
+      {!data.length ? <p className="text-sm text-slate-400">Historical invoice data is not connected yet.</p> : <div className="h-[260px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
             <XAxis dataKey="month" stroke="#94a3b8" />
@@ -74,7 +75,7 @@ export default function RevenueChart() {
             />
           </LineChart>
         </ResponsiveContainer>
-      </div>
+      </div>} 
     </div>
   );
 }

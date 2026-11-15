@@ -62,7 +62,7 @@ const API_BASE_URL = (
   import.meta.env.VITE_BACKEND_API_URL ||
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_URL ||
-  "https://nexus-core-a0px.onrender.com"
+  ""
 ).replace(/\/api\/?$/, "");
 
 const REFRESH_MS = 60_000;

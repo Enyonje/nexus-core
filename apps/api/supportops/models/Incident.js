@@ -188,25 +188,21 @@ export class Incident {
      * @param {string} [updates.resolutionSummary] 
      * @returns {Promise<Incident>}
      */
-    static async updateStatus(pg, incidentId, { status = null, assignedTo = null, resolutionSummary = null }) {
+    static async updateStatus(pg, incidentId, { orgId, status = null, assignedTo = null, resolutionSummary = null }) {
         const client = await pg.connect();
         try {
             const query = `
-          UPDATE incidents
-          SET status = COALESCE($1, status),
-              assigned_to = COALESCE($2, assigned_to),
-              resolution_summary = COALESCE($3, resolution_summary),
-              resolved_at = CASE WHEN $1 IN ('resolved', 'closed') THEN CURRENT_TIMESTAMP ELSE resolved_at END,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE id = $4
-          RETURNING *;
-        `;
-
-            const res = await client.query(query, [status, assignedTo, resolutionSummary, incidentId]);
-            if (res.rows.length === 0) {
-                throw new Error("INCIDENT_NOT_FOUND");
-            }
-            return Incident.fromRow(res.rows[0]);
+              UPDATE incidents
+              SET status = COALESCE($1, status),
+                  assigned_to = COALESCE($2, assigned_to),
+                  resolution_summary = COALESCE($3, resolution_summary),
+                  resolved_at = CASE WHEN $1 IN ('resolved', 'closed') THEN CURRENT_TIMESTAMP ELSE resolved_at END,
+                  updated_at = CURRENT_TIMESTAMP
+              WHERE id = $4 AND org_id = $5
+              RETURNING *;
+            `;
+            const res = await client.query(query, [status, assignedTo, resolutionSummary, incidentId, orgId]);
+            return res.rows[0] ? Incident.fromRow(res.rows[0]) : null;
         } finally {
             client.release();
         }

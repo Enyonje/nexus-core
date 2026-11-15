@@ -33,7 +33,7 @@ export default function JoinPage() {
     async function accept() {
         setBusy(true);
         try {
-            const authToken = localStorage.getItem("authToken");
+            const authToken = localStorage.getItem("supportops_token");
             const res = await fetch(SUPPORTOPS_API.invites("/accept"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` }, body: JSON.stringify({ token }) });
             const d = await res.json().catch(() => null);
             if (!res.ok) throw new Error(d?.message || "Could not accept the invitation");

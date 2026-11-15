@@ -15,15 +15,11 @@ import { apiFetch as sharedApiFetch } from "../../../lib/api";
 
 /* ---------- 2. Configuration ---------- */
 
-const API_BASE_URL = (
-  import.meta.env.VITE_SUPPORTOPS_API_URL ||
-  import.meta.env.VITE_BACKEND_API_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
-  import.meta.env.VITE_API_URL ||
-  "https://nexus-core-a0px.onrender.com"
-).replace(/\/api\/?$/, "");
+const API_BASE_URL = (import.meta.env.VITE_SUPPORTOPS_API_URL || "").replace(/\/api\/?$/, "");
 
-const TOKEN_KEYS = ["token", "authToken", "access_token", "supportops_token"];
+// SupportOps stores the short-lived shared-Nexus access token in this one key.
+// Do not pick up stale generic tokens left by older mock auth implementations.
+const TOKEN_KEYS = ["supportops_token"];
 const ORG_KEYS = ["activeOrgId", "orgId"];
 
 /* ---------- 3. Auth and storage helpers ---------- */

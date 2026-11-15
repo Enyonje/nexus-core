@@ -6,66 +6,26 @@ import { RefreshCw, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../context/AuthProvider';
 import { useAccess } from '../context/AccessProvider';
 
-// Legacy fallback imports (wrapped in safe evaluation)
-import * as MainAuthModule from '../context/AuthContext';
 
 /**
  * Safe Auth hook resolver to avoid "useAuth must be used within an AuthProvider" errors
  */
 function useSafeAuth() {
-    try {
-        if (typeof useAuth === 'function') {
-            const auth = useAuth();
-            if (auth) return auth;
-        }
-    } catch (e) {
-        // Fall through
-    }
-
-    try {
-        if (MainAuthModule?.useAuth) {
-            const mainAuth = MainAuthModule.useAuth();
-            if (mainAuth) return mainAuth;
-        }
-    } catch (e) {
-        // Fall through
-    }
-
-    // Fail-safe fallback checking local storage
-    const token = typeof window !== 'undefined' ? localStorage.getItem('supportops_token') : null;
-    return {
-        user: token ? { role: 'Super Admin', email: 'admin@company.com' } : null,
-        isAuthenticated: !!token,
-        loading: false,
-    };
+    try { return useAuth(); }
+    catch { return { user: null, isAuthenticated: false, loading: false }; }
 }
 
-/**
- * Safe Access hook resolver
- */
 function useSafeAccess() {
-    try {
-        if (typeof useAccess === 'function') {
-            const access = useAccess();
-            if (access) return access;
-        }
-    } catch (e) {
-        // Fall through
-    }
-
-    return {
-        role: 'Super Admin',
-        isSuperAdmin: true,
-        hasRole: () => true,
-        hasPermission: () => true,
-    };
+    try { return useAccess(); }
+    catch { return { hasRole: () => false, loading: false }; }
 }
 
 /**
  * RequireRole Component
  * Guarantees role enforcement for protected workspace routes.
  */
-export default function RequireRole({ allowedRoles = ['Super Admin', 'Workspace Admin'], children }) {
+export default function RequireRole({ allowedRoles, roles, children }) {
+    const requestedRoles = allowedRoles || roles || [];
     const { user, loading: authLoading, isAuthenticated } = useSafeAuth();
     const { hasRole, loading: accessLoading } = useSafeAccess();
     const location = useLocation();
@@ -91,16 +51,13 @@ export default function RequireRole({ allowedRoles = ['Super Admin', 'Workspace 
     }
 
     // 2. Normalize user roles
-    const currentRole = (user?.role || 'Guest').toLowerCase().trim();
-    const normalizedAllowedRoles = Array.isArray(allowedRoles)
-        ? allowedRoles.map((r) => String(r).toLowerCase().trim())
-        : [String(allowedRoles).toLowerCase().trim()];
+    const currentRole = (user?.appAccess?.find?.((entry) => entry?.app?.slug === 'supportops')?.app_role || user?.supportopsRole || 'Guest').toLowerCase().trim();
+    const normalizedAllowedRoles = (Array.isArray(requestedRoles) ? requestedRoles : [requestedRoles]).map((r) => String(r).toLowerCase().trim());
 
     // Super Admin override or matching allowed roles check
     const isAllowed =
-        currentRole === 'super admin' ||
         normalizedAllowedRoles.includes(currentRole) ||
-        (typeof hasRole === 'function' && hasRole(allowedRoles));
+        normalizedAllowedRoles.includes(currentRole === 'super admin' ? 'admin' : currentRole === 'support agent' ? 'agent' : currentRole);
 
     // 3. Unauthorized Role -> Show Restricted Notice or Redirect
     if (!isAllowed) {
@@ -110,7 +67,7 @@ export default function RequireRole({ allowedRoles = ['Super Admin', 'Workspace 
                     <ShieldAlert className="mx-auto h-12 w-12 text-red-400" />
                     <h2 className="text-xl font-bold text-white">Access Restricted</h2>
                     <p className="text-sm text-slate-400">
-                        Your role (<span className="text-cyan-400 font-semibold">{user?.role || 'Guest'}</span>) does not have access privileges for this section.
+                        Your role (<span className="text-cyan-400 font-semibold">{user?.supportopsRole || currentRole || 'Guest'}</span>) does not have access privileges for this section.
                     </p>
                     <button
                         type="button"

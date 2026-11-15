@@ -178,9 +178,12 @@ model Organization {
   conversations    Conversation[]
   supportCustomers SupportCustomer[]
   supportTickets   SupportTicket[]
+  aiActionProposals AIActionProposal[]
+  aiUsageRecords   AIUsage[]
   businessProfile  BusinessProfile?
   businessActivity BusinessActivity[]
   integrations IntegrationCredential[]
+  incidents    Incident[]
 
   @@index([owner_id])
   @@map("organizations")
@@ -658,6 +661,35 @@ model Message {
 }
 
 // ============================================================
+// SUPPORTOPS: INCIDENTS
+// ============================================================
+
+model Incident {
+  id                 String   @id @default(uuid())
+  org_id             String
+  ticket_id          String?
+  execution_id       String?
+  reported_by        String?
+  title              String
+  description        String   @default("") @db.Text
+  category           String   @default("general")
+  severity           String   @default("medium")
+  status             String   @default("open")
+  assigned_to        String?
+  metadata           Json     @default("{}")
+  resolution_summary String?  @db.Text
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+  resolved_at        DateTime?
+
+  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, status, created_at])
+  @@index([org_id, severity])
+  @@map("incidents")
+}
+
+// ============================================================
 // SUPPORTOPS: CUSTOMERS
 // ============================================================
 
@@ -701,6 +733,8 @@ model SupportTicket {
   customer SupportCustomer @relation(fields: [customer_id], references: [id])
   assignee User? @relation("TicketAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
   messages SupportTicketMessage[]
+  aiActionProposals AIActionProposal[]
+  aiUsageRecords AIUsage[]
 
   @@unique([org_id, number])
   @@index([org_id, status])
@@ -1073,4 +1107,61 @@ model BusinessActivity {
   @@index([org_id, created_at])
   @@index([org_id, department])
   @@map("business_activities")
+}
+
+
+// ============================================================
+// SUPPORTOPS: AI PROPOSALS (human approval required)
+// ============================================================
+
+model AIActionProposal {
+  id              String   @id @default(uuid())
+  org_id          String
+  ticket_id       String
+  user_id         String?
+  agent_name      String   @default("SupportOps AI")
+  action_type     String   @default("DRAFT_REPLY")
+  summary         String   @db.Text
+  payload         Json     @default("{}")
+  confidence_score Float   @default(0)
+  risk_level      String   @default("low")
+  status          String   @default("pending")
+  reviewed_by     String?
+  reviewed_at     DateTime?
+  rejection_reason String? @db.Text
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  org    Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  ticket SupportTicket @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, status, created_at])
+  @@index([ticket_id, created_at])
+  @@map("ai_action_proposals")
+}
+
+// ============================================================
+// SUPPORTOPS: AI USAGE METERING
+// ============================================================
+
+model AIUsage {
+  id               String   @id @default(uuid())
+  org_id           String
+  ticket_id        String?
+  user_id          String?
+  provider         String   @default("openai")
+  model            String
+  prompt_tokens    Int      @default(0)
+  completion_tokens Int     @default(0)
+  total_tokens     Int      @default(0)
+  cost_usd         Float    @default(0)
+  action           String   @default("ticket_draft")
+  created_at       DateTime @default(now())
+
+  org    Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  ticket SupportTicket? @relation(fields: [ticket_id], references: [id], onDelete: SetNull)
+
+  @@index([org_id, created_at])
+  @@index([org_id, action, created_at])
+  @@map("ai_usage")
 }

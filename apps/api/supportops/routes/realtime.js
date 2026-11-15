@@ -9,6 +9,7 @@ supportOpsBus.setMaxListeners(100);
 
 // In-memory registry and tracking maps expected by chat and ticket services
 export const activeSockets = new Map();
+// SSE subscriber registries, keyed by visitor conversation ID or workspace ID.
 export const visitors = new Map();
 export const staff = new Map();
 
@@ -62,60 +63,80 @@ export function closeRealtime() {
     staff.clear();
 }
 
-/**
- * Broadcasts a structured JSON event to all connected WebSocket clients
- * belonging to a specific workspace (or globally if workspaceId is omitted).
- */
-export function broadcastTicketEvent(workspaceId, eventType, payload) {
-    const message = JSON.stringify({
-        event: eventType,
-        timestamp: new Date().toISOString(),
-        data: payload,
-    });
+/** Send a payload to a scoped SSE subscriber registry. */
+function publishToRegistry(registry, key, event) {
+    const subscribers = registry.get(String(key));
+    if (!subscribers) return;
+    for (const send of [...subscribers]) {
+        try { send("message", event); }
+        catch { subscribers.delete(send); }
+    }
+    if (subscribers.size === 0) registry.delete(String(key));
+}
 
-    if (workspaceId && activeSockets.has(workspaceId)) {
-        for (const socket of activeSockets.get(workspaceId)) {
-            if (socket.readyState === 1) { // WebSocket.OPEN
-                socket.send(message);
-            }
-        }
+/**
+ * Supports both legacy call forms:
+ *   push(registryMap, workspaceOrConversationId, payload)
+ *   push(workspaceId, eventName, payload) for ticket event producers.
+ */
+export function broadcastTicketEvent(first, second, third) {
+    if (first instanceof Map) {
+        publishToRegistry(first, second, third);
         return;
     }
 
-    for (const clients of activeSockets.values()) {
-        for (const socket of clients) {
-            if (socket.readyState === 1) {
-                socket.send(message);
-            }
-        }
+    const workspaceId = first == null ? null : String(first);
+    const payload = third ?? { type: String(second ?? "message") };
+    if (workspaceId) publishToRegistry(staff, workspaceId, payload);
+    else {
+        for (const key of staff.keys()) publishToRegistry(staff, key, payload);
+    }
+
+    const message = JSON.stringify({
+        event: typeof second === "string" ? second : "supportops:event",
+        timestamp: new Date().toISOString(),
+        data: payload,
+    });
+    const clients = workspaceId ? activeSockets.get(workspaceId) : null;
+    for (const socket of clients ?? []) {
+        if (socket.readyState === 1) socket.send(message);
     }
 }
 
-// Export push as an alias for broadcastTicketEvent
 export const push = broadcastTicketEvent;
 
-/**
- * Helper expected by chatRoutes to initialize or attach SSE / stream connections
- */
-export function openStream(req, reply, workspaceId = 'default') {
+/** Register an SSE client in the requested scoped registry. */
+export function openStream(reply, registry, workspaceId = "default", req = null) {
+    const key = String(workspaceId);
+    reply.hijack?.();
     reply.raw.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
     });
 
     const sendSSE = (event, data) => {
+        if (reply.raw.destroyed || reply.raw.writableEnded) return;
         reply.raw.write(`event: ${event}\n`);
         reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
     };
 
-    sendSSE('connected', {
-        workspaceId,
-        message: 'Stream connected successfully',
-        timestamp: new Date().toISOString(),
-    });
+    if (!registry.has(key)) registry.set(key, new Set());
+    const subscribers = registry.get(key);
+    subscribers.add(sendSSE);
+    sendSSE("connected", { workspaceId: key, timestamp: new Date().toISOString() });
 
+    const heartbeat = setInterval(() => {
+        if (!reply.raw.destroyed && !reply.raw.writableEnded) reply.raw.write(": keep-alive\n\n");
+    }, 20000);
+    const cleanup = () => {
+        clearInterval(heartbeat);
+        subscribers.delete(sendSSE);
+        if (!subscribers.size) registry.delete(key);
+    };
+    (req?.raw ?? reply.raw).once("close", cleanup);
+    reply.raw.once("close", cleanup);
     return sendSSE;
 }
 

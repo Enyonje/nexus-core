@@ -55,7 +55,7 @@ export default async function chatRoutes(app) {
     // Every /widget/ request must carry a valid key, and the page's origin must match the allowed domain.
     // NOTE: if you register @fastify/cors globally, allow these routes there too or it may answer first.
     app.addHook("onRequest", async (req, reply) => {
-        if (!req.routeOptions?.url?.includes("/widget/")) return;
+        if (!req.routeOptions?.url?.includes("/widget/") && !req.url.includes("/widget/")) return;
         const ch = await prisma.channel.findFirst({ where: { key: "web", webhook_token: req.params.key, status: "connected" } });
         if (!ch) return reply.code(404).send({ message: "Chat is not available" });
         req.channel = ch;

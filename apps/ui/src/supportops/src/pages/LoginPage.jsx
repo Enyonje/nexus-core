@@ -1,116 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
+import { useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 export default function LoginPage() {
-    const [formData, setFormData] = useState({ email: '', password: '' });
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
+  const [formData, setFormData] = useState({ email: "", password: "" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const auth = useAuth();
+  const location = useLocation();
 
-    const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://nexus-core-a0px.onrender.com/api/v1').replace(/\/$/, '');
+  const handleChange = (event) => setFormData((current) => ({ ...current, [event.target.name]: event.target.value }));
+  const handleLogin = async (event) => {
+    event.preventDefault(); setLoading(true); setError("");
+    try {
+      const data = await auth.login(formData.email, formData.password);
+      const target = location.state?.from?.pathname || data.redirectTo || "/supportops";
+      navigate(target.startsWith("/supportops") ? target : "/supportops", { replace: true });
+    } catch (err) { setError(err.message || "Unable to sign in."); }
+    finally { setLoading(false); }
+  };
 
-    const handleChange = (e) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
-    };
-
-    const handleLogin = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setError(null);
-
-        try {
-            const res = await fetch(`${API_BASE}/supportops/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData),
-            });
-
-            const data = await res.json();
-
-            if (!res.ok || !data.success) {
-                throw new Error(data.error || 'Invalid email or password.');
-            }
-
-            // Store JWT token / session
-            if (data.token) {
-                localStorage.setItem('supportops_token', data.token);
-            }
-
-            // Redirect to the Super Admin Dashboard
-            window.location.href = data.redirectUrl || '/supportops/admin/executive';
-        } catch (err) {
-            console.error('[Login Error]:', err);
-            setError(err.message || 'Failed to authenticate. Please check your credentials.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
-            <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl space-y-6">
-
-                {/* Header Badge & Title */}
-                <div className="text-center space-y-2">
-                    <span className="inline-block px-3 py-1 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-semibold rounded-full uppercase tracking-wider">
-                        SupportOps Auth
-                    </span>
-                    <h1 className="text-2xl font-bold text-white">Welcome Back</h1>
-                    <p className="text-slate-400 text-sm">
-                        Sign in to your autonomous AI triage workspace.
-                    </p>
-                </div>
-
-                {error && (
-                    <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl">
-                        {error}
-                    </div>
-                )}
-
-                <form onSubmit={handleLogin} className="space-y-4">
-                    <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Work Email</label>
-                        <input
-                            type="email"
-                            name="email"
-                            required
-                            placeholder="admin@company.com"
-                            value={formData.email}
-                            onChange={handleChange}
-                            className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-cyan-500 text-sm"
-                        />
-                    </div>
-
-                    <div>
-                        <div className="flex items-center justify-between mb-1">
-                            <label className="block text-xs font-medium text-slate-300">Password</label>
-                            <a href="/supportops/forgot-password" className="text-xs text-cyan-400 hover:underline">Forgot password?</a>
-                        </div>
-                        <input
-                            type="password"
-                            name="password"
-                            required
-                            placeholder="••••••••••••"
-                            value={formData.password}
-                            onChange={handleChange}
-                            className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-cyan-500 text-sm"
-                        />
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-semibold py-3 px-4 rounded-xl transition-colors mt-2 shadow-lg shadow-cyan-600/20"
-                    >
-                        {loading ? 'Authenticating...' : 'Sign In to Dashboard'}
-                    </button>
-                </form>
-
-                <div className="text-center text-xs text-slate-500 pt-4 border-t border-slate-800">
-                    Don't have an active workspace?{' '}
-                    <a href="/supportops/pricing" className="text-cyan-400 font-medium hover:underline">
-                        View plans &amp; start trial
-                    </a>
-                </div>
-            </div>
-        </div>
-    );
+  return <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-10 text-white">
+    <form onSubmit={handleLogin} className="w-full max-w-md space-y-5 rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-2xl">
+      <div><p className="text-sm font-semibold text-cyan-400">Nexus identity</p><h1 className="mt-2 text-2xl font-bold">Sign in to SupportOps</h1><p className="mt-2 text-sm text-slate-400">Use your existing Nexus Core account.</p></div>
+      {error && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
+      <label className="block text-sm text-slate-300">Email<input className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-3 text-white" type="email" name="email" autoComplete="username" required value={formData.email} onChange={handleChange} /></label>
+      <label className="block text-sm text-slate-300">Password<input className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-3 text-white" type="password" name="password" autoComplete="current-password" required value={formData.password} onChange={handleChange} /></label>
+      <button disabled={loading} className="w-full rounded-lg bg-cyan-600 px-4 py-3 font-semibold text-white hover:bg-cyan-500 disabled:opacity-60">{loading ? "Signing in…" : "Sign in"}</button>
+      <p className="text-center text-sm text-slate-400">New workspace? <a className="text-cyan-400 hover:underline" href="/supportops/onboarding">Start setup</a></p>
+    </form>
+  </main>;
 }

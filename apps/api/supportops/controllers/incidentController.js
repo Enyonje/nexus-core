@@ -1,228 +1,72 @@
-/**
- * Incident Management Controller
- * Path: supportops/controllers/incidentsController.js
- */
-
-import { Incident } from "../models/Incident.js";
-import { broadcast } from "../realtime/socket.js";
+import { Incident, INCIDENT_SEVERITY, INCIDENT_STATUS } from "../models/Incident.js";
+import { push } from "../routes/realtime.js";
 import { emitSupportOpsBusinessEvent } from "../services/nexusBusinessEvents.js";
 
-/**
- * Extracts normalized organization/tenant context and user ID from Fastify request
- */
-function getAuthContext(request) {
-  const orgId =
-    request.access?.org?.id ||
-    request.tenantId ||
-    request.currentUser?.org_id ||
-    request.user?.org_id ||
-    null;
+const severities = Object.values(INCIDENT_SEVERITY);
+const statuses = Object.values(INCIDENT_STATUS);
+const context = (req) => ({ orgId: req.access?.org?.id, userId: req.user?.id || null });
+const db = (req) => req.server.pg;
 
-  const userId =
-    request.access?.user?.id ||
-    request.currentUser?.id ||
-    request.user?.sub ||
-    request.user?.id ||
-    "system";
-
-  return { orgId, userId };
-}
-
-/**
- * Creates a new incident, initializes its timeline, and broadcasts real-time event
- */
-export async function createIncident(request, reply) {
-  const { orgId, userId } = getAuthContext(request);
-  const db = request.server.pg || request.server.prisma;
-  const body = request.body || {};
-
-  if (!orgId) {
-    return reply.code(400).send({
-      error: "MISSING_ORG_CONTEXT",
-      message: "Organization ID or tenant context could not be determined",
-    });
-  }
-
+export async function createIncident(req, reply) {
+  const { orgId, userId } = context(req);
+  if (!orgId) return reply.code(403).send({ error: "WORKSPACE_REQUIRED" });
+  const body = req.body || {};
+  const title = typeof body.title === "string" ? body.title.trim().slice(0, 200) : "";
+  if (!title) return reply.code(400).send({ error: "TITLE_REQUIRED", message: "Incident title is required." });
+  const severity = body.severity || INCIDENT_SEVERITY.MEDIUM;
+  if (!severities.includes(severity)) return reply.code(400).send({ error: "INVALID_SEVERITY" });
   try {
-    let incident;
-
-    const initialTimeline = [
-      {
-        message: body.message || "Incident created",
-        actor: userId || "system",
-        timestamp: new Date(),
-      },
-    ];
-
-    // Handle Mongoose ORM model
-    if (typeof Incident.create === "function") {
-      incident = await Incident.create({
-        tenantId: orgId,
-        org_id: orgId,
-        ...body,
-        timeline: initialTimeline,
-      });
-    }
-    // Fallback for direct Prisma/PG static helper
-    else if (typeof Incident.createIncident === "function") {
-      incident = await Incident.createIncident(db, {
-        orgId,
-        ...body,
-        timeline: initialTimeline,
-      });
-    }
-
-    void emitSupportOpsBusinessEvent(orgId, {
-      type: "support.incident_created",
-      title: "Support incident created",
-      department: "serve",
-      metadata: { severity: incident?.severity || body.severity || "unknown", status: incident?.status || body.status || "open" },
+    const incident = await Incident.create(db(req), {
+      orgId, reportedBy: userId, ticketId: body.ticketId || null, executionId: body.executionId || null,
+      title, description: typeof body.description === "string" ? body.description.slice(0, 10000) : "",
+      category: typeof body.category === "string" ? body.category.slice(0, 80) : "general",
+      severity, status: INCIDENT_STATUS.OPEN, assignedTo: body.assignedTo || null,
+      metadata: body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata) ? body.metadata : {},
     });
-
-    // Safely emit real-time event
-    try {
-      broadcast("incident:new", incident);
-    } catch (wsErr) {
-      request.log.warn({ error: wsErr }, "Realtime broadcast failed for incident:new");
-    }
-
+    push(orgId, "INCIDENT_CREATED", incident);
+    void emitSupportOpsBusinessEvent(orgId, { type: "support.incident_created", title: "Support incident created", department: "serve", metadata: { severity, status: incident.status } }).catch((e) => req.log.warn({ err: e }, "Nexus activity event delivery failed"));
     return reply.code(201).send(incident);
   } catch (err) {
-    request.log.error(err);
-    return reply.code(500).send({
-      error: "INTERNAL_SERVER_ERROR",
-      message: err.message || "Failed to create incident",
-    });
+    req.log.error({ err }, "Incident creation failed");
+    return reply.code(500).send({ error: "INCIDENT_CREATE_FAILED", message: "Unable to create incident." });
   }
 }
 
-/**
- * Retrieves all incidents belonging to the current organization/tenant
- */
-export async function listIncidents(request, reply) {
-  const { orgId } = getAuthContext(request);
-  const db = request.server.pg || request.server.prisma;
-
-  if (!orgId) {
-    return reply.code(400).send({
-      error: "MISSING_ORG_CONTEXT",
-      message: "Organization ID or tenant context could not be determined",
-    });
-  }
-
+export async function listIncidents(req, reply) {
+  const { orgId } = context(req);
+  if (!orgId) return reply.code(403).send({ error: "WORKSPACE_REQUIRED" });
+  const { status, severity } = req.query || {};
+  if (status && !statuses.includes(status)) return reply.code(400).send({ error: "INVALID_STATUS" });
+  if (severity && !severities.includes(severity)) return reply.code(400).send({ error: "INVALID_SEVERITY" });
+  const limit = Math.min(Math.max(Number.parseInt(req.query?.limit, 10) || 50, 1), 100);
+  const offset = Math.max(Number.parseInt(req.query?.offset, 10) || 0, 0);
   try {
-    let incidents;
-
-    // Handle Mongoose ORM model
-    if (typeof Incident.find === "function") {
-      incidents = await Incident.find({
-        $or: [{ tenantId: orgId }, { org_id: orgId }],
-      }).sort({ createdAt: -1 });
-    }
-    // Fallback for direct Prisma/PG static helper
-    else if (typeof Incident.findByOrg === "function") {
-      incidents = await Incident.findByOrg(db, orgId);
-    } else {
-      incidents = [];
-    }
-
-    return reply.code(200).send(incidents);
+    return await Incident.findAll(db(req), { orgId, status, severity, limit, offset });
   } catch (err) {
-    request.log.error(err);
-    return reply.code(500).send({
-      error: "INTERNAL_SERVER_ERROR",
-      message: err.message || "Failed to list incidents",
-    });
+    req.log.error({ err }, "Incident listing failed");
+    return reply.code(500).send({ error: "INCIDENT_LIST_FAILED", message: "Unable to load incidents." });
   }
 }
 
-/**
- * Updates incident status or appends a timeline entry, broadcasting real-time updates
- */
-export async function updateIncident(request, reply) {
-  const { id } = request.params;
-  const { status, message } = request.body || {};
-  const { userId } = getAuthContext(request);
-  const db = request.server.pg || request.server.prisma;
-
-  if (!id) {
-    return reply.code(400).send({
-      error: "BAD_REQUEST",
-      message: "Incident ID parameter is required",
-    });
+export async function updateIncident(req, reply) {
+  const { orgId, userId } = context(req);
+  if (!orgId) return reply.code(403).send({ error: "WORKSPACE_REQUIRED" });
+  const body = req.body || {};
+  if (body.status && !statuses.includes(body.status)) return reply.code(400).send({ error: "INVALID_STATUS" });
+  if (!body.status && body.assignedTo === undefined && body.resolutionSummary === undefined) {
+    return reply.code(400).send({ error: "NO_CHANGES", message: "Provide a status, assignee or resolution summary." });
   }
-
   try {
-    let incident;
-
-    // Handle Mongoose ORM document
-    if (typeof Incident.findById === "function") {
-      incident = await Incident.findById(id);
-      if (!incident) {
-        return reply.code(404).send({
-          error: "NOT_FOUND",
-          message: `Incident with ID ${id} was not found`,
-        });
-      }
-
-      if (status) incident.status = status;
-
-      if (message) {
-        if (!Array.isArray(incident.timeline)) {
-          incident.timeline = [];
-        }
-        incident.timeline.push({
-          message,
-          actor: userId || "operator",
-          timestamp: new Date(),
-        });
-      }
-
-      await incident.save();
-    }
-    // Fallback for direct Prisma/PG static helper
-    else if (typeof Incident.updateIncident === "function") {
-      incident = await Incident.updateIncident(db, id, {
-        status,
-        message,
-        actor: userId,
-      });
-
-      if (!incident) {
-        return reply.code(404).send({
-          error: "NOT_FOUND",
-          message: `Incident with ID ${id} was not found`,
-        });
-      }
-    }
-
-    void emitSupportOpsBusinessEvent(orgId, {
-      type: "support.incident_updated",
-      title: "Support incident updated",
-      department: "serve",
-      metadata: { status: incident?.status || status || "updated" },
+    const incident = await Incident.updateStatus(db(req), req.params.id, {
+      orgId, status: body.status || null, assignedTo: body.assignedTo ?? null,
+      resolutionSummary: typeof body.resolutionSummary === "string" ? body.resolutionSummary.slice(0, 5000) : null,
     });
-
-    // Safely emit real-time update event
-    try {
-      broadcast("incident:update", incident);
-    } catch (wsErr) {
-      request.log.warn({ error: wsErr }, "Realtime broadcast failed for incident:update");
-    }
-
-    return reply.code(200).send(incident);
+    if (!incident) return reply.code(404).send({ error: "INCIDENT_NOT_FOUND" });
+    push(orgId, "INCIDENT_UPDATED", { ...incident, actorId: userId });
+    void emitSupportOpsBusinessEvent(orgId, { type: "support.incident_updated", title: "Support incident updated", department: "serve", metadata: { status: incident.status } }).catch((e) => req.log.warn({ err: e }, "Nexus activity event delivery failed"));
+    return incident;
   } catch (err) {
-    request.log.error(err);
-    return reply.code(500).send({
-      error: "INTERNAL_SERVER_ERROR",
-      message: err.message || "Failed to update incident",
-    });
+    req.log.error({ err }, "Incident update failed");
+    return reply.code(500).send({ error: "INCIDENT_UPDATE_FAILED", message: "Unable to update incident." });
   }
 }
-
-// Default export container
-export default {
-  createIncident,
-  listIncidents,
-  updateIncident,
-};

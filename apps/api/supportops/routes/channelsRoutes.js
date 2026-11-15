@@ -48,14 +48,25 @@ const SECRETS = {
 
 /* ---------- encryption at rest ---------- */
 const KEY = Buffer.from(process.env.CHANNELS_ENC_KEY ?? "", "base64");
+const requireEncryptionKey = () => {
+    if (KEY.length !== 32) {
+        const error = new Error("CHANNELS_ENC_KEY must be a base64-encoded 32-byte key. Configure it before managing channels.");
+        error.code = "CHANNELS_ENCRYPTION_NOT_CONFIGURED";
+        throw error;
+    }
+};
 const encrypt = (obj) => {
+    requireEncryptionKey();
     const iv = crypto.randomBytes(12);
     const c = crypto.createCipheriv("aes-256-gcm", KEY, iv);
     const data = Buffer.concat([c.update(JSON.stringify(obj), "utf8"), c.final()]);
     return [iv, c.getAuthTag(), data].map((b) => b.toString("base64")).join(".");
 };
 export const decrypt = (s) => {
-    const [iv, tag, data] = s.split(".").map((x) => Buffer.from(x, "base64"));
+    requireEncryptionKey();
+    const parts = String(s ?? "").split(".");
+    if (parts.length !== 3 || parts.some((part) => !part)) throw new Error("Stored channel credentials have an invalid encrypted format.");
+    const [iv, tag, data] = parts.map((x) => Buffer.from(x, "base64"));
     const d = crypto.createDecipheriv("aes-256-gcm", KEY, iv);
     d.setAuthTag(tag);
     return JSON.parse(Buffer.concat([d.update(data), d.final()]).toString("utf8"));
@@ -88,7 +99,7 @@ async function firstTime(channelId, externalId) {
 
 export default async function channelsRoutes(app) {
     if (KEY.length !== 32) {
-        console.warn("[Channels Warning] CHANNELS_ENC_KEY is not 32 bytes base64. Generating secure ephemeral key for session.");
+        app.log.error("CHANNELS_ENC_KEY is missing or invalid; channel credential writes are disabled until configured.");
     }
 
     // Keep the raw body so provider signatures can be verified
@@ -123,6 +134,12 @@ export default async function channelsRoutes(app) {
 
     app.put("/:key", { preHandler: admin }, async (req, reply) => {
         try {
+            if (KEY.length !== 32) {
+                return reply.code(503).send({
+                    error: "CHANNEL_ENCRYPTION_NOT_CONFIGURED",
+                    message: "Set CHANNELS_ENC_KEY to a base64-encoded 32-byte key before saving channel credentials.",
+                });
+            }
             const { key } = req.params;
             if (!SECRETS[key]) return reply.code(404).send({ message: "Unknown channel" });
 
@@ -169,8 +186,9 @@ export default async function channelsRoutes(app) {
             });
             return view(row, true);
         } catch (err) {
-            console.error("Channel update error:", err);
-            return reply.code(500).send({ error: "CHANNEL_UPDATE_FAILED", message: err.message });
+            req.log.error({ err }, "Channel update error");
+            const status = err.code === "CHANNELS_ENCRYPTION_NOT_CONFIGURED" ? 503 : 500;
+            return reply.code(status).send({ error: err.code || "CHANNEL_UPDATE_FAILED", message: err.message });
         }
     });
 
@@ -218,7 +236,13 @@ export default async function channelsRoutes(app) {
         if (!row) return reply.code(404).send({ error: "CHANNEL_NOT_FOUND" });
         if (row.key === "web") return reply.code(405).send({ message: "Web chat uses the active widget client API" });
 
-        const secrets = decrypt(row.config_enc);
+        let secrets;
+        try { secrets = decrypt(row.config_enc); }
+        catch (err) {
+            req.log.error({ err, channelId: row.id }, "Unable to decrypt channel credentials");
+            return reply.code(err.code === "CHANNELS_ENCRYPTION_NOT_CONFIGURED" ? 503 : 500)
+                .send({ error: err.code || "CHANNEL_CREDENTIALS_UNAVAILABLE" });
+        }
         const trusted =
             row.key === "whatsapp" || row.key === "social"
                 ? verifyMetaSignature(req.rawBody, req.headers["x-hub-signature-256"], secrets.appSecret)

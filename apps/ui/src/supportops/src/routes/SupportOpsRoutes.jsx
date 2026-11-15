@@ -1,4 +1,6 @@
 import React from "react";
+import { AuthProvider } from "../context/AuthContext";
+import { AccessProvider } from "../context/AccessProvider";
 import { Routes, Route, Navigate } from "react-router-dom";
 
 // Route Guards
@@ -91,6 +93,8 @@ export default function SupportOpsRoutes() {
     const publicHome = "/supportops";
 
     return (
+        <AuthProvider>
+        <AccessProvider>
         <Routes>
             {/* ---------------------------------------------------- */}
             {/* 1. PUBLIC ROUTES (No Authentication Required)        */}
@@ -266,5 +270,7 @@ export default function SupportOpsRoutes() {
                 element={<Navigate to={publicHome} replace />}
             />
         </Routes>
+        </AccessProvider>
+        </AuthProvider>
     );
 }

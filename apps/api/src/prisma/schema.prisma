@@ -1,0 +1,1106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  user
+  admin
+}
+
+enum SubscriptionType {
+  free
+  pro
+  enterprise
+}
+
+enum ExecutionStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+enum GoalStatus {
+  active
+  archived
+  completed
+}
+
+enum PipelineStage {
+  IDLE
+  PARSING
+  AUDITING
+  CALCULATING
+  READY_FOR_PAYMENT
+  COMPLETED
+  FAILED
+}
+
+enum DiscrepancySeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum OrgType {
+  PERSONAL
+  TEAM
+}
+
+enum OrgRole {
+  owner
+  admin
+  member
+  billing
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+  incomplete
+}
+
+enum PlanAudience {
+  INDIVIDUAL
+  TEAM
+  BOTH
+}
+
+enum BillingModel {
+  FLAT
+  PER_SEAT
+}
+
+enum InviteStatus {
+  pending
+  accepted
+  revoked
+  expired
+}
+
+// ============================================================
+// USERS
+// ============================================================
+
+model User {
+  id                    String            @id @default(uuid())
+  email                 String            @unique
+  password_hash         String
+  created_at            DateTime          @default(now())
+  org_id                String?
+  role                  UserRole          @default(user)
+  subscription          SubscriptionType  @default(free)
+  name                  String?
+  refresh_token         String?
+  failed_attempts       Int               @default(0)
+  locked_until          DateTime?         @db.Timestamptz(6)
+  mfa_enabled           Boolean           @default(false)
+  mfa_secret            String?
+  reset_token           String?
+  reset_token_expires   DateTime?         @db.Timestamptz(6)
+  refresh_token_expires DateTime?         @db.Timestamptz(6)
+  deleted_at            DateTime?
+  ai_used               Int               @default(0)
+  executions_count      Int               @default(0)
+  is_platform_admin     Boolean           @default(false)
+
+  // Relations
+  authAudits            AuthAudit[]
+  executionSteps        ExecutionStep[]
+  executions            Execution[]
+  goals                 Goal[]
+  adminAudits           AdminAudit[]
+
+  organization          Organization?     @relation(fields: [org_id], references: [id])
+  memberships           Membership[]
+  appAccess             AppAccess[]
+  sessions              Session[]
+
+  // SupportOps assignment relations
+  assignedConversations Conversation[]    @relation("ConversationAssignee")
+  assignedTickets       SupportTicket[]   @relation("TicketAssignee")
+  marketplaceAgents     MarketplaceAgent[]
+  marketplaceDeveloperAccount MarketplaceDeveloperAccount?
+  marketplacePurchasesAsBuyer MarketplacePurchase[] @relation("MarketplacePurchaseBuyer")
+  marketplacePurchasesAsSeller MarketplacePurchase[] @relation("MarketplacePurchaseSeller")
+  marketplaceInstalls MarketplaceInstall[]
+  marketplaceExecutions MarketplaceExecution[]
+  marketplaceReviews MarketplaceReview[]
+  marketplaceUsageRecords MarketplaceUsageRecord[]
+  businessProfilesUpdated BusinessProfile[] @relation("BusinessProfileUpdatedBy")
+  businessActivities BusinessActivity[]
+
+  @@index([org_id])
+  @@index([created_at])
+  @@map("users")
+}
+
+// ============================================================
+// ORGANIZATIONS
+// ============================================================
+
+model Organization {
+  id                 String            @id @default(uuid())
+  name               String
+  type               OrgType           @default(TEAM)
+  owner_id           String?
+  stripe_customer_id String?           @unique
+  created_at         DateTime          @default(now())
+  deleted_at         DateTime?
+
+  users            User[]
+  subscriptions    Subscription[]
+  memberships      Membership[]
+  appAccess        AppAccess[]
+  invites          Invite[]
+  usage            UsageRecord[]
+  channels         Channel[]
+  conversations    Conversation[]
+  supportCustomers SupportCustomer[]
+  supportTickets   SupportTicket[]
+  businessProfile  BusinessProfile?
+  businessActivity BusinessActivity[]
+  integrations IntegrationCredential[]
+  incidents    Incident[]
+
+  @@index([owner_id])
+  @@map("organizations")
+}
+
+// ============================================================
+// ORGANIZATION MEMBERSHIP
+// ============================================================
+
+model Membership {
+  org_id     String
+  user_id    String
+  org_role   OrgRole  @default(member)
+  created_at DateTime @default(now())
+
+  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@id([org_id, user_id])
+  @@index([user_id])
+  @@map("memberships")
+}
+
+// ============================================================
+// APPLICATIONS
+// ============================================================
+
+model App {
+  id           String   @id @default(uuid())
+  slug         String   @unique
+  name         String
+  roles        String[]
+  default_role String
+  active       Boolean  @default(true)
+  created_at   DateTime @default(now())
+
+  plans         Plan[]
+  addons        Addon[]
+  subscriptions Subscription[]
+  appAccess     AppAccess[]
+  invites       Invite[]
+  usage         UsageRecord[]
+
+  @@map("apps")
+}
+
+// ============================================================
+// APPLICATION ACCESS
+// ============================================================
+
+model AppAccess {
+  org_id     String
+  user_id    String
+  app_id     String
+  app_role   String
+  created_at DateTime @default(now())
+
+  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  app App @relation(fields: [app_id], references: [id], onDelete: Cascade)
+
+  @@id([org_id, user_id, app_id])
+  @@index([user_id])
+  @@index([org_id, app_id, app_role])
+  @@map("app_access")
+}
+
+// ============================================================
+// INVITATIONS
+// ============================================================
+
+model Invite {
+  id         String       @id @default(uuid())
+  org_id     String
+  email      String
+  org_role   OrgRole      @default(member)
+  app_id     String?
+  app_role   String?
+  token_hash String       @unique
+  status     InviteStatus @default(pending)
+  invited_by String
+  expires_at DateTime
+  created_at DateTime     @default(now())
+
+  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  app App? @relation(fields: [app_id], references: [id])
+
+  @@index([email])
+  @@map("invites")
+}
+
+// ============================================================
+// GOALS
+// ============================================================
+
+model Goal {
+  id           String     @id @default(uuid())
+  user_id      String
+  title        String
+  description  String?
+  status       GoalStatus @default(active)
+  created_at   DateTime   @default(now())
+  goal_type    String?
+  goal_payload Json?
+  org_id       String?
+  deleted_at   DateTime?
+
+  executions Execution[]
+  user       User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  objectives Objective[]
+
+  @@index([user_id])
+  @@index([org_id])
+  @@index([created_at])
+  @@map("goals")
+}
+
+// ============================================================
+// OBJECTIVES
+// ============================================================
+
+model Objective {
+  id           String    @id @default(uuid())
+  goal_id      String
+  title        String
+  description  String?
+  completed    Boolean   @default(false)
+  created_at   DateTime  @default(now())
+  goal_payload Json?
+  deleted_at   DateTime?
+
+  executions Execution[]
+  goal Goal @relation(fields: [goal_id], references: [id], onDelete: Cascade)
+
+  @@index([goal_id])
+  @@index([created_at])
+  @@map("objectives")
+}
+
+// ============================================================
+// EXECUTIONS
+// ============================================================
+
+model Execution {
+  id           String          @id @default(uuid())
+  user_id      String
+  goal_id      String
+  objective_id String?
+  action       String?
+  details      Json?
+  created_at   DateTime        @default(now())
+  started_at   DateTime?
+  goal_type    String?
+  org_id       String?
+  version      Int?
+  status       ExecutionStatus @default(pending)
+  schedule     Json?
+  recurring    Boolean?        @default(false)
+  duration_ms  Int?
+  finished_at  DateTime?
+  goal_payload Json            @default("{}")
+  result       Json?
+  error        String?
+  deleted_at   DateTime?
+
+  executionAudits ExecutionAudit[]
+  executionSteps  ExecutionStep[]
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  goal Goal @relation(fields: [goal_id], references: [id])
+  objective Objective? @relation(fields: [objective_id], references: [id], onDelete: Restrict)
+
+  @@unique([goal_id, user_id, created_at])
+  @@index([user_id])
+  @@index([goal_id])
+  @@index([org_id])
+  @@index([created_at])
+  @@index([status])
+  @@map("executions")
+}
+
+// ============================================================
+// AUTH AUDIT
+// ============================================================
+
+model AuthAudit {
+  id         String   @id @default(uuid())
+  user_id    String
+  action     String
+  details    Json?
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([created_at])
+  @@map("audit")
+}
+
+// ============================================================
+// EXECUTION AUDIT
+// ============================================================
+
+model ExecutionAudit {
+  id           String    @id @default(uuid())
+  execution_id String
+  status       String?
+  meta         Json?
+  created_at   DateTime  @default(now())
+  event        String    @default("unknown")
+
+  execution Execution @relation(fields: [execution_id], references: [id], onDelete: Cascade)
+
+  @@index([execution_id])
+  @@index([created_at])
+  @@map("execution_audit")
+}
+
+// ============================================================
+// PLANS
+// ============================================================
+
+model Plan {
+  id              String       @id @default(uuid())
+  app_id          String
+  key             String
+  name            String
+  audience        PlanAudience @default(BOTH)
+  billing_model   BillingModel @default(FLAT)
+  features        String[]
+  limits          Json         @default("{}")
+  price_cents     Int?
+  currency        String       @default("usd")
+  stripe_price_id String?      @unique
+  active          Boolean      @default(true)
+
+  app App @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  subscriptions Subscription[]
+
+  @@unique([app_id, key])
+  @@map("plans")
+}
+
+// ============================================================
+// SUBSCRIPTIONS
+// ============================================================
+
+model Subscription {
+  id                     String             @id @default(uuid())
+  org_id                 String
+  app_id                 String
+  plan_id                String
+  status                 SubscriptionStatus @default(active)
+  quantity               Int                @default(1)
+  current_period_end     DateTime?
+  trial_ends_at          DateTime?
+  cancel_at_period_end   Boolean            @default(false)
+  limit_overrides        Json?
+  stripe_subscription_id String?            @unique
+  created_at             DateTime           @default(now())
+  updated_at             DateTime           @updatedAt
+
+  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  app App @relation(fields: [app_id], references: [id])
+  plan Plan @relation(fields: [plan_id], references: [id])
+  addons SubscriptionAddon[]
+
+  @@unique([org_id, app_id])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+// ============================================================
+// USAGE
+// ============================================================
+
+model UsageRecord {
+  id     String @id @default(uuid())
+  org_id String
+  app_id String
+  metric String
+  period String
+  count  Int    @default(0)
+
+  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  app App @relation(fields: [app_id], references: [id], onDelete: Cascade)
+
+  @@unique([org_id, app_id, metric, period])
+  @@map("usage_records")
+}
+
+// ============================================================
+// ADDONS
+// ============================================================
+
+model Addon {
+  id              String   @id @default(uuid())
+  app_id          String
+  key             String
+  name            String
+  features        String[]
+  price_cents     Int?
+  stripe_price_id String?  @unique
+
+  app App @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  subscriptions SubscriptionAddon[]
+
+  @@unique([app_id, key])
+  @@map("addons")
+}
+
+model SubscriptionAddon {
+  subscription_id String
+  addon_id        String
+  created_at      DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
+  addon Addon @relation(fields: [addon_id], references: [id], onDelete: Cascade)
+
+  @@id([subscription_id, addon_id])
+  @@map("subscription_addons")
+}
+
+// ============================================================
+// STRIPE EVENTS
+// ============================================================
+
+model StripeEvent {
+  id           String   @id
+  type         String
+  processed_at DateTime @default(now())
+
+  @@map("stripe_events")
+}
+
+// ============================================================
+// SESSIONS
+// ============================================================
+
+model Session {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  familyId  String
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// EXECUTION STEPS
+// ============================================================
+
+model ExecutionStep {
+  id           String    @id @default(uuid())
+  execution_id String
+  user_id      String
+  org_id       String?
+  name         String
+  reasoning    String?
+  step_type    String?
+  created_at   DateTime  @default(now())
+  status       String
+  started_at   DateTime  @default(now())
+  finished_at  DateTime?
+  output       Json?
+  error        String?
+  deleted_at   DateTime?
+
+  execution Execution @relation(fields: [execution_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([execution_id])
+  @@index([user_id])
+  @@index([created_at])
+  @@map("execution_steps")
+}
+
+// ============================================================
+// ADMIN AUDIT
+// ============================================================
+
+model AdminAudit {
+  id         String   @id @default(uuid())
+  admin_id   String
+  action     String
+  target_id  String?
+  meta       Json?
+  created_at DateTime @default(now())
+
+  admin User @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// SUPPORTOPS: CHANNELS
+// ============================================================
+
+model Channel {
+  id            String    @id @default(uuid())
+  org_id        String
+  key           String
+  status        String    @default("connected")
+  config_enc    String    @db.Text
+  public_config Json      @default("{}")
+  webhook_token String    @unique
+  verify_token  String
+  last_event_at DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  events InboundEvent[]
+
+  @@unique([org_id, key])
+  @@map("channels")
+}
+
+// ============================================================
+// INBOUND EVENTS
+// ============================================================
+
+model InboundEvent {
+  id          String   @id @default(uuid())
+  channel_id  String
+  external_id String
+  created_at  DateTime @default(now())
+
+  channel Channel @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+
+  @@unique([channel_id, external_id])
+  @@map("inbound_events")
+}
+
+// ============================================================
+// SUPPORTOPS: CONVERSATIONS
+// ============================================================
+
+model Conversation {
+  id                  String   @id @default(uuid())
+  org_id              String
+  channel_key         String   @default("web")
+  visitor_secret_hash String
+  visitor_name        String?
+  status              String   @default("open")
+  assignee_id         String?
+  created_at          DateTime @default(now())
+  last_message_at     DateTime @default(now())
+
+  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  assignee User? @relation("ConversationAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
+  messages Message[]
+
+  @@index([org_id, status, last_message_at])
+  @@index([org_id, assignee_id])
+  @@map("conversations")
+}
+
+// ============================================================
+// SUPPORTOPS: MESSAGES
+// ============================================================
+
+model Message {
+  id              String   @id @default(uuid())
+  conversation_id String
+  sender          String
+  sender_id       String?
+  body            String   @db.Text
+  created_at      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+
+  @@index([conversation_id, created_at])
+  @@map("messages")
+}
+
+// ============================================================
+// SUPPORTOPS: INCIDENTS
+// ============================================================
+
+model Incident {
+  id                 String   @id @default(uuid())
+  org_id             String
+  ticket_id          String?
+  execution_id       String?
+  reported_by        String?
+  title              String
+  description        String   @default("") @db.Text
+  category           String   @default("general")
+  severity           String   @default("medium")
+  status             String   @default("open")
+  assigned_to        String?
+  metadata           Json     @default("{}")
+  resolution_summary String?  @db.Text
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+  resolved_at        DateTime?
+
+  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, status, created_at])
+  @@index([org_id, severity])
+  @@map("incidents")
+}
+
+// ============================================================
+// SUPPORTOPS: CUSTOMERS
+// ============================================================
+
+model SupportCustomer {
+  id           String   @id @default(uuid())
+  org_id       String
+  channel      String
+  external_ref String
+  name         String?
+  created_at   DateTime @default(now())
+
+  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  tickets SupportTicket[]
+
+  @@unique([org_id, channel, external_ref])
+  @@map("support_customers")
+}
+
+// ============================================================
+// SUPPORTOPS: TICKETS
+// ============================================================
+
+model SupportTicket {
+  id                String            @id @default(uuid())
+  org_id            String
+  number            Int
+  customer_id       String
+  channel           String
+  subject           String
+  status            String            @default("open")
+  priority          String            @default("normal")
+  assignee_id       String?
+  sla_due_at        DateTime?
+  first_response_at DateTime?
+  resolved_at       DateTime?
+  last_message_at   DateTime          @default(now())
+  created_at        DateTime          @default(now())
+  updated_at        DateTime          @updatedAt
+
+  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  customer SupportCustomer @relation(fields: [customer_id], references: [id])
+  assignee User? @relation("TicketAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
+  messages SupportTicketMessage[]
+
+  @@unique([org_id, number])
+  @@index([org_id, status])
+  @@index([org_id, assignee_id])
+  @@map("support_tickets")
+}
+
+// ============================================================
+// SUPPORTOPS: TICKET MESSAGES
+// ============================================================
+
+model SupportTicketMessage {
+  id         String   @id @default(uuid())
+  ticket_id  String
+  direction  String
+  channel    String
+  author_id  String?
+  body       String   @db.Text
+  created_at DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+
+  @@index([ticket_id, created_at])
+  @@map("support_ticket_messages")
+}
+
+// ============================================================
+// CARGO DECLARATIONS
+// ============================================================
+
+model CargoDeclaration {
+  id              String @id @default(uuid())
+  importerName    String
+  importerTaxId   String
+  exporterName    String
+  originCountry   String @default("UG")
+  portOfDischarge String @default("Nairobi ICD")
+  incoterm        String @default("CIF")
+  grossWeightKg   Float
+  totalUnits      Int
+  cifValueUsd     Float
+  exchangeRateKe  Float  @default(130.0)
+
+  pipelineStage PipelineStage @default(IDLE)
+
+  items      CargoItem[]
+  auditFlags AuditFlag[]
+  assessment DutyAssessment?
+  payment    MpesaTransaction?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// CARGO ITEMS
+// ============================================================
+
+model CargoItem {
+  id                 String             @id @default(uuid())
+  cargoDeclarationId String
+
+  cargoDeclaration CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
+
+  description   String
+  hsCode        String
+  totalPriceUsd Float
+  cetRate       Float
+
+  createdAt DateTime @default(now())
+}
+
+// ============================================================
+// AUDIT FLAGS
+// ============================================================
+
+model AuditFlag {
+  id                 String             @id @default(uuid())
+  cargoDeclarationId String
+
+  cargoDeclaration CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
+
+  severity DiscrepancySeverity @default(WARNING)
+  field    String
+  message  String
+
+  createdAt DateTime @default(now())
+}
+
+// ============================================================
+// DUTY ASSESSMENT
+// ============================================================
+
+model DutyAssessment {
+  id                 String @id @default(uuid())
+  cargoDeclarationId String @unique
+
+  cargoDeclaration CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
+
+  cifValueUsd        Float
+  cifValueKes        Float
+  importDutyKes      Float
+  idfKes             Float
+  rdlKes             Float
+  vatKes             Float
+  totalCustomsTaxKes Float
+
+  generatedXml String? @db.Text
+
+  createdAt DateTime @default(now())
+}
+
+// ============================================================
+// MPESA TRANSACTIONS
+// ============================================================
+
+model MpesaTransaction {
+  id                 String @id @default(uuid())
+  cargoDeclarationId String @unique
+
+  cargoDeclaration CargoDeclaration @relation(fields: [cargoDeclarationId], references: [id], onDelete: Cascade)
+
+  phoneNumber        String
+  amount             Float
+  accountReference String @default("KRA-DUTY-DECL")
+
+  checkoutRequestId  String? @unique
+  merchantRequestId  String?
+  mpesaReceiptNumber String? @unique
+
+  status     PaymentStatus @default(PENDING)
+  resultDesc String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// THIRD-PARTY AGENT MARKETPLACE
+// Uploaded bundles are stored as inert archives and are NEVER executed by the API.
+enum MarketplaceAgentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum MarketplaceAgentSource {
+  ZIP
+  GITHUB
+  API
+}
+
+model MarketplaceAgent {
+  id                 String                    @id @default(uuid())
+  developer_id       String
+  slug               String                    @unique
+  name               String
+  description        String                    @db.Text
+  category           String                    @default("Other")
+  version            String                    @default("1.0.0")
+  source             MarketplaceAgentSource
+  source_url         String?
+  artifact_path      String?
+  price_cents        Int                       @default(0)
+  currency           String                    @default("USD")
+  pricing_model      String                    @default("FREE")
+  status             MarketplaceAgentStatus    @default(PENDING)
+  manifest           Json?
+  rejection_reason   String?
+  security_status    String                    @default("PENDING_SCAN")
+  submitted_at       DateTime                  @default(now())
+  reviewed_at        DateTime?
+  reviewer_id        String?
+  updated_at         DateTime                  @updatedAt
+
+  developer User @relation(fields: [developer_id], references: [id], onDelete: Cascade)
+  purchases MarketplacePurchase[]
+  installs MarketplaceInstall[]
+  executions MarketplaceExecution[]
+  versions MarketplaceAgentVersion[]
+  reviews MarketplaceReview[]
+  usageRecords MarketplaceUsageRecord[]
+
+  @@index([developer_id, submitted_at])
+  @@index([status, category])
+  @@map("marketplace_agents")
+}
+
+
+model MarketplaceDeveloperAccount {
+  user_id String @id
+  stripe_account_id String @unique
+  country String
+  details_submitted Boolean @default(false)
+  charges_enabled Boolean @default(false)
+  payouts_enabled Boolean @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  @@map("marketplace_developer_accounts")
+}
+
+model MarketplacePurchase {
+  id String @id @default(uuid())
+  buyer_id String
+  seller_id String
+  agent_id String
+  checkout_session_id String? @unique
+  payment_intent_id String? @unique
+  amount_cents Int
+  platform_fee_cents Int
+  currency String @default("usd")
+  status String @default("PENDING")
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  buyer User @relation("MarketplacePurchaseBuyer", fields: [buyer_id], references: [id], onDelete: Cascade)
+  seller User @relation("MarketplacePurchaseSeller", fields: [seller_id], references: [id], onDelete: Cascade)
+  agent MarketplaceAgent @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+  @@index([buyer_id, status])
+  @@index([seller_id, status])
+  @@index([agent_id, status])
+  @@map("marketplace_purchases")
+}
+
+model MarketplaceInstall {
+  id String @id @default(uuid())
+  user_id String
+  agent_id String
+  created_at DateTime @default(now())
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  agent MarketplaceAgent @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+  @@unique([user_id, agent_id])
+  @@index([user_id, created_at])
+  @@map("marketplace_installs")
+}
+
+model MarketplaceExecution {
+  id String @id @default(uuid())
+  user_id String
+  agent_id String
+  status String @default("QUEUED")
+  input Json
+  output Json?
+  error String?
+  duration_ms Int?
+  created_at DateTime @default(now())
+  started_at DateTime?
+  completed_at DateTime?
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  agent MarketplaceAgent @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+  @@index([status, created_at])
+  @@index([user_id, created_at])
+  @@map("marketplace_executions")
+}
+
+model MarketplaceWebhookEvent {
+  stripe_event_id String @id
+  event_type String
+  processed_at DateTime @default(now())
+  @@map("marketplace_webhook_events")
+}
+
+
+model MarketplaceAgentVersion {
+  id String @id @default(uuid())
+  agent_id String
+  version String
+  source MarketplaceAgentSource
+  source_url String?
+  artifact_path String?
+  security_status String @default("PENDING_SCAN")
+  status String @default("PENDING")
+  submitted_at DateTime @default(now())
+  reviewed_at DateTime?
+  agent MarketplaceAgent @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+  @@unique([agent_id, version])
+  @@index([agent_id, status])
+  @@map("marketplace_agent_versions")
+}
+
+model MarketplaceReview {
+  id String @id @default(uuid())
+  user_id String
+  agent_id String
+  rating Int
+  body String? @db.Text
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  agent MarketplaceAgent @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+  @@unique([user_id, agent_id])
+  @@index([agent_id, created_at])
+  @@map("marketplace_reviews")
+}
+
+model MarketplaceUsageRecord {
+  id String @id @default(uuid())
+  user_id String
+  agent_id String
+  execution_id String @unique
+  units Int @default(1)
+  created_at DateTime @default(now())
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  agent MarketplaceAgent @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+  @@index([agent_id, created_at])
+  @@index([user_id, created_at])
+  @@map("marketplace_usage_records")
+}
+
+
+// ============================================================
+// NEXUS BUSINESS WORKSPACE
+// ============================================================
+
+model BusinessProfile {
+  id           String       @id @default(uuid())
+  org_id       String       @unique
+  business_name String
+  industry     String
+  team_size    String
+  website      String?
+  goals        Json         @default("[]")
+  updated_by   String?
+  created_at   DateTime     @default(now())
+  updated_at   DateTime     @updatedAt
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  updater      User?        @relation("BusinessProfileUpdatedBy", fields: [updated_by], references: [id], onDelete: SetNull)
+
+  @@index([industry])
+  @@map("business_profiles")
+}
+
+model IntegrationCredential {
+  id           String       @id @default(uuid())
+  org_id       String
+  name         String
+  slug         String
+  token_prefix String
+  token_hash   String       @unique
+  scopes       String[]     @default(["events:write"])
+  created_by   String?
+  last_used_at DateTime?    @db.Timestamptz(6)
+  revoked_at   DateTime?    @db.Timestamptz(6)
+  created_at   DateTime     @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, created_at])
+  @@index([org_id, revoked_at])
+  @@map("integration_credentials")
+}
+
+model BusinessActivity {
+  id          String       @id @default(uuid())
+  org_id      String
+  user_id     String?
+  event_type  String
+  title       String
+  description String?
+  source      String
+  department  String?
+  metadata    Json         @default("{}")
+  created_at  DateTime     @default(now())
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@index([org_id, created_at])
+  @@index([org_id, department])
+  @@map("business_activities")
+}

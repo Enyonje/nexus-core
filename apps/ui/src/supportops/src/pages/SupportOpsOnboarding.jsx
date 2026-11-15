@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ShieldCheck, Loader2 } from "lucide-react";
-
-const DEFAULT_API = (import.meta.env.VITE_SUPPORTOPS_API_URL || import.meta.env.VITE_BACKEND_API_URL || import.meta.env.VITE_API_URL || "https://nexus-core-a0px.onrender.com").replace(/\/$/, "").replace(/\/api\/v1$/, "").replace(/\/api$/, "");
+import { API_ENDPOINTS } from "../config/paths";
 
 export default function SupportOpsOnboarding() {
     const [params, setParams] = useState({ plan: "growth", type: "trial" });
@@ -15,13 +14,13 @@ export default function SupportOpsOnboarding() {
         setParams({ plan: query.get("plan") || "growth", type: query.get("type") || "trial" });
     }, []);
 
-    const endpoint = useMemo(() => `${DEFAULT_API}/api/v1/billing/guest-checkout`, []);
+    const endpoint = API_ENDPOINTS.billing.guestCheckout;
     const change = (event) => setFormData((current) => ({ ...current, [event.target.name]: event.target.value }));
 
     async function submit(event) {
         event.preventDefault();
         setError("");
-        if (formData.password.length < 8) return setError("Your password must contain at least 8 characters.");
+        if (formData.password.length < 10) return setError("Your password must contain at least 10 characters.");
         setLoading(true);
         try {
             const response = await fetch(endpoint, {
@@ -42,6 +41,8 @@ export default function SupportOpsOnboarding() {
             });
             const data = await response.json().catch(() => ({}));
             if (!response.ok || !data.success) throw new Error(data.message || data.error || "We couldn't create your SupportOps workspace.");
+            if (params.type !== "trial" && !data.url) throw new Error("Stripe checkout was not created. Your workspace has not been activated; please try again or contact sales.");
+            if (params.type === "trial" && !data.redirectTo) throw new Error("Your trial workspace was created, but the dashboard destination is missing. Please sign in.");
             if (data.token) {
                 localStorage.setItem("token", data.token);
                 localStorage.setItem("authToken", data.token);
@@ -51,7 +52,7 @@ export default function SupportOpsOnboarding() {
                 localStorage.setItem("orgId", data.orgId);
             }
             localStorage.setItem("supportops_trial_ends_at", data.trialEndsAt || "");
-            window.location.assign(data.dashboardUrl || data.redirectTo || "/supportops/admin/executive");
+            window.location.assign(data.url || data.dashboardUrl || data.redirectTo || "/supportops/admin/executive");
         } catch (err) {
             setError(err.message || "An error occurred during workspace setup.");
         } finally {
@@ -75,7 +76,7 @@ export default function SupportOpsOnboarding() {
                     <label className="block text-xs text-slate-300">Administrator full name<input className={`${input} mt-1`} name="adminName" required maxLength={120} value={formData.adminName} onChange={change} placeholder="Full name" /></label>
                     <label className="block text-xs text-slate-300">Work email<input className={`${input} mt-1`} type="email" name="adminEmail" required maxLength={254} value={formData.adminEmail} onChange={change} placeholder="admin@company.com" /></label>
                 </div>
-                <label className="block text-xs text-slate-300">Account password<input className={`${input} mt-1`} type="password" name="password" required minLength={8} maxLength={128} autoComplete="new-password" value={formData.password} onChange={change} placeholder="At least 8 characters" /></label>
+                <label className="block text-xs text-slate-300">Account password<input className={`${input} mt-1`} type="password" name="password" required minLength={10} maxLength={72} autoComplete="new-password" value={formData.password} onChange={change} placeholder="At least 10 characters" /></label>
                 <div className="grid gap-4 sm:grid-cols-2">
                     <label className="block text-xs text-slate-300">Estimated team size<select className={`${input} mt-1`} name="teamSize" value={formData.teamSize} onChange={change}><option value="1-5">1–5 seats</option><option value="6-20">6–20 seats</option><option value="21-50">21–50 seats</option><option value="50+">50+ enterprise seats</option></select></label>
                     <label className="block text-xs text-slate-300">Primary support channel<select className={`${input} mt-1`} name="primaryChannel" value={formData.primaryChannel} onChange={change}><option value="email">Email / support desk</option><option value="inapp">In-app chat widget</option><option value="zendesk">Zendesk / Intercom sync</option><option value="api">Custom API / webhooks</option></select></label>

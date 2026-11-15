@@ -8,13 +8,9 @@ export const p = (path = "") => `${BASE}${path.startsWith("/") ? path : `/${path
 ========================= */
 
 // Prefer a SupportOps-specific URL, fall back to the shared one. Trailing slash stripped.
-const envUrl = import.meta.env.VITE_SUPPORTOPS_API_URL || import.meta.env.VITE_API_URL;
+const envUrl = import.meta.env.VITE_SUPPORTOPS_API_URL || import.meta.env.VITE_API_URL || "";
 
-if (!envUrl && import.meta.env.PROD) {
-    console.error("VITE_API_URL is not set for this build. API calls will fail.");
-}
-
-const API_BASE_URL = (envUrl || "http://localhost:8000").replace(/\/$/, "");
+const API_BASE_URL = envUrl.replace(/\/api\/?$/, "").replace(/\/$/, "");
 
 // Backend URL helper: api("/api/v1/x") -> "http://host/api/v1/x"
 export const api = (path = "") => `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
@@ -54,7 +50,7 @@ export const SUPPORTOPS_API = {
 
 // Named backend API endpoints
 export const API_ENDPOINTS = {
-    metrics: (timeframe = "30d") => api(`${V1}/dashboard/metrics${qs({ timeframe })}`),
+    metrics: (timeframe = "30d") => api(`${SUPPORTOPS}/dashboard/metrics${qs({ timeframe })}`),
     health: api(`${V1}/system/health`),
     activityStream: api(`${V1}/stream/agents/activity/stream`),
 
@@ -67,9 +63,10 @@ export const API_ENDPOINTS = {
     invites: SUPPORTOPS_API.invites,
 
     billing: {
-        plans: (app = "supportops") => api(`${V1}/billing/plans?app=${app}`),
-        trial: api(`${V1}/billing/trial`),
-        checkout: api(`${V1}/billing/checkout`),
+        plans: (app = "supportops") => api(`${SUPPORTOPS}/billing/plans?app=${encodeURIComponent(app)}`),
+        trial: api(`${SUPPORTOPS}/billing/trial`),
+        checkout: api(`${SUPPORTOPS}/billing/checkout`),
+        guestCheckout: api(`${SUPPORTOPS}/billing/guest-checkout`),
     },
 
     auth: {

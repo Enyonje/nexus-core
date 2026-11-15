@@ -34,6 +34,8 @@ import AuditLogAnalyzer from "./components/AuditLogAnalyzer";
 import AgentsDirectory from "./components/AgentsDirectory.jsx";
 import AgentDetail from "./components/AgentDetail.jsx";
 import SupportOpsRoutes from "./supportops/src/routes/SupportOpsRoutes.jsx";
+import { AuthProvider as SupportOpsAuthProvider } from "./supportops/src/context/AuthContext.jsx";
+import { AccessProvider as SupportOpsAccessProvider } from "./supportops/src/context/AccessProvider.jsx";
 import CrossBorderCompliance from "./components/CrossBorderCompliance.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import PricingPage from "./components/billing/PricingPage.jsx";
@@ -63,6 +65,16 @@ const NO_NAVBAR_PREFIXES = ["/compliance", "/agents/", "/supportops"];
     </div>
   );
 }*/
+
+function SupportOpsShell() {
+  return (
+    <SupportOpsAuthProvider>
+      <SupportOpsAccessProvider>
+        <SupportOpsRoutes />
+      </SupportOpsAccessProvider>
+    </SupportOpsAuthProvider>
+  );
+}
 
 /** /agent and /agent/<slug> are common typos for the agent platform; send them to /agents. */
 function AgentAlias() {
@@ -164,7 +176,7 @@ export default function App() {
             <Route path="/subscription" element={<Navigate to="/billing" replace />} />
             <Route path="/upgrade" element={<Navigate to="/pricing" replace />} />
             <Route path="/crossborder/*" element={<Navigate to="/compliance" replace />} />
-            <Route path="/supportops/*" element={<SupportOpsRoutes />} />
+            <Route path="/supportops/*" element={<SupportOpsShell />} />
 
             {/* ================= CROSS-BORDER COMPLIANCE (its own sign-in) ================= */}
             <Route path="/compliance" element={<ComplianceShell />}>
