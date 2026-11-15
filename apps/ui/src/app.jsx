@@ -9,7 +9,6 @@ import ContactPage from "./components/ContactPage.jsx";
 import TermsOfServicePage from "./components/TermsOfService.jsx";
 import PrivacyPolicyPage from "./components/PrivacyPolicy.jsx";
 import ArchitecturePage from "./components/ArchitecturePage.jsx";
-
 import Layout from "./components/Layout.jsx";
 import ExecutionLogsStreamModal from "./components/ExecutionLogsStreamModal.jsx";
 import SEOPillarPage from "./components/SEOPillarPage.jsx";
@@ -17,6 +16,8 @@ import ToolsIndex from "./components/ToolsIndex";
 import Audit from "./components/Audit.jsx";
 import WebhookValidator from "./components/WebhookValidator.jsx";
 import Dashboard from "./components/Dashboard.jsx";
+import BusinessInsights from "./components/BusinessInsights.jsx";
+import IntegrationSettings from "./components/IntegrationSettings.jsx";
 import ExecutionList from "./components/ExecutionList.jsx";
 import ExecutionDetail from "./components/ExecutionDetail.jsx";
 import Goals from "./components/Goals.jsx";
@@ -45,7 +46,7 @@ import { useAuth } from "./hooks/useAuth";
 import { lightTheme, darkTheme } from "./theme";
 
 // Pages inside the workspace layout share one animation key so the layout and guard stay mounted.
-const WORKSPACE_PREFIXES = ["/dashboard", "/goals", "/executions", "/admin", "/billing"];
+const WORKSPACE_PREFIXES = ["/dashboard", "/goals", "/executions", "/admin", "/billing", "/insights", "/integrations"];
 // Pages that draw their own full-screen chrome and must not get the marketing navbar on top
 // (it used to push the sign-in card ~500px down the page).
 const NO_NAVBAR = ["/", "/agents", "/login", "/register", "/forgot-password", "/reset-password"];
@@ -165,7 +166,6 @@ export default function App() {
             <Route path="/crossborder/*" element={<Navigate to="/compliance" replace />} />
             <Route path="/supportops/*" element={<SupportOpsRoutes />} />
 
-
             {/* ================= CROSS-BORDER COMPLIANCE (its own sign-in) ================= */}
             <Route path="/compliance" element={<ComplianceShell />}>
               <Route path="login" element={<ProductAuthPage product="compliance" mode="login" useProductAuth={useComplianceAuth} />} />
@@ -184,6 +184,8 @@ export default function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<Layout theme={theme} />}>
                 <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/insights" element={<BusinessInsights />} />
+                <Route path="/integrations" element={<IntegrationSettings />} />
                 <Route path="/goals" element={<Goals />} />
                 <Route path="/billing" element={<BillingPage product="nexus-core" useProductAuth={useAuth} />} />
 

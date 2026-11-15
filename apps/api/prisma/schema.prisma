@@ -180,6 +180,7 @@ model Organization {
   supportTickets   SupportTicket[]
   businessProfile  BusinessProfile?
   businessActivity BusinessActivity[]
+  integrations IntegrationCredential[]
 
   @@index([owner_id])
   @@map("organizations")
@@ -1032,6 +1033,26 @@ model BusinessProfile {
 
   @@index([industry])
   @@map("business_profiles")
+}
+
+model IntegrationCredential {
+  id           String       @id @default(uuid())
+  org_id       String
+  name         String
+  slug         String
+  token_prefix String
+  token_hash   String       @unique
+  scopes       String[]     @default(["events:write"])
+  created_by   String?
+  last_used_at DateTime?    @db.Timestamptz(6)
+  revoked_at   DateTime?    @db.Timestamptz(6)
+  created_at   DateTime     @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, created_at])
+  @@index([org_id, revoked_at])
+  @@map("integration_credentials")
 }
 
 model BusinessActivity {

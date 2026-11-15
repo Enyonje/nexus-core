@@ -4,6 +4,7 @@
 import { prisma } from "../config/prisma.js";
 import { broadcastTicketEvent as push, supportOpsBus } from "./realtime.js";
 import { canAppend, priorityFor, slaDueAt } from "./ticketRules.js";
+import { emitSupportOpsBusinessEvent } from "../services/nexusBusinessEvents.js";
 
 export const toView = (t, customer) => ({
     id: `T-${t.number}`,
@@ -22,8 +23,11 @@ export const toView = (t, customer) => ({
     slaDueAt: t.sla_due_at,
 });
 
-const notify = (orgId, event, ticket, customer) =>
-    push(staff, orgId, { type: "ticket", event, ticket: toView(ticket, customer) });
+const notify = (orgId, event, ticket, customer) => {
+    const payload = { type: "ticket", event, ticket: toView(ticket, customer) };
+    push(orgId, event, payload);
+    supportOpsBus.emit("ticket", { orgId, ...payload });
+};
 
 export async function createTicketFromInbound({
     orgId,
@@ -80,6 +84,14 @@ export async function createTicketFromInbound({
             }),
         ]);
         notify(orgId, reopen ? "ticket_reopened" : "ticket_message", ticket, person);
+        if (reopen) {
+            void emitSupportOpsBusinessEvent(orgId, {
+                type: "support.ticket_reopened",
+                title: "Support ticket reopened",
+                department: "serve",
+                metadata: { channel, priority: latest.priority, status: "open" },
+            });
+        }
         return ticket;
     }
 
@@ -108,6 +120,12 @@ export async function createTicketFromInbound({
                 },
             });
             notify(orgId, "ticket_created", ticket, person);
+            void emitSupportOpsBusinessEvent(orgId, {
+                type: "support.ticket_created",
+                title: "New support ticket created",
+                department: "serve",
+                metadata: { channel, priority, status: ticket.status || "open" },
+            });
             return ticket;
         } catch (err) {
             if (err.code !== "P2002" || attempt >= 3) throw err;

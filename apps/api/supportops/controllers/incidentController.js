@@ -5,6 +5,7 @@
 
 import { Incident } from "../models/Incident.js";
 import { broadcast } from "../realtime/socket.js";
+import { emitSupportOpsBusinessEvent } from "../services/nexusBusinessEvents.js";
 
 /**
  * Extracts normalized organization/tenant context and user ID from Fastify request
@@ -70,6 +71,13 @@ export async function createIncident(request, reply) {
         timeline: initialTimeline,
       });
     }
+
+    void emitSupportOpsBusinessEvent(orgId, {
+      type: "support.incident_created",
+      title: "Support incident created",
+      department: "serve",
+      metadata: { severity: incident?.severity || body.severity || "unknown", status: incident?.status || body.status || "open" },
+    });
 
     // Safely emit real-time event
     try {
@@ -187,6 +195,13 @@ export async function updateIncident(request, reply) {
         });
       }
     }
+
+    void emitSupportOpsBusinessEvent(orgId, {
+      type: "support.incident_updated",
+      title: "Support incident updated",
+      department: "serve",
+      metadata: { status: incident?.status || status || "updated" },
+    });
 
     // Safely emit real-time update event
     try {

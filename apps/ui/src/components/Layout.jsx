@@ -3,12 +3,12 @@ import { Outlet, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import {
   LayoutDashboard, TrendingUp, Users, Headset, Workflow, Bot, Store,
-  Settings, CreditCard, Menu, X, ChevronRight, LogOut, Building2,
+  Settings, CreditCard, Menu, X, ChevronRight, LogOut, Building2, Plug,
   Target, Sparkles, ShieldCheck, BarChart3
 } from "lucide-react";
 
 const groups = [
-  { label: "Workspace", items: [{ name: "Overview", path: "/dashboard", icon: LayoutDashboard }] },
+  { label: "Workspace", items: [{ name: "Overview", path: "/dashboard", icon: LayoutDashboard }, { name: "Business insights", path: "/insights", icon: BarChart3 }] },
   { label: "Grow", items: [
     { name: "Social media", path: "/agents", icon: TrendingUp, hint: "SocialOps" },
     { name: "Marketing & growth", path: "/agents", icon: Target },
@@ -30,6 +30,7 @@ const groups = [
   ]},
   { label: "Management", items: [
     { name: "Business settings", path: "/dashboard?setup=1", icon: Settings },
+    { name: "Product integrations", path: "/integrations", icon: Plug },
     { name: "Billing & plans", path: "/billing", icon: CreditCard },
   ]},
 ];

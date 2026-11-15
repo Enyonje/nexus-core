@@ -22,6 +22,8 @@ import * as streamRoutesMod from "./routes/stream.js";
 import * as stripeRoutesMod from "./routes/stripe.js";
 import * as marketplaceRoutesMod from "./routes/marketplace.js";
 import * as businessRoutesMod from "./routes/business.js";
+import * as insightsRoutesMod from "./routes/insights.js";
+import * as integrationsRoutesMod from "./routes/integrations.js";
 import * as dashboardRoutesMod from "../supportops/routes/dashboard.js"; // <--- Added Dashboard Routes
 
 
@@ -644,6 +646,8 @@ async function start() {
   mountBoth("stripe", stripeRoutesMod, "stripe");
   mountBoth("marketplace", marketplaceRoutesMod, "marketplace");
   mountBoth("business", businessRoutesMod, "business");
+  mountBoth("insights", insightsRoutesMod, "insights");
+  mountBoth("integrations", integrationsRoutesMod, "integrations");
   mountBoth("dashboard", dashboardRoutesMod, ""); // <--- Registers /api/metrics, /api/dashboard/metrics, etc.
   // Sales Assistant is an independent, tenant-scoped product module.
 
