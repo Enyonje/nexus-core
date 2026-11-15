@@ -66,7 +66,9 @@ const cookieBase = () => ({
     process.env.NODE_ENV === "production" ||
     COOKIE_SAMESITE === "none",
   sameSite: COOKIE_SAMESITE,
-  path: "/api/auth",
+  // Shared across the legacy /api/auth and product-scoped
+  // /api/nexus-core/auth endpoints so either route can refresh the session.
+  path: "/api",
 });
 
 function setRefreshCookie(reply, token) {
@@ -238,10 +240,6 @@ function publicSubscription(record) {
     // authorization state aligned so an unprovisioned workspace cannot appear subscribed.
     status: record?.status || "inactive",
     app: record?.app?.slug || DEFAULT_APP_SLUG,
-    trialEndsAt: record?.trial_ends_at || null,
-    currentPeriodEnd: record?.current_period_end || null,
-    features: record?.plan?.features || [],
-    limits: record?.limit_overrides || record?.plan?.limits || {},
   };
 }
 

@@ -37,7 +37,7 @@ const group = (prefix) => {
 
 // Builder per registered router
 export const SUPPORTOPS_API = {
-    ai: group("/ai"),
+    ai: group("/ai-agent"),
     aiReview: group("/ai-review"),
     incidents: group("/incidents"),
     analytics: group("/analytics"),

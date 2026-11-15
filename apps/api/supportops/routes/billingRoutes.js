@@ -35,9 +35,8 @@ async function billingOrg(req) {
     });
     if (!m) {
         throw new AccessError(
-            403,
-            "BILLING_FORBIDDEN",
-            "Only an owner, admin or billing contact can change the plan"
+            "Only an owner, admin or billing contact can change the plan",
+            403
         );
     }
     return m.org;
