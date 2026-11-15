@@ -9,6 +9,7 @@ import ContactPage from "./components/ContactPage.jsx";
 import TermsOfServicePage from "./components/TermsOfService.jsx";
 import PrivacyPolicyPage from "./components/PrivacyPolicy.jsx";
 import ArchitecturePage from "./components/ArchitecturePage.jsx";
+
 import Layout from "./components/Layout.jsx";
 import ExecutionLogsStreamModal from "./components/ExecutionLogsStreamModal.jsx";
 import SEOPillarPage from "./components/SEOPillarPage.jsx";
@@ -163,6 +164,7 @@ export default function App() {
             <Route path="/upgrade" element={<Navigate to="/pricing" replace />} />
             <Route path="/crossborder/*" element={<Navigate to="/compliance" replace />} />
             <Route path="/supportops/*" element={<SupportOpsRoutes />} />
+
 
             {/* ================= CROSS-BORDER COMPLIANCE (its own sign-in) ================= */}
             <Route path="/compliance" element={<ComplianceShell />}>

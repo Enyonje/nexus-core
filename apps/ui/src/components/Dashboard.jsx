@@ -1,399 +1,86 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
-import { formatDate } from "../lib/utils";
 import { useAuth } from "../hooks/useAuth";
-import OnboardingBanner from "./OnboardingBanner";
+import {
+  ArrowUpRight, ArrowRight, Building2, Users, TrendingUp, Headset, Workflow,
+  Bot, Sparkles, Target, CheckCircle2, Circle, X, Store, Activity, Settings2,
+  Plus, BriefcaseBusiness, Globe2, ShoppingBag, Stethoscope, Home, Building,
+  GraduationCap, MoreHorizontal, Zap, ShieldCheck
+} from "lucide-react";
+
+const PROFILE_KEY = "nexus_business_profile";
+const industries = [
+  { id: "agency", label: "Digital agency", icon: BriefcaseBusiness },
+  { id: "professional-services", label: "Professional services", icon: Building2 },
+  { id: "ecommerce", label: "E-commerce & retail", icon: ShoppingBag },
+  { id: "real-estate", label: "Real estate", icon: Home },
+  { id: "hospitality", label: "Hospitality", icon: Globe2 },
+  { id: "financial-services", label: "Financial services", icon: ShieldCheck },
+  { id: "healthcare", label: "Healthcare", icon: Stethoscope },
+  { id: "education", label: "Education", icon: GraduationCap },
+  { id: "other", label: "Other business", icon: MoreHorizontal },
+];
+const objectives = ["Get more customers", "Increase sales", "Automate marketing", "Improve customer support", "Reduce operating costs", "Connect business workflows"];
+const departments = [
+  { key: "grow", title: "Grow", subtitle: "Attract the right customers", icon: TrendingUp, color: "text-violet-300", border: "border-violet-400/20", bg: "bg-violet-400/10", items: [{name:"SocialOps",desc:"Plan, create and manage social media growth.",path:"/agents",tag:"Marketing automation"},{name:"Marketing intelligence",desc:"Research markets, competitors and opportunities.",path:"/agents",tag:"Growth insights"}] },
+  { key: "sell", title: "Sell", subtitle: "Turn prospects into revenue", icon: Target, color: "text-cyan-300", border: "border-cyan-400/20", bg: "bg-cyan-400/10", items: [{name:"Sales Assistant AI",desc:"Discover, qualify and follow up with potential customers.",path:"/agents",tag:"Lead management"},{name:"Sales workflows",desc:"Build repeatable processes for your sales team.",path:"/goals",tag:"Automation"}] },
+  { key: "serve", title: "Serve", subtitle: "Deliver better customer experiences", icon: Headset, color: "text-emerald-300", border: "border-emerald-400/20", bg: "bg-emerald-400/10", items: [{name:"SupportOps",desc:"Manage customer conversations, tickets and support workflows.",path:"/supportops",tag:"Customer support"},{name:"Customer success",desc:"Create better follow-ups and customer experiences.",path:"/agents",tag:"Retention"}] },
+  { key: "operate", title: "Operate", subtitle: "Make everyday work more efficient", icon: Workflow, color: "text-amber-300", border: "border-amber-400/20", bg: "bg-amber-400/10", items: [{name:"Workflow automation",desc:"Turn recurring business processes into automated workflows.",path:"/goals",tag:"Business operations"},{name:"Compliance workspace",desc:"Manage specialist compliance workflows.",path:"/compliance",tag:"Specialist solution"}] },
+];
+
+function readProfile() { try { return JSON.parse(localStorage.getItem(PROFILE_KEY) || "null"); } catch { return null; } }
+function ProfileSetup({ initial, onClose, onSave }) {
+  const [form, setForm] = useState({ businessName: initial?.businessName || "", industry: initial?.industry || "agency", size: initial?.size || "2-5", goals: initial?.goals || [objectives[0]], website: initial?.website || "" });
+  const update = (key, value) => setForm(v => ({ ...v, [key]: value }));
+  const toggleGoal = goal => update("goals", form.goals.includes(goal) ? form.goals.filter(x=>x!==goal) : [...form.goals, goal]);
+  return <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/80 p-4 backdrop-blur-sm"><form onSubmit={e=>{e.preventDefault();onSave({...form,updatedAt:new Date().toISOString()});}} className="my-8 w-full max-w-2xl rounded-3xl border border-white/10 bg-[#0b192b] p-6 shadow-2xl md:p-8">
+    <div className="flex items-start justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.22em] text-cyan-300">Personalise your workspace</span><h2 className="mt-2 text-2xl font-black text-white">Let's set up your business.</h2><p className="mt-2 text-sm text-slate-400">A few details help us put the most useful AI employees in front of you.</p></div><button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-white/5 hover:text-white"><X size={18}/></button></div>
+    <label className="mt-6 block text-xs font-bold text-slate-300">Business or workspace name<input value={form.businessName} onChange={e=>update("businessName",e.target.value)} required maxLength={80} placeholder="e.g. Acme Digital" className="mt-2 w-full rounded-xl border border-white/10 bg-[#07111f] px-4 py-3 text-sm text-white outline-none focus:border-cyan-400"/></label>
+    <div className="mt-6"><p className="mb-3 text-xs font-bold text-slate-300">What type of business do you run?</p><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{industries.map(({id,label,icon:Icon})=><button type="button" key={id} onClick={()=>update("industry",id)} className={`flex items-center gap-2 rounded-xl border p-3 text-left text-[11px] font-semibold transition ${form.industry===id?"border-cyan-400/50 bg-cyan-400/10 text-cyan-100":"border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20"}`}><Icon size={15}/>{label}</button>)}</div></div>
+    <div className="mt-6 grid gap-4 sm:grid-cols-2"><label className="text-xs font-bold text-slate-300">Team size<select value={form.size} onChange={e=>update("size",e.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-[#07111f] px-4 py-3 text-sm text-white"><option value="solo">Just me</option><option value="2-5">2–5 people</option><option value="6-20">6–20 people</option><option value="21-50">21–50 people</option><option value="51-200">51–200 people</option><option value="200+">200+ people</option></select></label><label className="text-xs font-bold text-slate-300">Website (optional)<input value={form.website} onChange={e=>update("website",e.target.value)} placeholder="https://example.com" className="mt-2 w-full rounded-xl border border-white/10 bg-[#07111f] px-4 py-3 text-sm text-white outline-none focus:border-cyan-400"/></label></div>
+    <div className="mt-6"><p className="mb-3 text-xs font-bold text-slate-300">What would you most like to improve?</p><div className="grid gap-2 sm:grid-cols-2">{objectives.map(goal=><button type="button" key={goal} onClick={()=>toggleGoal(goal)} className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-[11px] ${form.goals.includes(goal)?"border-cyan-400/40 bg-cyan-400/10 text-cyan-100":"border-white/10 text-slate-400 hover:bg-white/[0.03]"}`}>{form.goals.includes(goal)?<CheckCircle2 size={14}/>:<Circle size={14}/>}{goal}</button>)}</div></div>
+    <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={onClose} className="rounded-xl border border-white/10 px-5 py-3 text-xs font-bold text-slate-400 hover:bg-white/5">Do this later</button><button className="rounded-xl bg-cyan-400 px-6 py-3 text-xs font-black text-slate-950 hover:bg-cyan-300">Save business profile <ArrowRight size={14} className="ml-1 inline"/></button></div>
+  </form></div>;
+}
+
+function Metric({label,value,detail,icon:Icon,tone="cyan"}) { const tones={cyan:"text-cyan-300 bg-cyan-400/10",violet:"text-violet-300 bg-violet-400/10",emerald:"text-emerald-300 bg-emerald-400/10",amber:"text-amber-300 bg-amber-400/10"}; return <div className="rounded-2xl border border-white/[0.08] bg-white/[0.025] p-4 md:p-5"><div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[.14em] text-slate-500">{label}</span><span className={`rounded-lg p-2 ${tones[tone]}`}><Icon size={16}/></span></div><p className="mt-4 text-2xl font-black tracking-tight text-white">{value}</p><p className="mt-1 text-[10px] text-slate-500">{detail}</p></div>; }
 
 export default function Dashboard() {
-  const { subscription, user, isGuest } = useAuth();
-  const navigate = useNavigate();
-  const [executions, setExecutions] = useState([]);
-  const [goals, setGoals] = useState([]);
-  const [health, setHealth] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { user, subscription, isGuest } = useAuth();
+  const navigate = useNavigate(); const location = useLocation();
+  const [profile,setProfile] = useState(readProfile);
+  const [setupOpen,setSetupOpen] = useState(!readProfile());
+  const [goals,setGoals] = useState([]); const [executions,setExecutions] = useState([]); const [health,setHealth] = useState(null); const [loading,setLoading] = useState(true);
+  const tier = typeof subscription === "string" ? subscription : subscription?.tier || subscription?.plan_id || "starter";
+  const isFree = String(tier).toLowerCase()==="free" || isGuest;
+  const industryLabel = industries.find(i=>i.id===profile?.industry)?.label || "your business";
+  const refresh = useCallback(async()=>{setLoading(true);const [h,g,e]=await Promise.all([apiFetch("/health").catch(()=>null),apiFetch("/goals").catch(()=>[]),isFree?Promise.resolve([]):apiFetch("/executions").catch(()=>[])]);setHealth(h);setGoals(Array.isArray(g)?g:[]);setExecutions(Array.isArray(e)?e:[]);setLoading(false);},[isFree]);
+  useEffect(()=>{refresh();},[refresh]);
+  useEffect(()=>{if(new URLSearchParams(location.search).get("setup")==="1")setSetupOpen(true);},[location.search]);
+  const saveProfile = value => {localStorage.setItem(PROFILE_KEY,JSON.stringify(value));window.dispatchEvent(new Event("nexus:business-profile-updated"));setProfile(value);setSetupOpen(false);navigate("/dashboard",{replace:true});};
+  const activeGoals = goals.filter(g=>["active","running","enabled"].includes(String(g.status||"").toLowerCase())).length;
+  const runningExecutions = executions.filter(e=>String(e.status||"").toLowerCase()==="running").length;
+  const firstName = user?.name?.split(" ")[0] || user?.email?.split("@")[0] || "there";
+  const tasks = [{label:"Set up your business profile",done:!!profile},{label:"Choose your first AI employee",done:false},{label:"Create your first workflow",done:activeGoals>0},{label:"Connect a business channel",done:false}];
 
-  // Dynamic stateful mock data for live animated simulation
-  const [mockFreeExecutions, setMockFreeExecutions] = useState([
-    { id: "mock-1", goal_type: "sme_quoting_engine", status: "running", started_at: new Date(Date.now() - 45000).toISOString() },
-    { id: "mock-2", goal_type: "regulatory_policy_check", status: "completed", started_at: new Date(Date.now() - 1800000).toISOString() },
-    { id: "mock-3", goal_type: "claims_triage_swarm", status: "completed", started_at: new Date(Date.now() - 3600000).toISOString() },
-    { id: "mock-4", goal_type: "underwriting_validation", status: "pending", started_at: new Date(Date.now() - 7200000).toISOString() },
-  ]);
+  return <div className="mx-auto max-w-[1500px] space-y-7">
+    {setupOpen && <ProfileSetup initial={profile} onClose={()=>setSetupOpen(false)} onSave={saveProfile}/>}
+    <section className="relative overflow-hidden rounded-3xl border border-cyan-400/15 bg-gradient-to-br from-[#102b43] via-[#0d2035] to-[#101b32] p-6 md:p-8">
+      <div className="pointer-events-none absolute -right-20 -top-28 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl"/><div className="pointer-events-none absolute bottom-[-130px] right-[25%] h-64 w-64 rounded-full bg-blue-500/10 blur-3xl"/>
+      <div className="relative flex flex-col justify-between gap-6 lg:flex-row lg:items-end"><div className="max-w-2xl"><span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-[.2em] text-cyan-200"><Sparkles size={12}/> Your AI-powered business workspace</span><h1 className="mt-4 text-3xl font-black tracking-tight text-white md:text-4xl">Good to see you, {firstName}.</h1><p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">{profile?.businessName ? `${profile.businessName} is ready to grow.` : "Bring your business growth, sales, customer experience and operations together."} Your AI workforce is here to help you move work forward.</p><div className="mt-5 flex flex-wrap items-center gap-2"><span className="rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-[10px] font-semibold text-slate-300">{profile?.businessName || "Business profile not set"}</span><span className="rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-[10px] font-semibold text-slate-300">{industryLabel}</span><button onClick={()=>setSetupOpen(true)} className="inline-flex items-center gap-1 rounded-lg px-2 py-2 text-[10px] font-bold text-cyan-300 hover:bg-white/5"><Settings2 size={12}/> Edit profile</button></div></div><div className="flex flex-wrap gap-2"><Link to="/agents" className="inline-flex items-center gap-2 rounded-xl bg-cyan-400 px-5 py-3 text-[11px] font-black text-slate-950 shadow-lg shadow-cyan-950/30 hover:bg-cyan-300">Explore AI employees <ArrowUpRight size={15}/></Link><Link to="/pricing" className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.04] px-5 py-3 text-[11px] font-bold text-white hover:bg-white/10">View plans <ArrowRight size={14}/></Link></div></div>
+    </section>
 
-  // Safely resolve tier string whether subscription is an object or string
-  const subscriptionTier = useMemo(() => {
-    if (!subscription) return "free";
-    if (typeof subscription === "string") return subscription.toLowerCase();
-    return (subscription.tier || subscription.plan_id || "free").toLowerCase();
-  }, [subscription]);
+    <section className="grid grid-cols-2 gap-3 xl:grid-cols-4"><Metric label="Active workflows" value={loading?"—":activeGoals} detail="Configured business processes" icon={Workflow} tone="cyan"/><Metric label="AI activity" value={loading?"—":runningExecutions} detail="Currently running executions" icon={Activity} tone="violet"/><Metric label="Business goals" value={loading?"—":goals.length} detail="Goals in your workspace" icon={Target} tone="emerald"/><Metric label="Platform status" value={health?.status==="ok"?"Operational":"Check status"} detail="Nexus Core services" icon={Zap} tone="amber"/></section>
 
-  const isFreeUser = useMemo(() => subscriptionTier === "free" || isGuest, [subscriptionTier, isGuest]);
+    <section><div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-[.22em] text-cyan-300">Your business ecosystem</p><h2 className="mt-1 text-xl font-black text-white md:text-2xl">Everything working together.</h2><p className="mt-1 text-xs text-slate-500">Four connected departments. Specialised AI employees. One workspace.</p></div><Link to="/agents" className="text-[10px] font-bold text-cyan-300 hover:text-cyan-200">Browse all applications →</Link></div>
+      <div className="grid gap-4 xl:grid-cols-2">{departments.map(({key,title,subtitle,icon:Icon,color,border,bg,items})=><article key={key} className={`rounded-2xl border ${border} bg-[#0b192a] p-5 md:p-6`}><div className="flex items-center gap-3"><span className={`rounded-xl p-3 ${bg} ${color}`}><Icon size={20}/></span><div><h3 className="text-base font-black text-white">{title}</h3><p className="text-[10px] text-slate-500">{subtitle}</p></div><span className={`ml-auto rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-wider ${bg} ${color}`}>{key}</span></div><div className="mt-5 grid gap-2 sm:grid-cols-2">{items.map(item=><Link key={item.name} to={item.path} className="group rounded-xl border border-white/[0.07] bg-white/[0.025] p-4 transition hover:border-white/20 hover:bg-white/[0.05]"><div className="flex items-start justify-between gap-2"><p className="text-xs font-bold text-white">{item.name}</p><ArrowUpRight size={14} className="shrink-0 text-slate-600 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-cyan-300"/></div><p className="mt-2 min-h-9 text-[10px] leading-5 text-slate-500">{item.desc}</p><span className="mt-3 inline-block rounded-md bg-white/[0.05] px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-slate-500">{item.tag}</span></Link>)}</div></article>)}</div>
+    </section>
 
-  // Automatic live simulation timer for free tier preview
-  useEffect(() => {
-    if (!isFreeUser) return;
+    <section className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]"><article className="rounded-2xl border border-white/[0.08] bg-[#0b192a] p-5 md:p-6"><div className="flex items-center justify-between"><div><p className="text-[9px] font-black uppercase tracking-[.2em] text-violet-300">AI workforce</p><h2 className="mt-1 text-lg font-black text-white">Your digital team</h2></div><Link to="/agents" className="text-[10px] font-bold text-cyan-300">Open marketplace →</Link></div><p className="mt-2 max-w-lg text-xs leading-5 text-slate-500">Deploy specialised AI employees for the work your business needs done. Start with one role and expand as you grow.</p><div className="mt-5 grid gap-3 sm:grid-cols-3">{[{name:"Social Media Manager",dept:"GROW",icon:TrendingUp,tone:"text-violet-300"},{name:"Sales Assistant",dept:"SELL",icon:Users,tone:"text-cyan-300"},{name:"Customer Support Agent",dept:"SERVE",icon:Headset,tone:"text-emerald-300"}].map(a=><div key={a.name} className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4"><a.icon size={18} className={a.tone}/><p className="mt-3 text-[11px] font-bold text-white">{a.name}</p><p className="mt-1 text-[8px] font-black tracking-[.15em] text-slate-600">{a.dept}</p><Link to="/agents" className="mt-3 inline-flex items-center gap-1 text-[9px] font-bold text-cyan-300">Explore <ArrowRight size={11}/></Link></div>)}</div></article>
+      <article className="rounded-2xl border border-white/[0.08] bg-[#0b192a] p-5 md:p-6"><p className="text-[9px] font-black uppercase tracking-[.2em] text-amber-300">Getting started</p><h2 className="mt-1 text-lg font-black text-white">Build your business workspace</h2><p className="mt-2 text-xs leading-5 text-slate-500">A few small steps will help you get value from Nexus Core faster.</p><div className="mt-5 space-y-3">{tasks.map((t,i)=><div key={t.label} className="flex items-center gap-3"><span className={t.done?"text-emerald-300":"text-slate-600"}>{t.done?<CheckCircle2 size={17}/>:<Circle size={17}/>}</span><span className={`flex-1 text-[10px] ${t.done?"text-slate-500 line-through":"text-slate-300"}`}>{t.label}</span>{i===0&&!t.done&&<button onClick={()=>setSetupOpen(true)} className="text-[9px] font-bold text-cyan-300">Set up</button>}{i===1&&<Link to="/agents" className="text-[9px] font-bold text-cyan-300">Choose</Link>}{i===2&&!t.done&&<Link to="/goals" className="text-[9px] font-bold text-cyan-300">Create</Link>}</div>)}</div><Link to="/agents" className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.07] px-4 py-3 text-[10px] font-black uppercase tracking-wider text-cyan-200 hover:bg-cyan-400/10"><Bot size={14}/> Discover your AI workforce</Link></article></section>
 
-    const interval = setInterval(() => {
-      setMockFreeExecutions((prev) => {
-        const statuses = ["running", "completed", "pending", "failed"];
-        return prev.map((item, index) => {
-          // Dynamically cycle statuses periodically to simulate live telemetry
-          if (index === 0) {
-            return {
-              ...item,
-              status: item.status === "running" ? "completed" : "running",
-              started_at: new Date().toISOString(),
-            };
-          }
-          if (index === 3 && item.status === "pending") {
-            return { ...item, status: "running" };
-          }
-          return item;
-        });
-      });
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [isFreeUser]);
-
-  const fetchDashboardData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [healthRes, goalsRes, execsRes] = await Promise.all([
-        apiFetch("/health").catch(() => ({ status: "ok" })),
-        apiFetch("/goals").catch(() => [
-          { id: "1", name: "SME Quoting Automation", goal_type: "insurance_quoting", status: "active" },
-          { id: "2", name: "Regulatory Ingestion", goal_type: "policy_check", status: "active" }
-        ]),
-        !isFreeUser ? apiFetch("/executions").catch(() => []) : Promise.resolve([]),
-      ]);
-
-      setHealth(healthRes);
-      setGoals(Array.isArray(goalsRes) ? goalsRes : []);
-      setExecutions(Array.isArray(execsRes) ? execsRes : []);
-    } catch (err) {
-      console.error("[Dashboard Sync Error]:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [isFreeUser]);
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
-
-  const activeExecutionId = useMemo(() => executions[0]?.id || null, [executions]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#020617]">
-        <div className="animate-pulse text-cyan-500 font-mono tracking-widest uppercase text-xs">
-          Synchronizing Neural Workspace...
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-[#020617] text-slate-200 py-8 px-6 relative overflow-hidden font-sans">
-      <div className="absolute top-[-10%] right-[-10%] w-[600px] h-[600px] bg-cyan-600/5 blur-[120px] rounded-full pointer-events-none" />
-
-      <div className="max-w-6xl mx-auto space-y-8 relative z-10">
-        {/* Progressive Onboarding Banner */}
-        <OnboardingBanner user={user} />
-
-        {/* Header Section */}
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-slate-800/80">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white">
-                Nexus <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Core</span>
-              </h1>
-              {/* Cross-Product Bridge to SupportOps */}
-              <Link
-                to="/supportops"
-                className="text-[10px] font-mono font-bold text-blue-400 hover:text-blue-300 uppercase tracking-wider border border-blue-500/30 bg-blue-500/10 px-3 py-1 rounded-lg transition-colors"
-              >
-                Switch to SupportOps →
-              </Link>
-            </div>
-            <div className="flex items-center gap-3">
-              <p className="text-slate-400 font-mono font-bold text-[10px] uppercase tracking-widest">
-                Clearance Tier: <span className="text-cyan-400 uppercase">{isGuest ? "Guest (Free)" : subscriptionTier}</span>
-              </p>
-              {user?.role === "superadmin" && (
-                <Link
-                  to="/admin/override"
-                  className="text-[10px] font-mono font-bold text-amber-400 hover:text-amber-300 uppercase tracking-wider border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 rounded transition-colors"
-                >
-                  Admin Panel
-                </Link>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Link
-              to="/pricing"
-              className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold uppercase tracking-wider px-5 py-3 rounded-xl transition-all border border-slate-700 text-center active:scale-95"
-            >
-              Pricing Plans
-            </Link>
-            <button
-              onClick={() => navigate("/pricing")}
-              className="bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold uppercase tracking-wider px-6 py-3 rounded-xl transition-all shadow-lg shadow-cyan-900/30 text-center active:scale-95"
-            >
-              {isFreeUser ? "Select Package / Upgrade Tier →" : "Manage Subscription"}
-            </button>
-          </div>
-        </header>
-
-        {/* Operational Metrics */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          <StatCard
-            label="System Integrity"
-            value={health?.status === "ok" ? "OPERATIONAL" : "DEGRADED"}
-            status={health?.status === "ok" ? "success" : "error"}
-          />
-          <StatCard label="Active Objectives" value={goals.length} />
-          <StatCard
-            label="Neural Executions"
-            value={isFreeUser ? "FREE TIER LIMITED" : executions.length}
-            locked={isFreeUser}
-            onUnlock={() => navigate("/pricing")}
-          />
-        </section>
-
-        {/* Command Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Action Matrix */}
-          <section className="lg:col-span-4 flex flex-col gap-4">
-            <h2 className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest ml-1">
-              Command Matrix
-            </h2>
-            <ActionCard
-              title="Mission Objectives"
-              description="Configure and deploy neural autonomous agent goals."
-              to="/goals"
-              variant="primary"
-            />
-            <ActionCard
-              title="Execution Archive"
-              description="Review historical telemetry traces and decision trees."
-              to="/subscription"
-              locked={isFreeUser}
-            />
-            <ActionCard
-              title="Real-Time Telemetry Stream"
-              description="Monitor live autonomous neural agent execution streams."
-              to={activeExecutionId ? `/executions/${activeExecutionId}/stream` : "/subscription"}
-              locked={isFreeUser}
-            />
-            <ActionCard
-              title="Customer Support Ops"
-              description="Manage multi-channel tickets, WhatsApp, and voice queues."
-              to="/supportops"
-            />
-          </section>
-
-          {/* Activity Feed */}
-          <section className="lg:col-span-8 flex flex-col gap-4">
-            <div className="flex items-center justify-between ml-1">
-              <div className="flex items-center gap-2">
-                <h2 className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest">
-                  Recent Execution Traces
-                </h2>
-                {isFreeUser && (
-                  <span className="text-[9px] font-mono font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">
-                    Live Simulation
-                  </span>
-                )}
-              </div>
-              {!isFreeUser && (
-                <Link to="/executions" className="text-[10px] font-bold text-cyan-400 hover:underline uppercase tracking-wider">
-                  View All Traces
-                </Link>
-              )}
-            </div>
-
-            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden backdrop-blur-md min-h-[260px] relative">
-              {isFreeUser ? (
-                <div className="relative w-full h-full min-h-[260px]">
-                  {/* Blurred Animated Mock Simulation Layer */}
-                  <div className="absolute inset-0 filter blur-[2.5px] opacity-35 pointer-events-none divide-y divide-slate-800/80 p-2 select-none transition-all duration-500">
-                    {mockFreeExecutions.map((e) => (
-                      <div key={e.id} className="p-4 flex items-center justify-between transition-all duration-300">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`w-2 h-2 rounded-full ${e.status === "running" ? "bg-cyan-400 animate-ping" : "bg-slate-600"
-                              }`}
-                          />
-                          <div>
-                            <p className="text-xs font-bold text-slate-200 uppercase">{e.goal_type.replaceAll("_", " ")}</p>
-                            <p className="text-[10px] font-mono text-slate-500 mt-0.5">{formatDate(e.started_at)}</p>
-                          </div>
-                        </div>
-                        <StatusBadge status={e.status} />
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Upgrade Overlay Prompt */}
-                  <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center p-8 text-center z-20">
-                    <div className="inline-flex items-center gap-2 mb-3 bg-cyan-500/10 border border-cyan-500/20 px-3 py-1 rounded-full">
-                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
-                      <span className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-widest">
-                        Live Simulation Active
-                      </span>
-                    </div>
-                    <p className="text-slate-300 text-xs font-mono uppercase tracking-widest mb-1 font-semibold">
-                      Telemetry Stream Locked
-                    </p>
-                    <p className="text-slate-400 text-[11px] max-w-sm mb-5 leading-relaxed">
-                      Upgrade to unlock real-time streaming, automated decision trees, and complete execution audit traces.
-                    </p>
-                    <button
-                      onClick={() => navigate("/pricing")}
-                      className="text-cyan-400 text-xs font-bold border border-cyan-500/30 bg-cyan-500/10 px-6 py-2.5 rounded-lg hover:bg-cyan-500/20 transition-all uppercase tracking-wider shadow-lg shadow-cyan-950/50 hover:scale-105 active:scale-95"
-                    >
-                      Select Package to Unlock Full Access →
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-800/80">
-                  {executions.length === 0 ? (
-                    <div className="p-12 text-center text-slate-500 text-xs font-mono uppercase tracking-widest">
-                      Standby: No Neural Execution Telemetry Recorded
-                    </div>
-                  ) : (
-                    executions.slice(0, 5).map((e) => (
-                      <div
-                        key={e.id}
-                        className="p-4 flex items-center justify-between hover:bg-slate-800/30 transition-colors group"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`w-2 h-2 rounded-full ${e.status === "running" ? "bg-cyan-400 animate-pulse" : "bg-slate-600"
-                              }`}
-                          />
-                          <div>
-                            <p className="text-xs font-bold text-slate-200 group-hover:text-white transition-colors uppercase">
-                              {e.goal_type?.replace("_", " ") || "Standard Execution Node"}
-                            </p>
-                            <p className="text-[10px] font-mono text-slate-500 mt-0.5">
-                              {formatDate(e.started_at)}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-4">
-                          <div className="flex gap-2 text-[10px] font-mono font-bold uppercase">
-                            <Link
-                              to={`/executions/${e.id}/stream`}
-                              className="text-cyan-400 hover:text-cyan-300 transition-colors"
-                            >
-                              Stream
-                            </Link>
-                            <span className="text-slate-700">|</span>
-                            <Link
-                              to={`/executions/${e.id}/audit`}
-                              className="text-indigo-400 hover:text-indigo-300 transition-colors"
-                            >
-                              Audit
-                            </Link>
-                          </div>
-                          <StatusBadge status={e.status} />
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-          </section>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* Sub-components */
-
-function StatCard({ label, value, locked, status, onUnlock }) {
-  return (
-    <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 relative overflow-hidden shadow-xl min-h-[100px] flex flex-col justify-center">
-      {locked && (
-        <div
-          onClick={onUnlock}
-          className="absolute inset-0 bg-slate-950/90 z-20 flex items-center justify-center backdrop-blur-xs cursor-pointer group"
-        >
-          <span className="text-[10px] font-mono font-bold text-cyan-400 group-hover:text-white uppercase tracking-widest border border-cyan-500/30 bg-slate-900/90 px-3 py-1.5 rounded-md transition-all">
-            Select Package to Unlock →
-          </span>
-        </div>
-      )}
-      <p className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest mb-1">{label}</p>
-      <p
-        className={`text-xl font-mono font-bold tracking-tight ${status === "success" ? "text-emerald-400" : status === "error" ? "text-rose-400" : "text-white"
-          }`}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function ActionCard({ title, description, to, locked, variant }) {
-  const isPrimary = variant === "primary";
-
-  if (locked) {
-    return (
-      <Link
-        to="/subscription"
-        className="block p-5 rounded-xl border border-slate-800/60 bg-slate-900/20 hover:border-cyan-500/40 hover:bg-slate-900/40 transition-all group"
-      >
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="font-bold text-xs uppercase tracking-tight text-slate-400 group-hover:text-cyan-400 transition-colors">{title}</h3>
-          <span className="text-[9px] font-mono text-cyan-400 uppercase tracking-wider">Pro Package</span>
-        </div>
-        <p className="text-[10px] text-slate-500 leading-relaxed">{description}</p>
-      </Link>
-    );
-  }
-
-  return (
-    <Link
-      to={to}
-      className={`block p-5 rounded-xl border transition-all duration-200 shadow-md hover:-translate-y-0.5 ${isPrimary
-        ? "bg-cyan-950/20 border-cyan-800/40 hover:bg-cyan-950/40 hover:border-cyan-500/50"
-        : "bg-slate-900/40 border-slate-800 hover:border-slate-700 hover:bg-slate-800/40"
-        }`}
-    >
-      <h3 className={`font-bold text-xs uppercase tracking-tight mb-1 ${isPrimary ? "text-cyan-400" : "text-white"}`}>
-        {title}
-      </h3>
-      <p className="text-[10px] text-slate-400 leading-relaxed">{description}</p>
-    </Link>
-  );
-}
-
-function StatusBadge({ status }) {
-  const s = status?.toLowerCase();
-  const styles = {
-    running: "text-cyan-400 border-cyan-500/20 bg-cyan-500/10",
-    completed: "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
-    failed: "text-rose-400 border-rose-500/20 bg-rose-500/10",
-    pending: "text-amber-400 border-amber-500/20 bg-amber-500/10",
-  };
-
-  return (
-    <span
-      className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border uppercase tracking-wider min-w-[75px] text-center ${styles[s] || "text-slate-400 border-slate-700 bg-slate-800/50"
-        }`}
-    >
-      {status || "unknown"}
-    </span>
-  );
+    <section className="flex flex-col justify-between gap-4 rounded-2xl border border-white/[0.07] bg-gradient-to-r from-[#101d31] to-[#0b192a] p-5 md:flex-row md:items-center md:p-6"><div className="flex items-center gap-3"><span className="rounded-xl bg-cyan-400/10 p-3 text-cyan-300"><Store size={20}/></span><div><h3 className="text-sm font-black text-white">Build the ecosystem with us</h3><p className="mt-1 text-[10px] text-slate-500">Discover specialist agents or publish your own application to the Nexus marketplace.</p></div></div><Link to="/agents" className="inline-flex items-center gap-2 self-start rounded-xl border border-white/10 px-4 py-3 text-[10px] font-bold text-slate-200 hover:border-cyan-400/30 hover:text-cyan-200 md:self-auto">Visit agent marketplace <ArrowUpRight size={14}/></Link></section>
+    <p className="pb-2 text-center text-[9px] text-slate-700">Nexus Core · Your business. Your AI workforce. One ecosystem.</p>
+  </div>;
 }

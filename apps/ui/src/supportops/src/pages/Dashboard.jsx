@@ -97,7 +97,7 @@ async function api(url, { method = "GET", body, signal } = {}) {
   const token = getToken();
   const full = resolveUrl(url);
   if (!full) throw Object.assign(new Error("Missing endpoint."), { status: 0 });
-  if (!token) throw Object.assign(new Error("Your session has expired. Sign in again to continue."), { status: 401 });
+  if (!token) throw Object.assign(new Error("Unauthorized access. Please contact your workspace administrator for access."), { status: 401 });
   const org = getOrg();
 
   const response = await fetch(full, {
@@ -119,8 +119,8 @@ async function api(url, { method = "GET", body, signal } = {}) {
 
   if (!response.ok || data?.success === false) {
     const message =
-      response.status === 401 ? "Your session has expired. Sign in again to continue."
-        : response.status === 403 ? "You don't have permission to do that."
+      response.status === 401 ? "Unauthorized access. Please contact your workspace administrator for access."
+        : response.status === 403 ? "You don't have permission to do that. Contact your workspace administrator."
           : data?.message || data?.error || `Request failed (${response.status})`;
     throw Object.assign(new Error(message), { status: response.status });
   }
@@ -245,13 +245,10 @@ function AccessRequired() {
     <div className="flex min-h-screen items-center justify-center bg-[#030712] px-6 text-slate-100">
       <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 p-8 text-center">
         <LockKeyhole className="mx-auto mb-4 h-10 w-10 text-cyan-400" aria-hidden="true" />
-        <h1 className="text-2xl font-bold text-white">Sign in to continue</h1>
+        <h1 className="text-2xl font-bold text-white">Access restricted</h1>
         <p className="mt-3 text-sm leading-6 text-slate-400">
-          Dashboard data, tickets and workspace activity are available to authorized team members only.
+          You are not authorized to view this dashboard. Please contact your workspace administrator to request team access or an invitation.
         </p>
-        <Link to={ROUTES?.login || "/supportops/login"} className={`mt-6 inline-flex items-center justify-center rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500 ${focusRing}`}>
-          Sign in
-        </Link>
       </div>
     </div>
   );
@@ -748,12 +745,12 @@ export default function WorkspaceDashboard({ view, role: suppliedRole, user: sup
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             <span>
               {sessionExpired
-                ? "Your session has expired. Sign in again to see live data."
+                ? "Unauthorized access. Please contact your workspace administrator to view live data."
                 : `Couldn't load ${failed.map((f) => f.name).join(", ")}. Showing the last data we had.`}
             </span>
-            {sessionExpired
-              ? <Link to={ROUTES?.login || "/supportops/login"} className="font-semibold underline">Sign in</Link>
-              : <button type="button" onClick={load} className="font-semibold underline">Retry</button>}
+            {!sessionExpired && (
+              <button type="button" onClick={load} className="font-semibold underline">Retry</button>
+            )}
           </div>
         )}
       </div>
@@ -799,7 +796,7 @@ export default function WorkspaceDashboard({ view, role: suppliedRole, user: sup
             </div>
           ) : (
             <Card title="Workspace administration" icon={ShieldCheck}>
-              <p className="text-sm text-slate-400">Administrator tools are available only to workspace owners and authorized administrators.</p>
+              <p className="text-sm text-slate-400">Administrator tools are available only to workspace owners and authorized administrators. Please contact your workspace administrator if you need access.</p>
             </Card>
           ))}
 

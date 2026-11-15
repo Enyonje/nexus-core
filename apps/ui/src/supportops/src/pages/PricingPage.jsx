@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 
 export default function PricingPage() {
     const [tiers, setTiers] = useState([]);
@@ -128,6 +129,19 @@ export default function PricingPage() {
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-12 space-y-8">
+            {/* Top Member Sign-In Bar */}
+            <div className="flex justify-end">
+                <div className="inline-flex items-center gap-2 text-sm text-slate-400 bg-slate-900/80 border border-slate-800 px-4 py-2 rounded-full">
+                    <span>Already have a workspace?</span>
+                    <Link
+                        to="/supportops/login"
+                        className="text-cyan-400 hover:text-cyan-300 font-semibold transition-colors"
+                    >
+                        Sign in &rarr;
+                    </Link>
+                </div>
+            </div>
+
             <div className="text-center space-y-3">
                 <h1 className="text-4xl font-bold text-white">SupportOps Plans &amp; Pricing</h1>
                 <p className="text-slate-400 max-w-2xl mx-auto">
@@ -186,6 +200,19 @@ export default function PricingPage() {
                         </div>
                     </div>
                 ))}
+            </div>
+
+            {/* Bottom Member Sign-In Prompt */}
+            <div className="text-center pt-4">
+                <p className="text-sm text-slate-400">
+                    Already registered with SupportOps?{' '}
+                    <Link
+                        to="/supportops/login"
+                        className="text-cyan-400 hover:text-cyan-300 font-semibold underline underline-offset-4 transition-colors"
+                    >
+                        Sign in to your account
+                    </Link>
+                </p>
             </div>
         </div>
     );

@@ -1,345 +1,39 @@
-import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  ShieldCheck,
-  Bot,
-  Zap,
-  Cpu,
-  Layers,
-  ArrowRight,
-  Activity,
-  CheckCircle2,
-  Database,
-  Globe,
-  Terminal,
-} from "lucide-react";
+import { motion } from "framer-motion";
+import { ArrowRight, ArrowUpRight, Bot, TrendingUp, Target, Headset, Workflow, Sparkles, Building2, Store, CheckCircle2, Zap, Globe2 } from "lucide-react";
+
+const pillars = [
+  { name: "Grow", eyebrow: "CUSTOMER ACQUISITION", text: "Build visibility, publish consistently and find more of the right customers.", icon: TrendingUp, color: "text-violet-300", bg: "bg-violet-400/10", border: "border-violet-400/20", points: ["Social media operations", "Marketing intelligence", "SEO and growth workflows"] },
+  { name: "Sell", eyebrow: "REVENUE GENERATION", text: "Turn prospects into customers with organised, intelligent sales workflows.", icon: Target, color: "text-cyan-300", bg: "bg-cyan-400/10", border: "border-cyan-400/20", points: ["Lead discovery and qualification", "Sales follow-ups", "Pipeline and proposals"] },
+  { name: "Serve", eyebrow: "CUSTOMER EXPERIENCE", text: "Give customers faster, more consistent support across their conversations.", icon: Headset, color: "text-emerald-300", bg: "bg-emerald-400/10", border: "border-emerald-400/20", points: ["Omnichannel support workflows", "Ticket triage and escalation", "Customer success operations"] },
+  { name: "Operate", eyebrow: "BUSINESS OPERATIONS", text: "Reduce repetitive work and make important business processes repeatable.", icon: Workflow, color: "text-amber-300", bg: "bg-amber-400/10", border: "border-amber-400/20", points: ["Workflow automation", "Business process management", "Specialist compliance tools"] },
+];
+const products = [
+  { name: "SocialOps", role: "Your AI marketing team", description: "Plan, create and coordinate social media operations to keep your brand active and consistent.", dept: "GROW", icon: TrendingUp, path: "/agents", accent: "text-violet-300" },
+  { name: "Sales Assistant AI", role: "Your AI sales assistant", description: "Support lead discovery, qualification, sales conversations and follow-up workflows.", dept: "SELL", icon: Target, path: "/agents", accent: "text-cyan-300" },
+  { name: "SupportOps", role: "Your AI customer support workspace", description: "Coordinate customer support operations, ticket workflows and escalation visibility.", dept: "SERVE", icon: Headset, path: "/supportops", accent: "text-emerald-300" },
+];
+const segments = ["Digital agencies", "Professional services", "E-commerce & retail", "Real estate", "Growing SMEs", "Online businesses"];
 
 export default function LandingPage() {
-  const [activeTab, setActiveTab] = useState("compliance");
   const location = useLocation();
+  return <div className="min-h-screen overflow-hidden bg-[#07111f] font-sans text-white selection:bg-cyan-400/30">
+    <div className="pointer-events-none fixed inset-0"><div className="absolute inset-0 bg-[linear-gradient(to_right,#94a3b808_1px,transparent_1px),linear-gradient(to_bottom,#94a3b808_1px,transparent_1px)] bg-[size:4rem_4rem]"/><div className="absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full bg-cyan-500/10 blur-[140px]"/><div className="absolute -right-40 top-[35%] h-[520px] w-[520px] rounded-full bg-blue-600/10 blur-[150px]"/></div>
+    <header className="relative z-20 mx-auto flex max-w-7xl items-center justify-between border-b border-white/[0.07] px-5 py-5 md:px-8"><Link to="/" className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 text-xl font-black shadow-lg shadow-cyan-950/40">N</span><span className="text-lg font-black tracking-tight">Nexus<span className="text-cyan-300">Core</span><small className="mt-0.5 block text-[8px] font-bold uppercase tracking-[.22em] text-slate-500">AI business ecosystem</small></span></Link><nav className="hidden items-center gap-8 text-[11px] font-bold text-slate-400 md:flex"><a href="#ecosystem" className="hover:text-white">Ecosystem</a><a href="#applications" className="hover:text-white">Applications</a><a href="#businesses" className="hover:text-white">Who it's for</a><Link to="/agents" className="hover:text-white">Marketplace</Link><Link to="/pricing" className="hover:text-white">Pricing</Link></nav><div className="flex items-center gap-2"><Link to="/login" state={{from:location.pathname}} className="hidden rounded-xl px-4 py-2.5 text-[10px] font-bold text-slate-300 hover:bg-white/5 sm:block">Log in</Link><Link to="/register" className="rounded-xl bg-cyan-400 px-4 py-3 text-[10px] font-black text-slate-950 hover:bg-cyan-300">Get started <ArrowUpRight size={13} className="ml-1 inline"/></Link></div></header>
 
-  const fadeInUp = {
-    initial: { opacity: 0, y: 20 },
-    animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.6 },
-  };
-
-  const specialisedAgents = [
-    {
-      id: "compliance",
-      title: "Cross-Border Compliance System",
-      slug: "cross-border-compliance-system",
-      desc: "Real-time international statutory screening, localized regulatory risk mitigation, and automated cross-border legal checks.",
-      path: "/agents/cross-border-compliance",
-      status: "Production Ready",
-      color: "from-emerald-400 to-teal-500",
-      accent: "emerald",
-      icon: ShieldCheck,
-      metrics: { latency: "14ms", throughput: "12.4k/sec", accuracy: "99.9%" },
-    },
-    {
-      id: "support",
-      title: "Support-Ops AI",
-      slug: "support-ops-ai",
-      desc: "Autonomous triage, self-healing integration setups, and SLA escalation tracking powered by internal engineering context.",
-      path: "/supportops",
-      status: "Beta Access",
-      color: "from-blue-400 to-indigo-500",
-      accent: "blue",
-      icon: Bot,
-      metrics: { latency: "42ms", throughput: "3.1k/sec", accuracy: "98.5%" },
-    },
-  ];
-
-  return (
-    <div className="min-h-screen bg-[#020617] text-white selection:bg-blue-500/30 overflow-x-hidden font-sans relative">
-      {/* 1. BACKGROUND GRID & GLOWS */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b15_1px,transparent_1px),linear-gradient(to_bottom,#1e293b15_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]" />
-        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-blue-600/15 blur-[140px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-purple-600/15 blur-[140px] rounded-full" />
-      </div>
-
-      {/* 2. REFINED NAVIGATION */}
-      <nav className="relative z-50 flex justify-between items-center px-6 py-8 max-w-7xl mx-auto backdrop-blur-md bg-[#020617]/50 rounded-b-2xl border-b border-white/5">
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
-            <Cpu className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-xl font-black tracking-tighter bg-gradient-to-r from-blue-400 via-indigo-300 to-white bg-clip-text text-transparent">
-            NEXUS CORE
-          </span>
-        </div>
-
-        <div className="hidden md:flex items-center gap-10 text-[11px] font-black uppercase tracking-widest text-slate-400">
-          <Link to="/docs" className="hover:text-blue-400 transition-colors">Platform</Link>
-          <Link to="/agents" className="hover:text-blue-400 transition-colors">Specialised Agents</Link>
-          <Link to="/subscription" className="hover:text-blue-400 transition-colors">Pricing</Link>
-          <Link to="/architecture" className="hover:text-blue-400 transition-colors">Architecture</Link>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Link
-            to="/dashboard"
-            className="px-5 py-2.5 rounded-xl bg-blue-600/20 border border-blue-500/40 text-blue-400 hover:bg-blue-600/30 transition-all text-[11px] font-black uppercase tracking-widest backdrop-blur-md shadow-sm"
-          >
-            Launch Core →
-          </Link>
-          <Link
-            to="/login"
-            state={{ from: location.pathname }}
-            className="px-5 py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all text-[11px] font-black uppercase tracking-widest backdrop-blur-md shadow-sm text-slate-300"
-          >
-            Login
-          </Link>
-        </div>
-      </nav>
-
-      {/* 3. HERO SECTION */}
-      <section className="relative z-10 px-6 pt-24 pb-20 max-w-7xl mx-auto">
-        <motion.div {...fadeInUp} className="text-center max-w-4xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 text-blue-400 text-[10px] font-black tracking-[0.2em] uppercase mb-8 shadow-[0_0_20px_rgba(59,130,246,0.2)]">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-            </span>
-            Beta v1.0 Live on Vercel
-          </div>
-
-          <h1 className="text-5xl md:text-7xl font-black mb-8 tracking-tighter leading-[0.95] text-white">
-            From Static Workflows to <br />
-            <span className="bg-gradient-to-r from-blue-400 via-indigo-300 to-purple-400 bg-clip-text text-transparent">
-              Autonomous Swarms
-            </span>
-          </h1>
-
-          <p className="text-base md:text-lg text-slate-400 mb-10 max-w-2xl mx-auto leading-relaxed font-medium">
-            The AI-native execution engine that deploys sandboxed digital operatives. Define the high-level intent — Sentinel Swarms manage the pipeline end-to-end.
-          </p>
-
-          <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
-            <Link
-              to="/agents"
-              state={{ from: location.pathname }}
-              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black uppercase tracking-widest shadow-[0_0_35px_rgba(37,99,235,0.35)] transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
-            >
-              Explore Agents <ArrowRight className="w-4 h-4" />
-            </Link>
-
-            {/* DIRECT LINK TO DASHBOARD */}
-            <Link
-              to="/dashboard"
-              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-slate-900/80 border border-blue-500/30 hover:border-blue-400 text-white text-xs font-black uppercase tracking-widest transition-all backdrop-blur-md shadow-lg flex items-center justify-center gap-2 group"
-            >
-              Launch Generic Swarm <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform text-blue-400" />
-            </Link>
-          </div>
-        </motion.div>
-
-        {/* HERO GRAPHIC: INTERACTIVE AGENT CANVAS */}
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-          className="relative max-w-5xl mx-auto rounded-3xl border border-white/10 bg-slate-950/80 p-6 md:p-8 backdrop-blur-xl shadow-2xl shadow-blue-950/50 overflow-hidden"
-        >
-          <div className="flex items-center justify-between pb-6 mb-6 border-b border-white/10 text-xs font-mono">
-            <div className="flex items-center gap-2 text-slate-400">
-              <Terminal className="w-4 h-4 text-blue-400" />
-              <span className="text-slate-300">orchestrator.swarms.nexus</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold flex items-center gap-1.5">
-                <Activity className="w-3 h-3 animate-pulse" /> SWARM ACTIVE
-              </span>
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6 relative z-10">
-            <div className="p-5 rounded-2xl bg-slate-900/80 border border-blue-500/30 relative group hover:border-blue-500 transition-all shadow-lg">
-              <div className="text-[10px] font-mono text-blue-400 mb-2 uppercase tracking-wider flex items-center justify-between">
-                <span>01 // Webhook Input</span>
-                <Globe className="w-3.5 h-3.5" />
-              </div>
-              <div className="font-bold text-sm mb-1 text-white">Regulatory Ingestion</div>
-              <p className="text-xs text-slate-400">Ingesting cross-border policy updates from EU statutory databases.</p>
-              <div className="mt-4 pt-3 border-t border-white/5 flex justify-between items-center text-[10px] font-mono text-slate-500">
-                <span>Event: policy_update</span>
-                <span className="text-emerald-400">200 OK</span>
-              </div>
-            </div>
-
-            <div className="p-5 rounded-2xl bg-gradient-to-b from-indigo-950/60 to-slate-900/80 border border-indigo-500/40 relative group hover:border-indigo-400 transition-all shadow-xl shadow-indigo-950/30">
-              <div className="text-[10px] font-mono text-indigo-400 mb-2 uppercase tracking-wider flex items-center justify-between">
-                <span>02 // Agent Swarm</span>
-                <Zap className="w-3.5 h-3.5 text-indigo-400 animate-bounce" />
-              </div>
-              <div className="font-bold text-sm mb-1 text-white">Sentinel Reasoning</div>
-              <p className="text-xs text-slate-400">Parsing statutory differences & auto-generating localized legal logic.</p>
-              <div className="mt-4 pt-3 border-t border-white/5 flex justify-between items-center text-[10px] font-mono text-slate-500">
-                <span>Latency: 18ms</span>
-                <span className="text-indigo-400">Evaluating...</span>
-              </div>
-            </div>
-
-            <div className="p-5 rounded-2xl bg-slate-900/80 border border-emerald-500/30 relative group hover:border-emerald-500 transition-all shadow-lg">
-              <div className="text-[10px] font-mono text-emerald-400 mb-2 uppercase tracking-wider flex items-center justify-between">
-                <span>03 // Automated Action</span>
-                <Database className="w-3.5 h-3.5" />
-              </div>
-              <div className="font-bold text-sm mb-1 text-white">Database Sync</div>
-              <p className="text-xs text-slate-400">Commit compliant contracts and alert regional officers via webhooks.</p>
-              <div className="mt-4 pt-3 border-t border-white/5 flex justify-between items-center text-[10px] font-mono text-slate-500">
-                <span>Status: Synced</span>
-                <span className="text-emerald-400">100% Success</span>
-              </div>
-            </div>
-          </div>
-        </motion.div>
+    <main className="relative z-10">
+      <section className="mx-auto grid max-w-7xl items-center gap-12 px-5 pb-20 pt-20 md:px-8 md:pb-28 md:pt-28 lg:grid-cols-[1.05fr_.95fr]"><motion.div initial={{opacity:0,y:18}} animate={{opacity:1,y:0}} transition={{duration:.55}}><span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/[0.07] px-3 py-2 text-[9px] font-black uppercase tracking-[.2em] text-cyan-200"><Sparkles size={12}/> AI-powered business operations</span><h1 className="mt-7 max-w-3xl text-5xl font-black leading-[1.02] tracking-[-.045em] md:text-7xl">Your business.<br/><span className="bg-gradient-to-r from-cyan-300 via-blue-300 to-violet-300 bg-clip-text text-transparent">Your AI workforce.</span><br/>One ecosystem.</h1><p className="mt-7 max-w-xl text-base leading-8 text-slate-400">Attract customers, convert more sales, serve customers better and automate everyday operations — with specialised AI employees working across one connected business workspace.</p><div className="mt-9 flex flex-col gap-3 sm:flex-row"><Link to="/register" className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-400 px-7 py-4 text-[11px] font-black uppercase tracking-wider text-slate-950 shadow-xl shadow-cyan-950/30 hover:bg-cyan-300">Build your AI workforce <ArrowRight size={15}/></Link><Link to="/agents" className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-7 py-4 text-[11px] font-bold text-white hover:bg-white/[0.07]">Explore applications <ArrowUpRight size={14}/></Link></div><div className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-[10px] font-semibold text-slate-500"><span className="flex items-center gap-1.5"><CheckCircle2 size={13} className="text-cyan-300"/> Start with one business need</span><span className="flex items-center gap-1.5"><CheckCircle2 size={13} className="text-cyan-300"/> Expand as you grow</span><span className="flex items-center gap-1.5"><CheckCircle2 size={13} className="text-cyan-300"/> Connected workflows</span></div></motion.div>
+        <motion.div initial={{opacity:0,scale:.96}} animate={{opacity:1,scale:1}} transition={{duration:.65,delay:.12}} className="relative"><div className="absolute inset-8 rounded-full bg-cyan-400/10 blur-[80px]"/><div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-[#0b1a2c]/90 p-5 shadow-2xl shadow-black/40 backdrop-blur-xl md:p-7"><div className="flex items-center justify-between border-b border-white/[0.08] pb-5"><div><p className="text-[9px] font-black uppercase tracking-[.2em] text-cyan-300">Nexus business workspace</p><h2 className="mt-1 text-lg font-black">Your business at a glance</h2></div><span className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1.5 text-[8px] font-black text-emerald-300">CONNECTED WORKSPACE</span></div><div className="mt-5 grid grid-cols-2 gap-3">{[{n:"GROW",d:"Attract customers",i:TrendingUp,c:"text-violet-300",b:"bg-violet-400/10"},{n:"SELL",d:"Convert prospects",i:Target,c:"text-cyan-300",b:"bg-cyan-400/10"},{n:"SERVE",d:"Support customers",i:Headset,c:"text-emerald-300",b:"bg-emerald-400/10"},{n:"OPERATE",d:"Automate work",i:Workflow,c:"text-amber-300",b:"bg-amber-400/10"}].map(x=><div key={x.n} className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><span className={`inline-flex rounded-xl p-2.5 ${x.b} ${x.c}`}><x.i size={18}/></span><p className="mt-4 text-[9px] font-black tracking-[.18em] text-slate-500">{x.n}</p><p className="mt-1 text-sm font-bold text-white">{x.d}</p></div>)}</div><div className="mt-4 rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.045] p-4"><div className="flex items-center gap-2"><Bot size={16} className="text-cyan-300"/><p className="text-xs font-bold text-white">Your AI workforce</p><span className="ml-auto text-[8px] font-bold uppercase tracking-wider text-slate-500">Specialised employees</span></div><div className="mt-4 flex flex-wrap gap-2">{["Marketing manager","Sales assistant","Support agent","Workflow operator"].map((x,i)=><span key={x} className="rounded-lg border border-white/[0.07] bg-[#07111f] px-3 py-2 text-[9px] font-semibold text-slate-300"><span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${["bg-violet-300","bg-cyan-300","bg-emerald-300","bg-amber-300"][i]}`}/>{x}</span>)}</div></div><p className="mt-4 text-center text-[9px] text-slate-600">One business workspace · Specialised applications · Connected workflows</p></div></motion.div>
       </section>
 
-      {/* 4. TECH STACK TRUST BAR */}
-      <section className="relative z-10 py-12 border-y border-white/[0.05] bg-white/[0.01]">
-        <p className="text-center text-[9px] font-black text-slate-500 uppercase tracking-[0.4em] mb-8">
-          Enterprise Infrastructure Integrations
-        </p>
-        <div className="flex flex-wrap justify-center items-center gap-8 md:gap-16 px-6 opacity-40 grayscale hover:grayscale-0 transition-all duration-500">
-          {['Vercel', 'Node-js', 'Docker', 'Google Cloud', 'OpenAI', 'Neo4j'].map((tech) => (
-            <span key={tech} className="font-black text-sm md:text-xl tracking-tighter text-white hover:text-blue-400 transition-colors">
-              {tech.toUpperCase()}
-            </span>
-          ))}
-        </div>
-      </section>
+      <section id="ecosystem" className="border-y border-white/[0.06] bg-white/[0.015] px-5 py-20 md:px-8"><div className="mx-auto max-w-7xl"><div className="mx-auto mb-12 max-w-2xl text-center"><p className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">One connected business ecosystem</p><h2 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">Every department has a job.<br/>Every AI employee has a purpose.</h2><p className="mt-4 text-sm leading-7 text-slate-400">Nexus Core organises AI around the outcomes businesses care about — not around technical agent infrastructure.</p></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{pillars.map(({name,eyebrow,text,icon:Icon,color,bg,border,points})=><article key={name} className={`rounded-2xl border ${border} bg-[#0b192a] p-6 transition hover:-translate-y-1 hover:bg-[#102239]`}><span className={`inline-flex rounded-xl p-3 ${bg} ${color}`}><Icon size={21}/></span><p className="mt-5 text-[8px] font-black tracking-[.2em] text-slate-500">{eyebrow}</p><h3 className="mt-1 text-xl font-black">{name}</h3><p className="mt-3 min-h-[60px] text-xs leading-6 text-slate-400">{text}</p><ul className="mt-5 space-y-2 border-t border-white/[0.07] pt-4">{points.map(p=><li key={p} className="flex gap-2 text-[10px] text-slate-400"><CheckCircle2 size={13} className={`shrink-0 ${color}`}/>{p}</li>)}</ul></article>)}</div></div></section>
 
-      {/* 5. INTERACTIVE AGENTS SECTION */}
-      <section className="relative z-10 px-6 py-28 bg-gradient-to-b from-transparent via-blue-950/10 to-transparent">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
-            <div className="space-y-3">
-              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 flex items-center gap-2">
-                <Layers className="w-4 h-4" /> Targeted Business Operatives
-              </div>
-              <h2 className="text-3xl md:text-5xl font-black tracking-tighter">Specialised Agent Suites</h2>
-              <p className="text-slate-400 font-medium max-w-xl text-sm leading-relaxed">
-                Purpose-built digital operatives designed to handle specialized multi-step execution workflows out-of-the-box.
-              </p>
-            </div>
-            <Link
-              to="/agents"
-              state={{ from: location.pathname }}
-              className="text-xs font-black uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-2 border-b border-blue-400/20 pb-1 w-fit"
-            >
-              View Agent Directory <span>→</span>
-            </Link>
-          </div>
+      <section id="applications" className="mx-auto max-w-7xl px-5 py-20 md:px-8"><div className="flex flex-col justify-between gap-5 md:flex-row md:items-end"><div><p className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">Specialised business applications</p><h2 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">Meet your AI employees.</h2><p className="mt-3 max-w-xl text-sm leading-7 text-slate-400">Start with the business function you need most. Add more applications as your team and operations grow.</p></div><Link to="/agents" className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-cyan-300 hover:text-cyan-200">Explore agent marketplace <ArrowRight size={14}/></Link></div><div className="mt-9 grid gap-4 lg:grid-cols-3">{products.map(({name,role,description,dept,icon:Icon,path,accent})=><article key={name} className="rounded-2xl border border-white/[0.08] bg-[#0b192a] p-6"><div className="flex items-center justify-between"><span className={`rounded-xl bg-white/[0.04] p-3 ${accent}`}><Icon size={21}/></span><span className="rounded-full border border-white/10 px-2.5 py-1 text-[8px] font-black tracking-wider text-slate-500">{dept}</span></div><p className="mt-5 text-[9px] font-bold uppercase tracking-[.16em] text-slate-500">{role}</p><h3 className="mt-1 text-xl font-black">{name}</h3><p className="mt-3 min-h-[64px] text-xs leading-6 text-slate-400">{description}</p><Link to={path} className="mt-5 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-cyan-300 hover:text-cyan-200">Explore solution <ArrowUpRight size={14}/></Link></article>)}</div></section>
 
-          <div className="grid md:grid-cols-2 gap-8">
-            <AnimatePresence mode="wait">
-              {specialisedAgents.map((agent) => {
-                const IconComponent = agent.icon;
-                return (
-                  <motion.div
-                    key={agent.id}
-                    layout
-                    whileHover={{ y: -6 }}
-                    onClick={() => setActiveTab(agent.id)}
-                    className={`relative cursor-pointer p-8 md:p-10 rounded-[28px] bg-gradient-to-b from-slate-900/80 to-slate-900/30 border transition-all overflow-hidden backdrop-blur-md ${activeTab === agent.id ? "border-blue-500/60 shadow-2xl shadow-blue-950/40" : "border-white/10 hover:border-white/20"}`}
-                  >
-                    <div className="flex justify-between items-start mb-6">
-                      <div className="flex items-center gap-3">
-                        <div className={`p-3 rounded-xl bg-white/5 border border-white/10 ${agent.accent === 'emerald' ? 'text-emerald-400' : 'text-blue-400'}`}>
-                          <IconComponent className="w-6 h-6" />
-                        </div>
-                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-white/5 border border-white/10 ${agent.accent === 'emerald' ? 'text-emerald-400' : 'text-blue-400'}`}>
-                          {agent.status}
-                        </span>
-                      </div>
-                      <span className="text-[10px] font-mono text-slate-500 font-bold">SYS_ID // {agent.id.toUpperCase()}</span>
-                    </div>
+      <section id="businesses" className="border-y border-white/[0.06] bg-[#0a1727] px-5 py-20 md:px-8"><div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[.85fr_1.15fr] lg:items-center"><div><p className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">Built around your business</p><h2 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">Your industry.<br/>Your priorities.<br/>Your workspace.</h2><p className="mt-4 text-sm leading-7 text-slate-400">Tell Nexus Core what kind of business you run and what you want to improve. Your workspace can guide you toward relevant applications and workflows.</p><Link to="/register" className="mt-7 inline-flex items-center gap-2 rounded-xl bg-cyan-400 px-6 py-3.5 text-[10px] font-black uppercase tracking-wider text-slate-950 hover:bg-cyan-300">Create your workspace <ArrowRight size={14}/></Link></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{segments.map((s,i)=><div key={s} className="flex min-h-24 flex-col justify-between rounded-2xl border border-white/[0.08] bg-white/[0.025] p-4"><Building2 size={17} className={i%2===0?"text-cyan-300":"text-violet-300"}/><p className="mt-4 text-xs font-bold text-slate-200">{s}</p></div>)}</div></div></section>
 
-                    <h3 className={`text-2xl font-black tracking-tight mb-3 bg-gradient-to-r ${agent.color} bg-clip-text text-transparent`}>
-                      {agent.title}
-                    </h3>
-
-                    <p className="text-slate-400 text-sm leading-relaxed mb-6 font-medium">
-                      {agent.desc}
-                    </p>
-
-                    <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-slate-950/60 border border-white/5 mb-6 text-center font-mono">
-                      <div>
-                        <div className="text-[9px] text-slate-500 uppercase">Latency</div>
-                        <div className="text-xs font-bold text-white">{agent.metrics.latency}</div>
-                      </div>
-                      <div>
-                        <div className="text-[9px] text-slate-500 uppercase">Throughput</div>
-                        <div className="text-xs font-bold text-white">{agent.metrics.throughput}</div>
-                      </div>
-                      <div>
-                        <div className="text-[9px] text-slate-500 uppercase">Accuracy</div>
-                        <div className="text-xs font-bold text-emerald-400">{agent.metrics.accuracy}</div>
-                      </div>
-                    </div>
-
-                    <div className="pt-4 border-t border-white/5 flex items-center justify-between">
-                      <span className="text-[10px] font-mono text-slate-500 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Sandboxed Runtime
-                      </span>
-                      <Link
-                        to={agent.path}
-                        state={{ from: location.pathname }}
-                        className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white border border-white/10 text-white hover:text-slate-950 text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2"
-                      >
-                        Access System <ArrowRight className="w-3.5 h-3.5" />
-                      </Link>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-          </div>
-        </div>
-      </section>
-
-      {/* 6. CALL TO ACTION */}
-      <section className="relative z-10 px-6 py-20">
-        <div className="max-w-5xl mx-auto rounded-[36px] bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 p-[1px] shadow-2xl shadow-blue-900/30">
-          <div className="bg-[#020617] rounded-[35px] p-10 md:p-16 text-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-full bg-blue-600/5 pointer-events-none" />
-            <h2 className="text-3xl md:text-5xl font-black mb-6 text-white tracking-tighter leading-tight">
-              Ready to deploy your digital workforce?
-            </h2>
-            <p className="text-slate-400 text-sm max-w-xl mx-auto mb-8 font-medium">
-              Join enterprise teams orchestrating AI agent swarms on Nexus Core.
-            </p>
-            <Link
-              to="/dashboard"
-              className="inline-flex items-center gap-2 px-10 py-4 rounded-xl bg-white text-slate-950 text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-all shadow-xl"
-            >
-              Enter Neural Workspace <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* 7. FOOTER */}
-      <footer className="relative z-10 px-6 py-16 border-t border-white/5 bg-[#020617]">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
-          <div className="text-center md:text-left">
-            <div className="text-lg font-black tracking-tighter text-white mb-1">NEXUS CORE</div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">© {new Date().getFullYear()} Nexus Core Inc. All rights reserved.</p>
-          </div>
-          <nav className="flex flex-wrap justify-center gap-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-            <Link to="/blog" className="hover:text-white transition">Blog</Link>
-            <Link to="/privacy-policy" className="hover:text-white transition">Privacy Policy</Link>
-            <Link to="/agents" className="hover:text-white transition">Specialised Agents</Link>
-            <Link to="/terms-of-service" className="hover:text-white transition">Terms of Service</Link>
-            <Link to="/architecture" className="hover:text-white transition">Architecture</Link>
-            <Link to="/contact" className="hover:text-white transition">Contact</Link>
-          </nav>
-        </div>
-      </footer>
-    </div>
-  );
+      <section className="mx-auto max-w-7xl px-5 py-20 md:px-8"><div className="relative overflow-hidden rounded-[28px] border border-cyan-300/20 bg-gradient-to-br from-[#12314a] via-[#10243b] to-[#161d38] px-6 py-14 text-center md:px-12"><div className="absolute -right-20 -top-32 h-72 w-72 rounded-full bg-cyan-300/10 blur-3xl"/><div className="relative mx-auto max-w-2xl"><span className="inline-flex items-center gap-2 text-[9px] font-black uppercase tracking-[.2em] text-cyan-200"><Zap size={13}/> Start building your AI workforce</span><h2 className="mt-4 text-3xl font-black tracking-tight md:text-5xl">Less busywork.<br/>More business momentum.</h2><p className="mt-5 text-sm leading-7 text-slate-300">Give your business a connected workspace for growth, sales, customer experience and operations.</p><div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row"><Link to="/register" className="rounded-xl bg-cyan-400 px-7 py-4 text-[10px] font-black uppercase tracking-wider text-slate-950 hover:bg-cyan-300">Get started free <ArrowRight size={14} className="ml-1 inline"/></Link><Link to="/pricing" className="rounded-xl border border-white/15 px-7 py-4 text-[10px] font-bold text-white hover:bg-white/5">Explore pricing</Link></div></div></div></section>
+    </main>
+    <footer className="relative z-10 border-t border-white/[0.07] px-5 py-8 md:px-8"><div className="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-[10px] text-slate-600 sm:flex-row"><span>© {new Date().getFullYear()} Nexus Core. Your business. Your AI workforce. One ecosystem.</span><div className="flex gap-5"><Link to="/contact" className="hover:text-slate-300">Contact</Link><Link to="/privacy-policy" className="hover:text-slate-300">Privacy</Link><Link to="/terms-of-service" className="hover:text-slate-300">Terms</Link></div></div></footer>
+  </div>;
 }
