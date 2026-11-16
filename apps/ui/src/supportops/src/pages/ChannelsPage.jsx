@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { MessageCircle, Phone, Mail, Smartphone, Globe, Share2, Copy, X, CheckCircle2, ShieldCheck } from "lucide-react";
 import { SUPPORTOPS_API } from "../config/paths";
+import { tokenStore } from "../../../auth/tokenStore";
 
 const CATALOG = {
     whatsapp: {
@@ -57,20 +58,47 @@ const CATALOG = {
 };
 
 async function call(method, url, body) {
-    const token = localStorage.getItem("authToken");
-    const org = localStorage.getItem("activeOrgId");
+    const token = tokenStore.get("nexus-core");
+    const org =
+        localStorage.getItem("activeOrgId") ||
+        localStorage.getItem("orgId");
+
+    if (!token) {
+        throw new Error("Your Nexus Core session has expired. Sign in again.");
+    }
+
     const res = await fetch(url, {
         method,
+        credentials: "include",
         headers: {
-            ...(body ? { "Content-Type": "application/json" } : {}),
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            Authorization: `Bearer ${token}`,
+            "X-App-Slug": "supportops",
+            Accept: "application/json",
             ...(org ? { "X-Org-Id": org } : {}),
+            ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
         },
-        body: body ? JSON.stringify(body) : undefined,
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(data?.message || `Request failed (${res.status})`);
-    if (data === null) throw new Error("The server did not answer with JSON. Check that VITE_API_URL points at your API.");
+
+    const text = await res.text();
+    let data = null;
+
+    try {
+        data = text ? JSON.parse(text) : null;
+    } catch {
+        data = null;
+    }
+
+    if (!res.ok) {
+        throw new Error(
+            data?.message || data?.error || `Request failed (${res.status})`
+        );
+    }
+
+    if (data === null) {
+        throw new Error("The server returned an unexpected response.");
+    }
+
     return data;
 }
 
