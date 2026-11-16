@@ -7,6 +7,7 @@ import { toView } from "./ticketService.js";
 import { addNote, sendReply } from "./replyService.js";
 import { listTemplates } from "./templateService.js";
 import { OutboundError } from "./outbound.js";
+import { emitSupportOpsBusinessEvent } from "../services/nexusBusinessEvents.js";
 
 const STATUSES = ["open", "pending", "solved", "closed"];
 const PRIORITIES = ["low", "normal", "high", "urgent"];
@@ -58,7 +59,8 @@ export default async function ticketsRoutes(app) {
             return reply.code(400).send({ message: "Invalid status or priority" });
         }
         const where = { org_id_number: { org_id: req.access.org.id, number: Number(req.params.number) } };
-        if (!(await prisma.supportTicket.findUnique({ where }))) return reply.code(404).send({ message: "Ticket not found" });
+        const existing = await prisma.supportTicket.findUnique({ where });
+        if (!existing) return reply.code(404).send({ message: "Ticket not found" });
 
         const t = await prisma.supportTicket.update({
             where, include,
@@ -68,6 +70,18 @@ export default async function ticketsRoutes(app) {
                 ...(assignToMe ? { assignee_id: req.user.id } : {}),
             },
         });
+        if (status || priority || assignToMe) {
+            void emitSupportOpsBusinessEvent(req.access.org.id, {
+                type: "support.ticket_updated",
+                title: "Support ticket updated",
+                department: "serve",
+                metadata: {
+                    status: t.status,
+                    priority: t.priority,
+                    statusChanged: Boolean(status && status !== existing.status),
+                },
+            }).catch((err) => req.log.warn({ err }, "Nexus ticket event delivery failed"));
+        }
         return toView(t);
     });
 

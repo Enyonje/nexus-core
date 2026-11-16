@@ -7,6 +7,7 @@ import { buildRequest, interpret, needsWindow, windowOpen, OutboundError } from 
 import { toView } from "./ticketService.js";
 import { listTemplates } from "./templateService.js";
 import { render, validateParams } from "./templates.js";
+import { emitSupportOpsBusinessEvent } from "../services/nexusBusinessEvents.js";
 
 const view = (m) => ({
     id: m.id,
@@ -116,6 +117,12 @@ export async function sendReply(params) {
         }),
     ]);
     push(staff, orgId, { type: "ticket", event: "ticket_reply", ticket: toView(updated, ticket.customer) });
+    void emitSupportOpsBusinessEvent(orgId, {
+        type: "support.ticket_replied",
+        title: "Support ticket reply sent",
+        department: "serve",
+        metadata: { channel: ticket.channel, status: updated.status },
+    }).catch((err) => console.warn("[NexusEvents] Ticket reply event failed:", err?.message));
     return view(message);
 }
 
@@ -128,6 +135,12 @@ export async function addNote(params) {
     const note = await prisma.supportTicketMessage.create({
         data: { ticket_id: ticket.id, direction: "note", channel: ticket.channel, author_id: authorId, body },
     });
+    void emitSupportOpsBusinessEvent(orgId, {
+        type: "support.ticket_note_added",
+        title: "Internal support note added",
+        department: "serve",
+        metadata: { channel: ticket.channel },
+    }).catch((err) => console.warn("[NexusEvents] Ticket note event failed:", err?.message));
     return view(note);
 }
 
