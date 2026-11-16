@@ -363,10 +363,10 @@ export async function registerUser({
                     throw new Error("SupportOps app configuration is missing the admin role");
                 }
                 await tx.appAccess.create({
-                        data: {
-                            org_id: org.id,
-                            user_id: user.id,
-                            app_id: supportOps.id,
+                    data: {
+                        org_id: org.id,
+                        user_id: user.id,
+                        app_id: supportOps.id,
                         app_role: "admin",
                     },
                 });
@@ -809,11 +809,25 @@ export async function refreshTokens(rawRefreshToken) {
         {}
     );
 
+    const refreshedUser = result.user;
+    const role = normalizeRole(refreshedUser.role);
+
     return {
         token: newAccessToken,
 
-        rawRefreshToken:
-            result.newRawRefreshToken,
+        rawRefreshToken: result.newRawRefreshToken,
+
+        user: {
+            id: refreshedUser.id,
+            email: refreshedUser.email,
+            role,
+            subscription: refreshedUser.subscription,
+            org_id: refreshedUser.org_id,
+            company: companyName,
+            ai_used: refreshedUser.ai_used,
+            executions_count: refreshedUser.executions_count,
+            created_at: refreshedUser.created_at,
+        },
     };
 }
 

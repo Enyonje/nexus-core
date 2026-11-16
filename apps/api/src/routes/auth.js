@@ -770,6 +770,7 @@ export async function authRoutes(server) {
         return reply.send({
           token: result.token,
           accessToken: result.token,
+          user: result.user,
         });
 
       } catch (err) {
