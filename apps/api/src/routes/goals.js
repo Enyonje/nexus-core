@@ -1,6 +1,7 @@
 import { requireAuth } from "../security/authMiddleware.js";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
+import { draftPlan } from "../execution/logic.js";
 
 /* ======================================================
    Goal Type Schemas
@@ -40,6 +41,37 @@ const schemasByType = {
 };
 
 export async function goalsRoutes(app) {
+
+  /* DRAFT AI PLAN — generates steps for review; never executes them */
+  app.post("/plan", { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      const { goalType, payload } = req.body || {};
+
+      if (!goalType || !payload || typeof payload !== "object") {
+        return reply.code(400).send({
+          error: "goalType and payload are required"
+        });
+      }
+
+      const steps = await draftPlan(goalType, payload);
+
+      if (!steps.length) {
+        return reply.code(422).send({
+          error: "The AI could not generate a usable plan. Please add more detail."
+        });
+      }
+
+      return reply.send({ steps });
+    } catch (err) {
+      app.log.error({ err }, "AI plan drafting failed");
+
+      return reply.code(500).send({
+        error: err.message || "Could not draft plan"
+      });
+    }
+  });
+
+
   /* CREATE GOAL */
   app.post("/", { preHandler: requireAuth }, async (req, reply) => {
     try {
