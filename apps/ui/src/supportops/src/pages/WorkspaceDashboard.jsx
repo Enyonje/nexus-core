@@ -249,7 +249,7 @@ async function requestJSON(url, { method = "GET", body, signal } = {}) {
             ...(org ? { "X-Org-Id": org } : {}),
             "X-App-Slug": "supportops",
             Accept: "application/json",
-            "Content-Type": "application/json",
+            ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
         },
         credentials: "include",
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
