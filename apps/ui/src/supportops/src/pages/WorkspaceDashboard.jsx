@@ -90,6 +90,8 @@ const ALIAS = {
     agent: "agent",
     management: "management",
     admin: "admin",
+    "super admin": "admin",
+    "support agent": "agent",
     investor: "investor",
 };
 
@@ -680,8 +682,9 @@ export default function WorkspaceDashboard({ view, role: suppliedRole, user: sup
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState(null);
 
-    const tokenPresent = typeof window !== "undefined" && Boolean(localStorage.getItem("token") || localStorage.getItem("authToken") || localStorage.getItem("access_token") || localStorage.getItem("supportops_token"));
-    const authorized = Boolean(isAuth && tokenPresent && role !== "guest");
+    // Authentication is verified by the shared Nexus session provider.
+    // Access tokens are memory-only; do not check localStorage.
+    const authorized = Boolean(isAuth && user?.id && role && role.toLowerCase() !== "guest");
     const normalizedRole = ALIAS[role] || "agent";
     const current = preview ?? view ?? normalizedRole;
     const canPreview = role === "admin";

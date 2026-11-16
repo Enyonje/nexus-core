@@ -31,7 +31,6 @@ function applySupportOpsRole(user) {
     ? {
         ...user,
         supportopsRole: ROLE_LABELS[rawRole] || null,
-        appAccess,
       }
     : null;
 }
