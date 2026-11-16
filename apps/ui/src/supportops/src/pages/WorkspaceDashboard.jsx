@@ -42,6 +42,7 @@ import AIImpact from "../components/AIImpact";
 import { useAgentStream } from "../hooks/useAgentStream";
 import { API_ENDPOINTS, SUPPORTOPS_API, ROUTES } from "../config/paths";
 import { useAuth } from "../context/AuthContext";
+import { tokenStore } from "../../../auth/tokenStore";
 
 /* ---------- configuration ---------- */
 
@@ -189,11 +190,7 @@ function isAbortError(error) {
 async function getJSON(url, signal) {
     if (signal?.aborted) return null;
 
-    const token =
-        localStorage.getItem("token") ||
-        localStorage.getItem("authToken") ||
-        localStorage.getItem("access_token") ||
-        localStorage.getItem("supportops_token");
+    const token = tokenStore.get("nexus-core");
 
     const org =
         localStorage.getItem("activeOrgId") ||
@@ -219,7 +216,9 @@ async function getJSON(url, signal) {
                 ...(org ? { "X-Org-Id": org } : {}),
                 Accept: "application/json",
                 "Content-Type": "application/json",
+                "X-App-Slug": "supportops",
             },
+            credentials: "include",
         });
 
         if (response.status === 401 || response.status === 403) return null;
@@ -235,11 +234,7 @@ async function getJSON(url, signal) {
 }
 
 async function requestJSON(url, { method = "GET", body, signal } = {}) {
-    const token =
-        localStorage.getItem("token") ||
-        localStorage.getItem("authToken") ||
-        localStorage.getItem("access_token") ||
-        localStorage.getItem("supportops_token");
+    const token = tokenStore.get("nexus-core");
     const org =
         localStorage.getItem("activeOrgId") ||
         localStorage.getItem("orgId");
@@ -256,6 +251,7 @@ async function requestJSON(url, { method = "GET", body, signal } = {}) {
             Accept: "application/json",
             "Content-Type": "application/json",
         },
+        credentials: "include",
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
 
