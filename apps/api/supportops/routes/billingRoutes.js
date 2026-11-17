@@ -126,7 +126,13 @@ export default async function billingRoutes(app) {
                 ? targetApp.plans.find((p) => p.key === "growth")
                 : targetApp.plans.find((p) => p.key === planKey);
             if (!plan) return reply.code(400).send({ error: "PLAN_NOT_FOUND", message: "The selected plan is unavailable." });
-            if (mode === "checkout" && !plan.stripe_price_id) {
+
+            const planStripePriceId = plan.stripe_price_id || ({
+                starter: process.env.STRIPE_PRICE_SUPPORTOPS_STARTER_ID,
+                growth: process.env.STRIPE_PRICE_SUPPORTOPS_GROWTH_ID,
+            }[plan.key]) || null;
+
+            if (mode === "checkout" && !planStripePriceId) {
                 return reply.code(400).send({ error: "PLAN_NOT_PURCHASABLE", message: "This plan is not configured for online checkout. Contact sales." });
             }
             if (mode === "checkout" && !process.env.STRIPE_SECRET_KEY) {
@@ -204,7 +210,7 @@ export default async function billingRoutes(app) {
                     mode: "subscription",
                     customer: customer.id,
                     line_items: [
-                        { price: plan.stripe_price_id, quantity: 1 },
+                        { price: planStripePriceId, quantity: 1 },
                         ...chosenAddons.map((x) => ({ price: x.stripe_price_id, quantity: 1 })),
                     ],
                     subscription_data: { metadata },
@@ -323,8 +329,12 @@ export default async function billingRoutes(app) {
                 include: { plans: true, addons: true },
             });
             const plan = a?.plans.find((p) => p.key === planKey);
+            const planStripePriceId = plan?.stripe_price_id || ({
+                starter: process.env.STRIPE_PRICE_SUPPORTOPS_STARTER_ID,
+                growth: process.env.STRIPE_PRICE_SUPPORTOPS_GROWTH_ID,
+            }[plan?.key]) || null;
 
-            if (!plan?.stripe_price_id) {
+            if (!planStripePriceId) {
                 return reply.code(400).send({
                     message: "That plan is not available for self-serve checkout. Contact sales.",
                 });
