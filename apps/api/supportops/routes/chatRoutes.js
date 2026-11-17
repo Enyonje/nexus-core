@@ -50,7 +50,158 @@ export async function addMessage(conv, sender, body, senderId = null) {
     return message;
 }
 
+
+const WIDGET_SCRIPT = String.raw`(() => {
+  const script = document.currentScript;
+  if (!script) return;
+
+  const key = script.dataset.key;
+  const api = (script.dataset.api || "").replace(/\/+$/, "");
+  if (!key || !api) return;
+
+  const root = document.createElement("div");
+  root.id = "supportops-live-chat";
+  root.innerHTML =
+    '<style>' +
+    '#so-chat-button{position:fixed;right:22px;bottom:22px;z-index:2147483000;border:0;border-radius:30px;padding:14px 20px;background:#2563eb;color:white;font:600 14px Arial;cursor:pointer;box-shadow:0 5px 24px #0004}' +
+    '#so-chat-box{position:fixed;right:22px;bottom:82px;z-index:2147483000;width:min(350px,calc(100vw - 32px));height:440px;background:white;color:#111827;border-radius:14px;box-shadow:0 8px 40px #0004;display:none;overflow:hidden;font:14px Arial}' +
+    '#so-chat-head{background:#1e40af;color:white;padding:16px;font-weight:bold}' +
+    '#so-chat-messages{height:310px;overflow:auto;padding:12px;background:#f8fafc}' +
+    '.so-chat-message{padding:9px 12px;margin:7px 0;border-radius:12px;max-width:85%;overflow-wrap:anywhere;white-space:pre-wrap}' +
+    '.so-chat-visitor{background:#dbeafe;margin-left:auto}' +
+    '.so-chat-agent{background:#e5e7eb;margin-right:auto}' +
+    '#so-chat-form{display:flex;gap:6px;padding:10px;border-top:1px solid #e5e7eb}' +
+    '#so-chat-input{min-width:0;flex:1;border:1px solid #d1d5db;border-radius:8px;padding:10px}' +
+    '#so-chat-send{border:0;border-radius:8px;background:#2563eb;color:white;padding:0 14px;cursor:pointer}' +
+    '</style>' +
+    '<button id="so-chat-button" type="button">Chat with us</button>' +
+    '<section id="so-chat-box" aria-label="Live chat">' +
+    '<div id="so-chat-head">How can we help?</div>' +
+    '<div id="so-chat-messages" aria-live="polite"></div>' +
+    '<form id="so-chat-form"><input id="so-chat-input" maxlength="2000" placeholder="Write a message..." required>' +
+    '<button id="so-chat-send" type="submit">Send</button></form></section>';
+
+  document.body.appendChild(root);
+
+  const button = root.querySelector("#so-chat-button");
+  const box = root.querySelector("#so-chat-box");
+  const messages = root.querySelector("#so-chat-messages");
+  const form = root.querySelector("#so-chat-form");
+  const input = root.querySelector("#so-chat-input");
+  const send = root.querySelector("#so-chat-send");
+
+  let conversationId = null;
+  let secret = null;
+  let seen = new Set();
+  let polling = null;
+
+  function addMessage(m) {
+    if (!m || !m.id || seen.has(m.id)) return;
+    seen.add(m.id);
+    const el = document.createElement("div");
+    el.className = "so-chat-message " +
+      (m.sender === "visitor" ? "so-chat-visitor" : "so-chat-agent");
+    el.textContent = m.body || "";
+    messages.appendChild(el);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  async function request(path, body) {
+    const response = await fetch(
+      api + "/api/v1/supportops/chat/widget/" + key + path,
+      {
+        method: body ? "POST" : "GET",
+        headers: body ? {"Content-Type":"application/json"} : {},
+        body: body ? JSON.stringify(body) : undefined
+      }
+    );
+    if (!response.ok) {
+      throw new Error("Chat request failed (" + response.status + ")");
+    }
+    return response.json();
+  }
+
+  async function refresh() {
+    if (!conversationId || !secret) return;
+    try {
+      const rows = await request(
+        "/" + conversationId + "/messages?secret=" + encodeURIComponent(secret)
+      );
+      if (Array.isArray(rows)) rows.forEach(addMessage);
+    } catch (_) {}
+  }
+
+  function startPolling() {
+    if (polling) clearInterval(polling);
+    polling = setInterval(refresh, 4000);
+  }
+
+  button.addEventListener("click", () => {
+    box.style.display = box.style.display === "block" ? "none" : "block";
+    button.textContent = box.style.display === "block" ? "Close chat" : "Chat with us";
+    if (box.style.display === "block") input.focus();
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const body = input.value.trim();
+    if (!body) return;
+
+    send.disabled = true;
+    try {
+      if (!conversationId) {
+        const started = await request("/start", {message:body});
+        conversationId = started.conversationId;
+        secret = started.secret;
+
+        try {
+          localStorage.setItem(
+            "so-chat-" + key,
+            JSON.stringify({conversationId:conversationId,secret:secret})
+          );
+        } catch (_) {}
+
+        seen.clear();
+        startPolling();
+      } else {
+        const sent = await request(
+          "/" + conversationId + "/messages",
+          {body:body,secret:secret}
+        );
+        addMessage(sent);
+      }
+
+      input.value = "";
+      await refresh();
+    } catch (error) {
+      alert(error.message || "Unable to send your message.");
+    } finally {
+      send.disabled = false;
+      input.focus();
+    }
+  });
+
+  try {
+    const saved = JSON.parse(localStorage.getItem("so-chat-" + key) || "null");
+    if (saved && saved.conversationId && saved.secret) {
+      conversationId = saved.conversationId;
+      secret = saved.secret;
+      refresh();
+      startPolling();
+    }
+  } catch (_) {}
+})();`;
+
 export default async function chatRoutes(app) {
+
+  // Public browser widget loader. The widget API itself validates the website origin.
+  app.get("/widget.js", async (_req, reply) => {
+    return reply
+      .header("Cache-Control", "public, max-age=300")
+      .type("application/javascript; charset=utf-8")
+      .send(WIDGET_SCRIPT);
+  });
+
     /* ---------- public widget API ---------- */
     // Every /widget/ request must carry a valid key, and the page's origin must match the allowed domain.
     // NOTE: if you register @fastify/cors globally, allow these routes there too or it may answer first.

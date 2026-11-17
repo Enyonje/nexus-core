@@ -22,7 +22,7 @@ const CATALOG = {
             { name: "authToken", label: "Auth token", secret: true },
             { name: "phoneNumber", label: "Phone number", placeholder: "+254700000000" },
         ],
-        setup: "In Twilio, set your number's voice webhook (HTTP POST) to the URL below.",
+        setup: "In Twilio Console, open Phone Numbers > Manage > Active Numbers. Select your number, then set A CALL COMES IN to the webhook URL below, using HTTP POST. Save your changes. Incoming callers will hear a greeting and can leave a voicemail that creates a SupportOps ticket.",
     },
     sms: {
         label: "SMS", icon: Smartphone, blurb: "Africa's Talking",
@@ -156,6 +156,19 @@ export default function ChannelsPage() {
         setBusy(true);
         try {
             const r = await call("POST", SUPPORTOPS_API.tickets(`/channels/${active}/test`));
+            setRows((previous) => ({
+                ...previous,
+                [active]: {
+                    ...previous[active],
+                    connected: Boolean(r.ok),
+                    status: r.status || (r.ok ? "connected" : "pending"),
+                },
+            }));
+            setResult((previous) => previous ? {
+                ...previous,
+                connected: Boolean(r.ok),
+                status: r.status || (r.ok ? "connected" : "pending"),
+            } : previous);
             r.ok ? toast.success(r.message || "Connection works") : toast.error(r.message || "Test failed");
         } catch (err) { toast.error(err.message); } finally { setBusy(false); }
     }
@@ -190,7 +203,9 @@ export default function ChannelsPage() {
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <span className={`text-xs ${row?.connected ? "text-emerald-400" : "text-slate-500"}`}>
-                                        {row?.connected ? (row.lastEventAt ? `Last message ${new Date(row.lastEventAt).toLocaleString()}` : "Connected, waiting for first message") : "Not connected"}
+                                        {row?.connected
+                                            ? (row.lastEventAt ? `Last message ${new Date(row.lastEventAt).toLocaleString()}` : "Connected, waiting for first message")
+                                            : row?.status === "pending" ? "Pending verification" : "Not connected"}
                                     </span>
                                     <button type="button" onClick={() => open(key)} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white">
                                         {row?.connected ? "Manage" : "Connect"}
@@ -218,8 +233,15 @@ export default function ChannelsPage() {
                                         type={f.secret ? "password" : "text"}
                                         value={form[f.name] ?? ""}
                                         onChange={(e) => setForm({ ...form, [f.name]: e.target.value })}
-                                        placeholder={f.secret && connected ? "•••••• saved (leave blank to keep)" : f.placeholder}
-                                        required={!f.secret || !connected}
+                                        placeholder={
+                                            f.secret && rows[active]?.savedSecretFields?.includes(f.name)
+                                                ? "Saved securely — leave blank to keep"
+                                                : (f.placeholder || "")
+                                        }
+                                        required={
+                                            !f.secret ||
+                                            !rows[active]?.savedSecretFields?.includes(f.name)
+                                        }
                                         autoComplete="off"
                                         className="mt-1 w-full px-3 py-2 rounded-lg border border-white/10 bg-slate-950 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
                                     />
@@ -240,7 +262,7 @@ export default function ChannelsPage() {
                                 {active === "web" && (
                                     <CopyRow
                                         label="Embed snippet (paste before </body>)"
-                                        value={`<script src="${window.location.origin}/chat-widget.js" data-key="${result.webhookUrl.split("/").pop()}" data-api="${result.webhookUrl.split("/api/")[0]}" defer></script>`}
+                                        value={`<script src="${result.webhookUrl.split("/api/")[0]}/api/v1/supportops/chat/widget.js" data-key="${result.webhookUrl.split("/").pop()}" data-api="${result.webhookUrl.split("/api/")[0]}" defer></script>`}
                                     />
                                 )}
                                 <div className="flex gap-3 pt-2">

@@ -38,7 +38,9 @@ import { createTicketFromInbound } from "./ticketService.js";
 import { normalize, verifyMetaSignature, verifyTwilioSignature } from "./inbound.js";
 
 const SECRETS = {
-    whatsapp: ["accessToken", "appSecret", "phoneNumberId"],
+    // Phone Number ID is an identifier, not a secret. Older encrypted
+    // configurations remain readable through the compatibility fallback.
+    whatsapp: ["accessToken", "appSecret"],
     voice: ["authToken"],
     sms: ["apiKey"],
     email: ["postmarkToken"], // outbound replies via Postmark
@@ -76,20 +78,42 @@ const rand = (n) => crypto.randomBytes(n).toString("hex");
 const urlFor = (row) =>
     `${process.env.PUBLIC_API_URL || "https://nexus-core-a0px.onrender.com"}/api/v1/supportops/tickets/channels/webhook/${row.key}/${row.webhook_token}`;
 
-const view = (row, isAdmin) => ({
-    key: row.key,
-    connected: row.status === "connected",
-    status: row.status,
-    lastEventAt: row.last_event_at,
-    publicConfig: row.public_config,
-    ...(isAdmin ? { webhookUrl: urlFor(row), verifyToken: row.verify_token } : {}),
-});
+const view = (row, isAdmin) => {
+    let savedSecretFields = [];
+    try {
+        const secrets = row.config_enc ? decrypt(row.config_enc) : {};
+        savedSecretFields = (SECRETS[row.key] || []).filter(
+            (key) => Boolean(secrets[key])
+        );
+    } catch {
+        savedSecretFields = [];
+    }
+
+    return {
+        key: row.key,
+        connected: row.status === "connected",
+        status: row.status,
+        configured: Boolean(row.config_enc),
+        hasCredentials: savedSecretFields.length > 0,
+        savedSecretFields,
+        lastEventAt: row.last_event_at,
+        publicConfig: row.public_config,
+        ...(isAdmin ? { webhookUrl: urlFor(row), verifyToken: row.verify_token } : {}),
+    };
+};
 
 // Returns false if this provider message was already processed (retry)
 async function firstTime(channelId, externalId) {
-    if (!externalId) return true;
+    if (!externalId || !String(externalId).trim()) {
+        throw new Error("INBOUND_EVENT_MISSING_EXTERNAL_ID");
+    }
     try {
-        await prisma.inboundEvent.create({ data: { channel_id: channelId, external_id: String(externalId) } });
+        await prisma.inboundEvent.create({
+            data: {
+                channel_id: channelId,
+                external_id: String(externalId),
+            },
+        });
         return true;
     } catch (err) {
         if (err.code === "P2002") return false;
@@ -154,8 +178,9 @@ export default async function channelsRoutes(app) {
 
             const incoming = Object.entries(req.body?.config ?? {}).slice(0, 10);
             const existing = await prisma.channel.findUnique({ where: where(req) });
-            const secrets = existing && existing.config_enc ? decrypt(existing.config_enc) : {};
-            const pub = {};
+            const secrets = existing?.config_enc ? decrypt(existing.config_enc) : {};
+            // Preserve existing public fields when an edit submits only some fields.
+            const pub = { ...(existing?.public_config ?? {}) };
 
             for (const [k, v] of incoming) {
                 if (typeof v !== "string" || v.length > 2000) continue;
@@ -166,12 +191,14 @@ export default async function channelsRoutes(app) {
                 }
             }
 
+            // Saving credentials is not proof that a provider connection works.
+            // Every changed configuration must pass its provider test first.
             const row = await prisma.channel.upsert({
                 where: where(req),
                 update: {
                     config_enc: encrypt(secrets),
                     public_config: pub,
-                    status: "connected",
+                    status: "pending",
                     updated_at: new Date()
                 },
                 create: {
@@ -181,7 +208,7 @@ export default async function channelsRoutes(app) {
                     public_config: pub,
                     webhook_token: rand(24),
                     verify_token: rand(16),
-                    status: "connected"
+                    status: "pending"
                 },
             });
             return view(row, true);
@@ -199,28 +226,142 @@ export default async function channelsRoutes(app) {
 
     app.post("/:key/test", { preHandler: admin }, async (req, reply) => {
         const row = await prisma.channel.findUnique({ where: where(req) });
-        if (!row) return reply.code(404).send({ message: "Channel is not connected" });
-        if (row.key !== "whatsapp") return { ok: true, message: "Saved. Automatic verification is active." };
+        if (!row) return reply.code(404).send({ ok: false, message: "Save the channel configuration first." });
+
+        const timeout = AbortSignal.timeout(12000);
+        const fail = async (message) => {
+            await prisma.channel.update({
+                where: { id: row.id },
+                data: { status: "pending" },
+            });
+            return { ok: false, status: "pending", message };
+        };
 
         try {
-            const { accessToken } = decrypt(row.config_enc);
-            const phoneId = row.public_config?.phoneNumberId;
-            if (!phoneId || !accessToken) {
-                return { ok: false, message: "Missing Phone Number ID or Access Token." };
+            const secrets = decrypt(row.config_enc);
+            const config = row.public_config ?? {};
+            let response;
+            let message;
+
+            switch (row.key) {
+                case "whatsapp": {
+                    const phoneId = config.phoneNumberId || secrets.phoneNumberId;
+                    if (!phoneId || !secrets.accessToken || !secrets.appSecret)
+                        return fail("Phone Number ID, access token and App Secret are required.");
+
+                    response = await fetch(
+                        `https://graph.facebook.com/v20.0/${encodeURIComponent(phoneId)}?fields=id,display_phone_number,verified_name`,
+                        { headers: { Authorization: `Bearer ${secrets.accessToken}` }, signal: timeout }
+                    );
+                    message = "WhatsApp Phone Number ID and access token verified.";
+                    break;
+                }
+
+                case "social": {
+                    if (!config.pageId || !secrets.pageAccessToken || !secrets.appSecret)
+                        return fail("Page ID, Page Access Token and App Secret are required.");
+
+                    response = await fetch(
+                        `https://graph.facebook.com/v20.0/${encodeURIComponent(config.pageId)}?fields=id,name`,
+                        { headers: { Authorization: `Bearer ${secrets.pageAccessToken}` }, signal: timeout }
+                    );
+                    message = "Meta Page credentials verified.";
+                    break;
+                }
+
+                case "voice": {
+                    if (!config.accountSid || !secrets.authToken || !config.phoneNumber)
+                        return fail("Account SID, Auth Token and Twilio phone number are required.");
+
+                    response = await fetch(
+                        `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(config.accountSid)}.json`,
+                        {
+                            headers: {
+                                Authorization: "Basic " + Buffer.from(`${config.accountSid}:${secrets.authToken}`).toString("base64"),
+                            },
+                            signal: timeout,
+                        }
+                    );
+                    message = "Twilio account credentials verified.";
+                    break;
+                }
+
+                case "sms": {
+                    if (!config.username || !secrets.apiKey || !config.shortcode)
+                        return fail("Africa's Talking username, API key and sender ID/shortcode are required.");
+
+                    response = await fetch(
+                        `https://api.africastalking.com/version1/user?username=${encodeURIComponent(config.username)}`,
+                        {
+                            headers: { apiKey: secrets.apiKey, Accept: "application/json" },
+                            signal: timeout,
+                        }
+                    );
+                    message = "Africa's Talking API credentials verified.";
+                    break;
+                }
+
+                case "email": {
+                    if (!config.supportAddress || !secrets.postmarkToken)
+                        return fail("Support address and Postmark Server Token are required.");
+
+                    response = await fetch("https://api.postmarkapp.com/server", {
+                        headers: {
+                            "X-Postmark-Server-Token": secrets.postmarkToken,
+                            Accept: "application/json",
+                        },
+                        signal: timeout,
+                    });
+                    message = "Postmark server token verified.";
+                    break;
+                }
+
+                case "web": {
+                    let domain = String(config.allowedDomain ?? "").trim().toLowerCase();
+                    domain = domain.replace(/^https?:\/\//, "").split("/")[0].replace(/:\d+$/, "");
+                    if (!domain || !/^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(\.([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))+$/.test(domain))
+                        return fail("Enter a valid website domain, for example yourcompany.com.");
+
+                    await prisma.channel.update({
+                        where: { id: row.id },
+                        data: { public_config: { ...config, allowedDomain: domain }, status: "connected" },
+                    });
+                    return { ok: true, status: "connected", message: "Web chat is configured. Install the website widget to receive chats." };
+                }
+
+                default:
+                    return fail("Unsupported channel.");
             }
-            const res = await fetch(`https://graph.facebook.com/v20.0/${phoneId}`, {
-                headers: { Authorization: `Bearer ${accessToken}` },
+
+            if (!response.ok) {
+                // Do not return provider response bodies: they may contain sensitive details.
+                return fail(`Provider verification failed (HTTP ${response.status}). Check the credentials and account permissions.`);
+            }
+
+            const data = await response.json().catch(() => ({}));
+
+            if (row.key === "sms" && data?.UserData?.status && data.UserData.status !== "success") {
+                return fail("Africa's Talking did not validate this account. Check the username and API key.");
+            }
+
+            await prisma.channel.update({
+                where: { id: row.id },
+                data: { status: "connected" },
             });
-            return res.ok ? { ok: true, message: "WhatsApp credentials validated successfully" } : { ok: false, message: "Meta rejected the provided credentials" };
+
+            return { ok: true, status: "connected", message };
         } catch (err) {
-            return { ok: false, message: `Verification check failed: ${err.message}` };
+            req.log.error({ err, channel: row.key }, "Channel verification failed");
+            return fail(err.name === "TimeoutError"
+                ? "Provider verification timed out. Try again."
+                : "Could not verify the provider connection. Check the credentials and try again.");
         }
     });
 
     /* ---------- public inbound webhooks ---------- */
     app.get("/webhook/:key/:token", async (req, reply) => {
         const row = await prisma.channel.findFirst({
-            where: { key: req.params.key, webhook_token: req.params.token, status: "connected" },
+            where: { key: req.params.key, webhook_token: req.params.token, status: { in: ["pending", "connected"] } },
         });
         const q = req.query ?? {};
         if (row && ["whatsapp", "social"].includes(row.key) && q["hub.mode"] === "subscribe" && q["hub.verify_token"] === row.verify_token) {
@@ -252,21 +393,55 @@ export default async function channelsRoutes(app) {
 
         if (!trusted) return reply.code(401).send({ error: "UNAUTHORIZED_SIGNATURE" });
 
-        for (const m of normalize(row.key, req.body)) {
-            if (!(await firstTime(row.id, m.externalId))) continue;
+        for (const [index, m] of normalize(row.key, req.body).entries()) {
+            const externalId = m.externalId
+                ? String(m.externalId)
+                : "fallback:" + crypto.createHash("sha256")
+                    .update(JSON.stringify({ payload: req.body, message: m, index }))
+                    .digest("hex");
+
+            if (!m.externalId) {
+                req.log.warn({ channel: row.key }, "Inbound provider event had no message ID; using deterministic fallback.");
+            }
+
+            if (!(await firstTime(row.id, externalId))) continue;
+
             try {
-                await createTicketFromInbound({ orgId: row.org_id, channel: row.key, ...m });
+                await createTicketFromInbound({
+                    orgId: row.org_id,
+                    channel: row.key,
+                    ...m,
+                    externalId,
+                });
             } catch (err) {
-                await prisma.inboundEvent.deleteMany({ where: { channel_id: row.id, external_id: String(m.externalId) } });
+                await prisma.inboundEvent.deleteMany({
+                    where: { channel_id: row.id, external_id: externalId },
+                });
                 throw err;
             }
         }
         await prisma.channel.update({ where: { id: row.id }, data: { last_event_at: new Date() } });
 
         if (row.key === "voice") {
-            return reply.code(200).type("text/xml").send(
-                `<Response><Say>Thank you for contacting SupportOps. Please state your query after the tone.</Say><Record maxLength="120" action="${urlFor(row)}"/></Response>`
-            );
+            const recordingCallback = Boolean(req.body?.RecordingUrl);
+            const terminalStatus = ["completed", "busy", "no-answer", "failed", "canceled"]
+                .includes(String(req.body?.CallStatus || "").toLowerCase());
+
+            const twiml = recordingCallback
+                ? `<Response><Say>Thank you. Goodbye.</Say></Response>`
+                : terminalStatus
+                    ? `<Response></Response>`
+                    : `<Response>
+                        <Say>Thank you for contacting support. Please leave your message after the tone.</Say>
+                        <Record
+                            maxLength="120"
+                            playBeep="true"
+                            method="POST"
+                            action="${urlFor(row)}"
+                                    />
+                    </Response>`;
+
+            return reply.code(200).type("text/xml").send(twiml);
         }
         return reply.code(200).send({ status: "success" });
     });

@@ -103,19 +103,32 @@ function email(p) {
 }
 
 function voice(p) {
-    if (!p?.CallSid || !String(p.Direction ?? "").startsWith("inbound")) return [];
-    const missed = ["no-answer", "busy", "failed"].includes(p.CallStatus);
+    if (!p?.CallSid) return [];
+
+    const missed = ["no-answer", "busy", "failed"].includes(
+        String(p.CallStatus ?? "").toLowerCase()
+    );
+
     if (!p.RecordingUrl && !missed) return [];
-    const vm = Boolean(p.RecordingUrl);
-    return [
-        {
-            externalId: vm ? `${p.CallSid}:vm` : p.CallSid,
-            customerId: p.From,
-            customer: p.From,
-            subject: clip(vm ? `Voicemail from ${p.From}` : `Missed call from ${p.From}`),
-            body: vm ? `Voicemail: ${p.RecordingUrl}` : `Missed call (${p.CallStatus})`,
-        },
-    ];
+
+    const voicemail = Boolean(p.RecordingUrl);
+    const caller = p.From || p.Caller || "Unknown caller";
+
+    return [{
+        externalId: voicemail
+            ? `${p.CallSid}:vm`
+            : `${p.CallSid}:missed`,
+        customerId: p.From || p.Caller || p.CallSid,
+        customer: caller,
+        subject: clip(
+            voicemail
+                ? `Voicemail from ${caller}`
+                : `Missed call from ${caller}`
+        ),
+        body: voicemail
+            ? `Voicemail recording: ${p.RecordingUrl}`
+            : `Missed call (${p.CallStatus})`,
+    }];
 }
 
 const NORMALIZERS = { whatsapp, social, sms, email, voice };

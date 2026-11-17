@@ -85,6 +85,41 @@ const sitemapEntries = routes.map((route) => {
 }).join('\n');
 await fs.writeFile(path.join(root, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemapEntries}\n</urlset>\n`);
 
-const robots = `User-agent: *\nAllow: /\nDisallow: /dashboard\nDisallow: /executions\nDisallow: /goals\nDisallow: /admin\nDisallow: /billing\nDisallow: /compliance/login\nDisallow: /compliance/register\nDisallow: /compliance/billing\nDisallow: /supportops/login\nDisallow: /supportops/agent\nDisallow: /supportops/admin\nDisallow: /supportops/management\nDisallow: /supportops/investor\n\nSitemap: ${origin}/sitemap.xml\n`;
+const robots = `User-agent: *
+Allow: /
+Allow: /agents
+Allow: /ai-agents
+Allow: /workflow-automation
+Allow: /pricing
+Allow: /supportops
+Allow: /supportops/demo
+Allow: /supportops/features
+Allow: /supportops/pricing
+Allow: /supportops/whatsapp-automation
+
+Disallow: /dashboard
+Disallow: /insights
+Disallow: /integrations
+Disallow: /executions
+Disallow: /goals
+Disallow: /admin
+Disallow: /billing
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /compliance/login
+Disallow: /compliance/register
+Disallow: /compliance/billing
+Disallow: /supportops/login
+Disallow: /supportops/register
+Disallow: /supportops/auth
+Disallow: /supportops/agent
+Disallow: /supportops/admin
+Disallow: /supportops/management
+Disallow: /supportops/investor
+
+Sitemap: ${origin}/sitemap.xml
+`;
 await fs.writeFile(path.join(root, 'robots.txt'), robots);
 console.log(`Wrote sitemap.xml with ${routes.length} canonical public routes and robots.txt.`);
