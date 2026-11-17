@@ -65,7 +65,7 @@ export async function adminRoutes(server) {
     handler: async (req, reply) => {
       try {
         const users = await db.query(
-          `SELECT id, email, subscription, ai_used, executions FROM users ORDER BY created_at DESC`
+          `SELECT id, email, subscription, ai_used, executions_count AS executions FROM users ORDER BY created_at DESC`
         );
         return {
           month: new Date().toLocaleString("default", { month: "long" }),
