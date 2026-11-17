@@ -60,6 +60,7 @@ export async function requireAuth(req, reply) {
       subscription: dbUser.subscription,
       org_id: dbUser.org_id,
       company: payload.company,
+      permissions: dbUser.role === "admin" ? ["*"] : [],
     };
   } catch (err) {
     req.log?.error({ err }, "Auth verification failed");
@@ -105,6 +106,7 @@ export async function optionalAuth(req, reply) {
       subscription: dbUser.subscription,
       org_id: dbUser.org_id,
       company: payload.company,
+      permissions: dbUser.role === "admin" ? ["*"] : [],
     };
   } catch (err) {
     // Graceful fallback to guest session on invalid token
