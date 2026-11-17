@@ -41,7 +41,7 @@ const TITLES = {
   agent: ["My queue", "Your tickets from every channel, most urgent first"],
   management: ["Operations", "Backlog, SLA health and workload across all channels"],
   admin: ["Executive command center", "Set up your workspace, bring your team together and oversee customer operations"],
-  investor: ["Business performance", "Revenue, growth and what AI is saving"],
+  investor: ["Business performance", "Workspace activity, customer records and recorded AI usage"],
 };
 
 const INVITABLE_ROLES = [
@@ -783,7 +783,7 @@ export default function WorkspaceDashboard({ view, role: suppliedRole, user: sup
                 <Card title="Channel workload mix" icon={Inbox}><ChannelMix tickets={sorted} byChannel={metrics?.byChannel} /></Card>
               </div>
               <div className="space-y-6">
-                <AIImpact timeframe={timeframe} />
+                <AIImpact metrics={metrics} timeframe={timeframe} />
                 <Card title="Live activity" icon={Activity}><LiveActivity events={events} /></Card>
               </div>
             </div>
@@ -803,7 +803,7 @@ export default function WorkspaceDashboard({ view, role: suppliedRole, user: sup
           {current === "investor" && (
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
               <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-1 xl:col-span-2"><RevenueChart timeframe={timeframe} /></div>
-              <AIImpact timeframe={timeframe} />
+              <AIImpact metrics={metrics} timeframe={timeframe} />
             </div>
           )}
 

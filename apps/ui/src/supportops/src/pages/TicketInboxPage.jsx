@@ -2,12 +2,18 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Inbox, Send, CheckCircle2, UserCheck, StickyNote, Clock } from "lucide-react";
 import { SUPPORTOPS_API } from "../config/paths";
+import { tokenStore } from "../../../auth/tokenStore";
 import { listenSse } from "../lib/sse";
 
 const authHeaders = () => {
-    const token = localStorage.getItem("authToken");
+    const token = tokenStore.get("nexus-core");
     const org = localStorage.getItem("activeOrgId");
-    return { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(org ? { "X-Org-Id": org } : {}) };
+    return {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(org ? { "X-Org-Id": org } : {}),
+        "X-App-Slug": "supportops",
+        Accept: "application/json",
+    };
 };
 
 async function call(method, url, body) {
@@ -15,6 +21,7 @@ async function call(method, url, body) {
         method,
         headers: { ...authHeaders(), ...(body ? { "Content-Type": "application/json" } : {}) },
         body: body ? JSON.stringify(body) : undefined,
+        credentials: "include",
     });
     const data = await res.json().catch(() => null);
     if (!res.ok) {
@@ -172,7 +179,7 @@ export default function TicketInboxPage() {
                             </header>
 
                             <div className="flex-1 overflow-y-auto p-5 space-y-2">
-                                {(detail.messages ?? []).map((m) => (
+                                {(Array.isArray(detail.messages) ? detail.messages : []).map((m) => (
                                     <div key={m.id} className={`flex ${m.direction === "in" ? "justify-start" : "justify-end"}`}>
                                         <div className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap break-words ${m.direction === "in" ? "bg-slate-800" : m.direction === "note" ? "bg-amber-500/10 border border-amber-500/30 text-amber-100" : "bg-blue-600 text-white"}`}>
                                             {m.direction === "note" && <span className="block text-[10px] uppercase opacity-70 mb-0.5">Internal note</span>}{m.body}

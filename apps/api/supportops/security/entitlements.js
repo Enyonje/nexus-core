@@ -7,6 +7,7 @@ const ROLE_ALIASES = {
   admin: "admin",
   management: "management",
   manager: "management",
+  investor: "investor",
   agent: "agent",
   member: "agent",
 };

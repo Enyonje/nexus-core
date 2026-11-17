@@ -43,6 +43,7 @@ import { useAgentStream } from "../hooks/useAgentStream";
 import { API_ENDPOINTS, SUPPORTOPS_API, ROUTES } from "../config/paths";
 import { useAuth } from "../context/AuthContext";
 import { tokenStore } from "../../../auth/tokenStore";
+import { refreshSession } from "../../../lib/api";
 
 /* ---------- configuration ---------- */
 
@@ -111,7 +112,7 @@ const TITLES = {
     ],
     investor: [
         "Business Performance",
-        "Revenue, growth and AI cost savings",
+        "Workspace activity, customer records and recorded AI usage",
     ],
 };
 
@@ -187,16 +188,21 @@ function isAbortError(error) {
     );
 }
 
+async function getSessionToken() {
+    let token = tokenStore.get("nexus-core");
+    if (!token) {
+        const session = await refreshSession("nexus-core");
+        token = session?.token || tokenStore.get("nexus-core");
+    }
+    return token;
+}
+
 async function getJSON(url, signal) {
     if (signal?.aborted) return null;
-
-    const token = tokenStore.get("nexus-core");
 
     const org =
         localStorage.getItem("activeOrgId") ||
         localStorage.getItem("orgId");
-
-    if (!token) return null;
 
     let fullUrl = url;
     if (url?.startsWith("/")) {
@@ -208,11 +214,14 @@ async function getJSON(url, signal) {
     }
 
     try {
-        const response = await fetch(fullUrl, {
+        let token = await getSessionToken();
+        if (!token) return null;
+
+        const send = (accessToken) => fetch(fullUrl, {
             method: "GET",
             signal,
             headers: {
-                Authorization: `Bearer ${token}`,
+                Authorization: `Bearer ${accessToken}`,
                 ...(org ? { "X-Org-Id": org } : {}),
                 Accept: "application/json",
                 "Content-Type": "application/json",
@@ -220,6 +229,14 @@ async function getJSON(url, signal) {
             },
             credentials: "include",
         });
+
+        let response = await send(token);
+
+        if (response.status === 401 && !signal?.aborted) {
+            const session = await refreshSession("nexus-core");
+            token = session?.token || tokenStore.get("nexus-core");
+            if (token) response = await send(token);
+        }
 
         if (response.status === 401 || response.status === 403) return null;
         if (!response.ok) throw new Error(`HTTP_${response.status}`);
@@ -234,18 +251,18 @@ async function getJSON(url, signal) {
 }
 
 async function requestJSON(url, { method = "GET", body, signal } = {}) {
-    const token = tokenStore.get("nexus-core");
     const org =
         localStorage.getItem("activeOrgId") ||
         localStorage.getItem("orgId");
 
+    let token = await getSessionToken();
     if (!token) throw new Error("Your session has expired. Sign in again to continue.");
 
-    const response = await fetch(url, {
+    const send = (accessToken) => fetch(url, {
         method,
         signal,
         headers: {
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${accessToken}`,
             ...(org ? { "X-Org-Id": org } : {}),
             "X-App-Slug": "supportops",
             Accept: "application/json",
@@ -254,6 +271,14 @@ async function requestJSON(url, { method = "GET", body, signal } = {}) {
         credentials: "include",
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
+
+    let response = await send(token);
+
+    if (response.status === 401 && !signal?.aborted) {
+        const session = await refreshSession("nexus-core");
+        token = session?.token || tokenStore.get("nexus-core");
+        if (token) response = await send(token);
+    }
 
     const text = await response.text();
     const data = text ? JSON.parse(text) : {};
@@ -849,7 +874,7 @@ export default function WorkspaceDashboard({ view, role: suppliedRole, user: sup
             ["Backlog", val(metrics?.backlog ?? safeTickets.length), "Open across channels", Inbox],
             ["SLA compliance", val(metrics?.slaCompliance, (v) => `${v}%`), "Resolved on time", CheckCircle2],
             ["Avg resolution", val(metrics?.avgResolutionHours, (v) => `${v} h`), "This period", Clock],
-            ["AI resolution rate", val(metrics?.aiResolutionRate, (v) => `${v}%`), "Handled without agent", Sparkles],
+            ["AI usage events", val(metrics?.aiUsageEvents, (v) => v.toLocaleString()), "Recorded AI activity", Sparkles],
         ],
         admin: [
             ["Channels connected", `${connected}/${Object.keys(CHANNELS).length}`, "Configured channels", Plug],
@@ -858,10 +883,10 @@ export default function WorkspaceDashboard({ view, role: suppliedRole, user: sup
             ["API latency", val(health?.apiLatencyMs, (v) => `${v} ms`), health?.uptime ?? "System health", Activity],
         ],
         investor: [
-            ["Monthly recurring revenue", val(metrics?.mrr, (v) => `$${v.toLocaleString()}`), metrics?.mrrChange, DollarSign],
-            ["Active customers", val(metrics?.customers, (v) => v.toLocaleString()), metrics?.customersChange, Users],
-            ["Tickets handled", val(metrics?.tickets, (v) => v.toLocaleString()), metrics?.ticketsChange, Ticket],
-            ["AI resolution rate", val(metrics?.aiResolutionRate, (v) => `${v}%`), "Cost savings", Sparkles],
+            ["Recurring revenue", "Unavailable", "Billing history not connected", DollarSign],
+            ["Customers", val(metrics?.customers, (v) => v.toLocaleString()), "Workspace customer records", Users],
+            ["Tickets created", val(metrics?.tickets, (v) => v.toLocaleString()), timeframe, Ticket],
+            ["AI usage events", val(metrics?.aiUsageEvents, (v) => v.toLocaleString()), "Recorded AI activity", Sparkles],
         ],
     }[current] || [];
 
@@ -944,7 +969,7 @@ export default function WorkspaceDashboard({ view, role: suppliedRole, user: sup
                                 </Card>
                             </div>
                             <div className="space-y-6">
-                                <AIImpact timeframe={timeframe} />
+                                <AIImpact metrics={metrics} timeframe={timeframe} />
                                 <Card title="Live activity" icon={Activity}>
                                     <LiveActivity events={events} />
                                 </Card>
@@ -977,7 +1002,7 @@ export default function WorkspaceDashboard({ view, role: suppliedRole, user: sup
                                 </div>
                             </div>
                             <div>
-                                <AIImpact timeframe={timeframe} />
+                                <AIImpact metrics={metrics} timeframe={timeframe} />
                             </div>
                         </div>
                     )}

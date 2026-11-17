@@ -94,9 +94,9 @@ export default function LandingPage() {
       icon: MessageSquare,
       title: "Omnichannel Customer Support Hub",
       description:
-        "Manage tickets, live chat, and automated conversations across channels in one real-time workspace.",
+        "Organise support tickets and conversations across configured channels in one workspace.",
       highlights: [
-        "Real-time WebSocket event updates",
+        "Workspace event updates where available",
         "Contextual AI auto-responses",
         "Role-based agent assignment",
       ],
@@ -109,7 +109,7 @@ export default function LandingPage() {
       description:
         "Automate repetitive support tasks, triage incoming leads, and trigger background workflows seamlessly.",
       highlights: [
-        "Temporal-backed workflow orchestration",
+        "Configured workflow orchestration",
         "Custom triage and escalation rules",
         "Automated routing workflows",
       ],
@@ -283,10 +283,10 @@ export default function LandingPage() {
         <div className="mt-16 grid w-full max-w-4xl grid-cols-2 gap-6 border-t border-slate-800/80 pt-8 md:grid-cols-4">
 
           {[
-            ["99.9%", "Uptime SLA"],
-            ["< 50ms", "Event Latency"],
-            ["10x", "Faster Resolution"],
-            ["24/7", "AI Execution"],
+            ["Unified", "Support workspace"],
+            ["AI-assisted", "Ticket triage"],
+            ["Multi-channel", "Support workflows"],
+            ["Team-based", "Ticket coordination"],
           ].map(([value, label]) => (
             <div key={label}>
               <div className="text-2xl font-bold text-white sm:text-3xl">
@@ -312,7 +312,7 @@ export default function LandingPage() {
         <div className="mx-auto mb-12 max-w-3xl text-center">
 
           <h2 className="text-3xl font-extrabold text-white sm:text-4xl">
-            Built for High-Scale Operations
+            Built for Organised Customer Support Operations
           </h2>
 
           <p className="mt-4 text-base text-slate-400 sm:text-lg">

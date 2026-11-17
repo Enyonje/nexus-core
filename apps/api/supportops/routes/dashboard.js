@@ -1,7 +1,7 @@
 import { prisma } from "../lib/deps.js";
 import { guard } from "../security/entitlements.js";
 
-const readGuard = guard({ app: "supportops", roles: ["admin", "management", "agent"] });
+const readGuard = guard({ app: "supportops", roles: ["admin", "management", "agent", "investor"] });
 const DAY = 24 * 60 * 60 * 1000;
 
 function timeframeStart(value) {
@@ -22,7 +22,7 @@ export async function dashboardRoutes(app) {
     const since = timeframeStart(timeframe);
     const where = { org_id: orgId, created_at: { gte: since } };
 
-    const [tickets, openTickets, customers, channelGroups, responseRows, resolvedRows, memberships, subscriptions, plan] = await Promise.all([
+    const [tickets, openTickets, customers, channelGroups, responseRows, resolvedRows, memberships, aiUsage, activeIncidents, criticalIncidents, plan] = await Promise.all([
       prisma.supportTicket.count({ where }),
       prisma.supportTicket.count({ where: { org_id: orgId, status: { in: ["open", "pending"] } } }),
       prisma.supportCustomer.count({ where: { org_id: orgId } }),
@@ -30,7 +30,13 @@ export async function dashboardRoutes(app) {
       prisma.supportTicket.findMany({ where: { ...where, first_response_at: { not: null } }, select: { created_at: true, first_response_at: true }, take: 1000 }),
       prisma.supportTicket.findMany({ where: { ...where, resolved_at: { not: null } }, select: { created_at: true, resolved_at: true, sla_due_at: true }, take: 1000 }),
       prisma.membership.count({ where: { org_id: orgId } }),
-      prisma.subscription.findMany({ where: { org_id: orgId, status: { in: ["active", "trialing"] } }, include: { plan: { select: { price_cents: true, currency: true, limits: true } } } }),
+      prisma.aIUsage.aggregate({
+        where: { org_id: orgId, created_at: { gte: since } },
+        _count: { _all: true },
+        _sum: { cost_usd: true, total_tokens: true },
+      }),
+      prisma.incident.count({ where: { org_id: orgId, resolved_at: null } }),
+      prisma.incident.count({ where: { org_id: orgId, resolved_at: null, severity: "critical" } }),
       Promise.resolve(req.access?.plan || null),
     ]);
 
@@ -40,8 +46,6 @@ export async function dashboardRoutes(app) {
     const resolutionHours = resolvedRows.map((row) => (row.resolved_at - row.created_at) / 3600000).filter(Number.isFinite);
     const slaEligible = resolvedRows.filter((row) => row.sla_due_at);
     const slaCompliance = slaEligible.length ? Number((slaEligible.filter((row) => row.resolved_at <= row.sla_due_at).length / slaEligible.length * 100).toFixed(1)) : null;
-    const mrrCents = subscriptions.reduce((sum, item) => sum + (item.plan?.price_cents || 0) * (item.quantity || 1), 0);
-    const currency = subscriptions[0]?.plan?.currency || "usd";
     const limits = plan?.limits && typeof plan.limits === "object" ? plan.limits : {};
     const seatLimit = Number(limits.seats ?? limits.seat_limit ?? 0) || null;
 
@@ -56,8 +60,14 @@ export async function dashboardRoutes(app) {
       avgFirstResponseMin: average(firstResponseMinutes),
       avgResolutionHours: average(resolutionHours),
       slaCompliance,
-      mrr: subscriptions.length ? Number((mrrCents / 100).toFixed(2)) : null,
-      mrrCurrency: currency.toUpperCase(),
+      // Billing intervals and historical invoice records are not available.
+      mrr: null,
+      mrrCurrency: null,
+      aiUsageEvents: aiUsage._count._all,
+      aiCostUsd: aiUsage._sum.cost_usd,
+      aiTokens: aiUsage._sum.total_tokens,
+      activeIncidents,
+      criticalIncidents,
       mrrChange: null,
       customersChange: null,
       ticketsChange: null,
@@ -65,8 +75,12 @@ export async function dashboardRoutes(app) {
       csat: null,
       dataAvailability: {
         revenueTrend: false,
+        mrr: false,
         csat: false,
         aiResolutionRate: false,
+        aiUsage: true,
+        aiCost: true,
+        incidents: true,
         periodComparisons: false,
       },
     };

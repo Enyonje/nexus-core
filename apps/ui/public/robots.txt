@@ -1,14 +1,5 @@
-const robots = `User-agent: *
+User-agent: *
 Allow: /
-Allow: /agents
-Allow: /ai-agents
-Allow: /workflow-automation
-Allow: /pricing
-Allow: /supportops
-Allow: /supportops/demo
-Allow: /supportops/features
-Allow: /supportops/pricing
-Allow: /supportops/whatsapp-automation
 
 Disallow: /dashboard
 Disallow: /insights
@@ -21,9 +12,13 @@ Disallow: /login
 Disallow: /register
 Disallow: /forgot-password
 Disallow: /reset-password
+
 Disallow: /compliance/login
 Disallow: /compliance/register
+Disallow: /compliance/forgot-password
+Disallow: /compliance/reset-password
 Disallow: /compliance/billing
+
 Disallow: /supportops/login
 Disallow: /supportops/register
 Disallow: /supportops/auth
@@ -33,4 +28,3 @@ Disallow: /supportops/management
 Disallow: /supportops/investor
 
 Sitemap: https://nexusthecore.com/sitemap.xml
-`;
