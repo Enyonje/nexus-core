@@ -2,6 +2,8 @@ import React from "react";
 import { AuthProvider } from "../context/AuthContext";
 import { AccessProvider } from "../context/AccessProvider";
 import { Routes, Route, Navigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { getDefaultWorkspace } from "../components/Access";
 
 // Route Guards
 import RequireRole from "../components/RequireRole";
@@ -89,6 +91,32 @@ import InvestorMode from "../pages/InvestorMode";
  * /supportops/investor
  */
 
+function SupportOpsEntry() {
+    const { user, loading, isAuthenticated } = useAuth();
+
+    if (loading) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-300">
+                Verifying your SupportOps workspace...
+            </div>
+        );
+    }
+
+    const hasSupportOpsRole = Boolean(
+        user?.appAccess?.some(
+            (entry) =>
+                entry?.app?.slug === "supportops" &&
+                entry?.app_role
+        )
+    );
+
+    if (isAuthenticated && hasSupportOpsRole) {
+        return <Navigate to={getDefaultWorkspace(user)} replace />;
+    }
+
+    return <LandingPage />;
+}
+
 export default function SupportOpsRoutes() {
     const publicHome = "/supportops";
 
@@ -99,7 +127,7 @@ export default function SupportOpsRoutes() {
             {/* ---------------------------------------------------- */}
             {/* 1. PUBLIC ROUTES (No Authentication Required)        */}
             {/* ---------------------------------------------------- */}
-            <Route index element={<LandingPage />} />
+            <Route index element={<SupportOpsEntry />} />
             <Route path="demo" element={<PublicDemoPage />} />
             <Route path="features" element={<FeaturesPage />} />
             <Route path="pricing" element={<PricingPage />} />

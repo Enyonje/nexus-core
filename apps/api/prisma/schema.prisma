@@ -25,6 +25,7 @@ enum SubscriptionType {
 enum ExecutionStatus {
   pending
   running
+  paused
   completed
   failed
 }
