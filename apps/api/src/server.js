@@ -22,6 +22,7 @@ import * as stripeRoutesMod from "./routes/stripe.js";
 import * as marketplaceRoutesMod from "./routes/marketplace.js";
 import * as businessRoutesMod from "./routes/business.js";
 import * as insightsRoutesMod from "./routes/insights.js";
+import salesRoutesMod from "./routes/sales.js";
 import * as integrationsRoutesMod from "./routes/integrations.js";
 import * as dashboardRoutesMod from "../supportops/routes/dashboard.js"; // <--- Added Dashboard Routes
 
@@ -169,6 +170,8 @@ async function start() {
   mountBoth("marketplace", marketplaceRoutesMod, "marketplace");
   mountBoth("business", businessRoutesMod, "business");
   mountBoth("insights", insightsRoutesMod, "insights");
+  mountBoth("admin", adminRoutesMod, "admin");
+  mountBoth("admin/sales", salesRoutesMod, "admin/sales");
   mountBoth("integrations", integrationsRoutesMod, "integrations");
   // Keep the general Nexus dashboard endpoints under /api(/v1)/dashboard.
   mountBoth("dashboard", dashboardRoutesMod, "");
