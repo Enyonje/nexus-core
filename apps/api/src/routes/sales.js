@@ -217,3 +217,6 @@ function optional(value) {
 function reqLog(server, message, err) {
   server.log?.error?.({ err }, message);
 }
+
+// Add the default export so server.js can import it successfully
+export default salesRoutes;

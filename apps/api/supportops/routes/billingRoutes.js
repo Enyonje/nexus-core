@@ -3,7 +3,7 @@
 // Register: await app.register(billingRoutes, { prefix: "/api/v1/billing" });
 
 import { prisma } from "../config/prisma.js";
-import { requireAuth } from "../security/authMiddleware.js";
+import { requireAuth } from "../security/authmiddleware.js";
 import { AccessError, invalidateSubscription } from "../security/entitlements.js";
 import { mapStripeStatus, trialEnd } from "../security/entitlementRules.js";
 
