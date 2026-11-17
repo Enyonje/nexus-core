@@ -9,29 +9,6 @@ import { v4 as uuidv4 } from "uuid";
  * Mounted at /admin
  */
 export async function adminRoutes(server) {
-  // Allowed origins list for CORS preflight
-  const allowedOrigins = [
-    "https://nexusthecore.com",
-    "https://nexus-core-chi.vercel.app",
-    "http://localhost:3000",
-    "http://localhost:5173",
-  ];
-
-  // Preflight CORS handler
-  server.options("/*", async (req, reply) => {
-    const origin = req.headers.origin;
-    if (allowedOrigins.includes(origin)) {
-      reply
-        .header("Access-Control-Allow-Origin", origin)
-        .header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
-        .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        .header("Access-Control-Allow-Credentials", "true")
-        .send();
-    } else {
-      reply.code(403).send({ error: "Origin not allowed" });
-    }
-  });
-
   // Role guard
   async function requireAdmin(req, reply) {
     if (!req.user || req.user.role !== "admin") {
