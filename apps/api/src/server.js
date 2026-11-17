@@ -170,7 +170,7 @@ async function start() {
   mountBoth("marketplace", marketplaceRoutesMod, "marketplace");
   mountBoth("business", businessRoutesMod, "business");
   mountBoth("insights", insightsRoutesMod, "insights");
-  mountBoth("admin", adminRoutesMod, "admin");
+
   mountBoth("admin/sales", salesRoutesMod, "admin/sales");
   mountBoth("integrations", integrationsRoutesMod, "integrations");
   // Keep the general Nexus dashboard endpoints under /api(/v1)/dashboard.
