@@ -20,7 +20,7 @@ export async function adminRoutes(server) {
   // Permission guard
   async function requirePermission(req, reply, permission) {
     const perms = req.user?.permissions || [];
-    if (!perms.includes(permission)) {
+    if (!perms.includes("*") && !perms.includes(permission)) {
       reply.code(403).send({ error: `Missing permission: ${permission}` });
       return;
     }
