@@ -2,12 +2,17 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { MessagesSquare, Send, CheckCircle2 } from "lucide-react";
 import { SUPPORTOPS_API } from "../config/paths";
+import { tokenStore } from "../../../auth/tokenStore";
 import { listenSse } from "../lib/sse";
 
 const headers = () => {
-    const token = localStorage.getItem("authToken");
+    const token = tokenStore.get("nexus-core");
     const org = localStorage.getItem("activeOrgId");
-    return { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(org ? { "X-Org-Id": org } : {}) };
+    return {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(org ? { "X-Org-Id": org } : {}),
+        "X-App-Slug": "supportops",
+    };
 };
 
 async function call(method, url, body) {
@@ -15,6 +20,7 @@ async function call(method, url, body) {
         method,
         headers: { ...headers(), ...(body ? { "Content-Type": "application/json" } : {}) },
         body: body ? JSON.stringify(body) : undefined,
+        credentials: "include",
     });
     const data = await res.json().catch(() => null);
     if (!res.ok) throw new Error(data?.message || `Request failed (${res.status})`);
