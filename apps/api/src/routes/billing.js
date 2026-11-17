@@ -5,7 +5,7 @@
 import { prisma } from "../config/prisma.js";
 import { requireAuth } from "../security/authMiddleware.js";
 import { AccessError, invalidateSubscription } from "./entitlements.js";
-import { mapStripeStatus, trialEnd } from "../supportops/security/entitlementRules.js";
+import { mapStripeStatus, trialEnd } from "./supportops/security/entitlementRules.js";
 
 const stripe = async () => {
   const { default: Stripe } = await import("stripe");
@@ -461,7 +461,31 @@ export async function stripeWebhookPlugin(app) {
 
     try {
       const obj = event.data.object;
-      if (
+      if (event.type === "invoice.paid") {
+        const amountPaid = Number(obj.amount_paid || 0);
+        const currency = String(obj.currency || "usd").toLowerCase();
+
+        // Stripe invoice.paid is the source of truth; do not count checkout completion
+        // or subscription status as collected revenue.
+        if (amountPaid > 0 && obj.id) {
+          await prisma.$executeRawUnsafe(
+            `INSERT INTO sales_payments
+              (stripe_invoice_id, stripe_customer_id, stripe_subscription_id,
+               organization_id, amount_paid_cents, currency, paid_at)
+              VALUES ($1,$2,$3,$4,$5,$6,$7)
+              ON CONFLICT (stripe_invoice_id) DO NOTHING`,
+            String(obj.id),
+            obj.customer ? String(obj.customer) : null,
+            obj.subscription ? String(obj.subscription) : null,
+            obj.metadata?.orgId || obj.parent?.subscription_details?.metadata?.orgId || null,
+            amountPaid,
+            currency,
+            obj.status_transitions?.paid_at
+              ? new Date(Number(obj.status_transitions.paid_at) * 1000)
+              : new Date()
+          );
+        }
+      } else if (
         [
           "customer.subscription.created",
           "customer.subscription.updated",

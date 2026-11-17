@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { prisma } from "../config/prisma.js";
 
+
 const JWT_SECRET = process.env.JWT_SECRET;
 
 if (!JWT_SECRET || JWT_SECRET.length < 32) {
@@ -120,6 +121,7 @@ export async function devBypassGuard(req, reply) {
     req.user = {
       id: "dev-admin-id",
       email: "dev-admin@local.test",
+      Password: "Atimmytheboy",
       role: "admin",
       subscription: "enterprise",
       permissions: ["*"],
