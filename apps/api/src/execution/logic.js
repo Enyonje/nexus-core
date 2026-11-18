@@ -144,41 +144,37 @@ export async function executeGoalLogic(goalType, payload, executionId, executeSt
   }
 }
 
+/* ---------------- Plan drafting for POST /goals/plan (used by the Goals page) ---------------- */
 export async function draftPlan(goalType, payload = {}) {
   const goal =
-    payload.objective ||
-    payload.prompt ||
-    payload.description ||
-    payload.title ||
-    payload.text ||
+    payload.objective || payload.prompt || payload.description || payload.title || payload.text ||
     (Array.isArray(payload.steps) ? payload.steps.filter(Boolean).join("; ") : "");
+  if (!String(goal).trim()) throw fatal("Describe the goal first.");
 
-  if (!String(goal).trim()) {
-    throw fatal("Describe the goal first.");
-  }
+  const res = await openai().chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content:
+          'Break the goal into 3 to 8 concrete steps. Reply with JSON: {"steps":[{"title":string,"tool":string,"risk":"low"|"medium"|"high"}]}. ' +
+          "Use risk high for anything that sends messages, spends money, or deletes or writes external data.",
+      },
+      { role: "user", content: String(goal).slice(0, 4000) },
+    ],
+  });
 
-  // Temporary local fallback: no external API or credits required.
-  return [
-    {
-      title: "Review the requested outcome and identify requirements",
-      tool: "analysis",
-      risk: "low",
-    },
-    {
-      title: "Break the outcome into practical tasks",
-      tool: "planning",
-      risk: "low",
-    },
-    {
-      title: "Check the proposed tasks against the stated restrictions",
-      tool: "safety_review",
-      risk: "low",
-    },
-    {
-      title: "Prepare the final recommendations for user approval",
-      tool: "report",
-      risk: "low",
-    },
-  ];
+  let steps = [];
+  try { steps = JSON.parse(res.choices[0]?.message?.content || "{}").steps || []; } catch { /* handled below */ }
+  const risks = new Set(["low", "medium", "high"]);
+  return steps
+    .filter((s) => s?.title)
+    .slice(0, 12)
+    .map((s) => ({
+      title: String(s.title).slice(0, 200),
+      tool: s.tool ? String(s.tool).slice(0, 60) : undefined,
+      risk: risks.has(s.risk) ? s.risk : "low",
+    }));
 }
-

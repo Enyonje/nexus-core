@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { useAuth } from "../hooks/useAuth";
 import { formatDate } from "../lib/utils";
+import SalesAgentsPanel from "./SalesAgentsPanel";
 
 const STAGES = ["new", "qualified", "demo", "proposal", "negotiation", "won", "lost"];
 const TARGETS = [
@@ -150,6 +151,8 @@ export default function AdminDashboard() {
           )}
           <p className="text-[10px] text-slate-600">{summary?.revenue_note}</p>
         </section>
+
+        <SalesAgentsPanel />
 
         <section className="rounded-2xl border border-white/10 bg-slate-900/50 p-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
