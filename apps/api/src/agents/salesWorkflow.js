@@ -92,14 +92,16 @@ export async function executeSalesWorkflow(runId, input) {
       const website=p.website || null, sourceUrl=p.source_url || null;
       const existing=await db.query(`SELECT id FROM sales_leads WHERE LOWER(COALESCE(company,''))=LOWER($1) LIMIT 1`,[p.company]);
       let lead;
+      const score=Math.max(0,Math.min(100,Number(p.score)||0));
+      const qualifiedStage=score>=65?"qualified":"new";
       if (existing.rowCount) {
-        const r=await db.query(`UPDATE sales_leads SET website=COALESCE($2,website),source_url=COALESCE($3,source_url),research=$4::jsonb,qualification_score=$5,qualification_reason=$6,next_action=$7,updated_at=NOW() WHERE id=$1 RETURNING *`,
-          [existing.rows[0].id,website,sourceUrl,JSON.stringify(p),Math.max(0,Math.min(100,Number(p.score)||0)),p.qualification_reason||p.fit_summary||null,p.next_action||"Review prospect"]);
+        const r=await db.query(`UPDATE sales_leads SET website=COALESCE($2,website),source_url=COALESCE($3,source_url),research=$4::jsonb,qualification_score=$5,qualification_reason=$6,next_action=$7,stage=CASE WHEN $5>=65 AND stage='new' THEN 'qualified' ELSE stage END,updated_at=NOW() WHERE id=$1 RETURNING *`,
+          [existing.rows[0].id,website,sourceUrl,JSON.stringify(p),score,p.qualification_reason||p.fit_summary||null,p.next_action||"Review prospect"]);
         lead=r.rows[0];
       } else {
         const r=await db.query(`INSERT INTO sales_leads(name,company,source,stage,is_enterprise,website,source_url,research,qualification_score,qualification_reason,next_action,notes)
-          VALUES($1,$1,'AI Market Research','new',$2,$3,$4,$5::jsonb,$6,$7,$8,$9) RETURNING *`,
-          [p.company,Boolean(p.is_enterprise),website,sourceUrl,JSON.stringify(p),Math.max(0,Math.min(100,Number(p.score)||0)),p.qualification_reason||p.fit_summary||null,p.next_action||"Review prospect",p.description||null]);
+          VALUES($1,$1,'AI Market Research',$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10) RETURNING *`,
+          [p.company,qualifiedStage,Boolean(p.is_enterprise),website,sourceUrl,JSON.stringify(p),score,p.qualification_reason||p.fit_summary||null,p.next_action||"Review prospect",p.description||null]);
         lead=r.rows[0];
       }
       saved.push(lead);
@@ -118,12 +120,26 @@ export async function executeSalesWorkflow(runId, input) {
     await record(runId,"Outreach Agent","started","Drafting personalized outreach; no messages will be sent automatically.");
     const drafts=await askAI("Create a concise first-touch B2B email draft for each prospect. Return JSON {drafts:[{company,subject,body,personalization_evidence,approval_required:true}]}. Never claim a relationship or fact not in supplied evidence. These are drafts only; do not send.",{market:input.market,product_context:input.objective,prospects:saved.map(x=>({company:x.company,website:x.website,industry:x.research?.industry,signals:x.research?.buying_signals,fit:x.qualification_reason}))});
     result.outreach_drafts=drafts.drafts||[];
+    for (const d of result.outreach_drafts) {
+      const lead=saved.find(x=>String(x.company||"").toLowerCase()===String(d.company||"").toLowerCase());
+      if (!lead) continue;
+      await db.query(`INSERT INTO sales_outreach_drafts(lead_id,subject,body,personalization_evidence,status)
+        VALUES($1,$2,$3,$4,'pending')`,[lead.id,String(d.subject||"Nexus Core introduction").slice(0,500),String(d.body||"").slice(0,12000),String(d.personalization_evidence||"").slice(0,2000)]);
+    }
     result.agents.push("Outreach Agent");
     await record(runId,"Outreach Agent","completed",`Prepared ${result.outreach_drafts.length} outreach drafts. None sent.`,{draftCount:result.outreach_drafts.length});
 
     // 7. Follow-up and 8. Opportunity agents produce recommendations, not fabricated actions
     const follow=await askAI("Return JSON {follow_up_plan:[{company,when,action,reason}]}. Give practical follow-up steps. Do not schedule or send anything.",{prospects:saved.map(x=>({company:x.company,score:x.qualification_score,next_action:x.next_action}))});
     result.follow_up_plan=follow.follow_up_plan||[];
+    for (const f of result.follow_up_plan) {
+      const lead=saved.find(x=>String(x.company||"").toLowerCase()===String(f.company||"").toLowerCase());
+      if (!lead) continue;
+      const days=Math.max(1,Math.min(30,Number(f.days_from_now)||3));
+      await db.query(`INSERT INTO sales_followups(lead_id,title,details,due_at,status,source_run_id)
+        VALUES($1,$2,$3,NOW()+($4 * INTERVAL '1 day'),'pending',$5)`,
+        [lead.id,String(f.action||"Review prospect and follow up").slice(0,500),String(f.reason||f.when||"").slice(0,2000),days,runId]);
+    }
     result.agents.push("Follow-up Agent");
     const opp=await askAI("Return JSON {opportunity_recommendations:[{company,stage_recommendation,estimated_value_guidance,reason}]}. Do not invent monetary values; use null where unknown.",{prospects:saved.map(x=>({company:x.company,score:x.qualification_score,enterprise:x.is_enterprise,reason:x.qualification_reason}))});
     result.opportunity_recommendations=opp.opportunity_recommendations||[];

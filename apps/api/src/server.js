@@ -23,7 +23,7 @@ import * as marketplaceRoutesMod from "./routes/marketplace.js";
 import * as businessRoutesMod from "./routes/business.js";
 import * as insightsRoutesMod from "./routes/insights.js";
 import salesRoutesMod from "./routes/sales.js";
-import salesAgentsRoutesMod from "./routes/salesAgents.js";
+import salesAgentsRoutes from "./routes/salesAgents.js";
 import { startSalesAutopilot } from "./agents/salesAutopilot.js";
 import * as integrationsRoutesMod from "./routes/integrations.js";
 import * as dashboardRoutesMod from "../supportops/routes/dashboard.js"; // <--- Added Dashboard Routes
@@ -174,7 +174,8 @@ async function start() {
   mountBoth("insights", insightsRoutesMod, "insights");
 
   mountBoth("admin/sales", salesRoutesMod, "admin/sales");
-  mountBoth("admin/sales-agents", salesAgentsRoutesMod, "admin/sales-agents");
+  fastify.register(salesAgentsRoutes, { prefix: "/api/admin/sales-agents" });
+  fastify.register(salesAgentsRoutes, { prefix: "/api/v1/admin/sales-agents" });
   mountBoth("integrations", integrationsRoutesMod, "integrations");
   // Keep the general Nexus dashboard endpoints under /api(/v1)/dashboard.
   mountBoth("dashboard", dashboardRoutesMod, "");
@@ -232,8 +233,9 @@ async function start() {
     await closeRealtime();
   });
 
-  const port = process.env.PORT || env.PORT || 10000;
   startSalesAutopilot(fastify);
+
+  const port = process.env.PORT || env.PORT || 10000;
   await fastify.listen({ port: Number(port), host: "0.0.0.0" });
   console.log(`🚀 API running on port ${port} in ${env.NODE_ENV || "development"} mode`);
 }

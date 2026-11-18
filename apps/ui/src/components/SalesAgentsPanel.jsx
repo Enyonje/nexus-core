@@ -3,12 +3,12 @@ import { apiFetch } from "../lib/api";
 
 export default function SalesAgentsPanel() {
   const [config,setConfig]=useState(null), [runs,setRuns]=useState([]), [selected,setSelected]=useState(null);
-  const [events,setEvents]=useState([]), [busy,setBusy]=useState(false), [error,setError]=useState(""), [auto,setAuto]=useState({enabled:false,market:"",geography:"",ideal_customer:"",objective:"Find and qualify potential business customers for Nexus Core",max_leads:10,interval_hours:24}), [autoBusy,setAutoBusy]=useState(false);
+  const [events,setEvents]=useState([]), [followups,setFollowups]=useState([]), [drafts,setDrafts]=useState([]), [replies,setReplies]=useState([]), [busy,setBusy]=useState(false), [error,setError]=useState(""), [auto,setAuto]=useState({enabled:false,market:"",geography:"",ideal_customer:"",objective:"Find and qualify potential business customers for Nexus Core",max_leads:10,interval_hours:24}), [autoBusy,setAutoBusy]=useState(false);
   const [form,setForm]=useState({market:"",geography:"",ideal_customer:"",objective:"Find and qualify potential customers for Nexus Core",max_leads:10});
   async function refresh(){
     try {
-      const [s,r,a]=await Promise.all([apiFetch("/admin/sales-agents/status"),apiFetch("/admin/sales-agents/runs"),apiFetch("/admin/sales-agents/autopilot")]);
-      setConfig(s); setRuns(r.runs||[]); if(a.config) setAuto(a.config);
+      const [s,r,a,f,d,rep]=await Promise.all([apiFetch("/admin/sales-agents/status"),apiFetch("/admin/sales-agents/runs"),apiFetch("/admin/sales-agents/autopilot"),apiFetch("/admin/sales-agents/followups"),apiFetch("/admin/sales-agents/outreach"),apiFetch("/admin/sales-agents/replies")]);
+      setConfig(s); setRuns(r.runs||[]); setFollowups(f.followups||[]); setDrafts(d.drafts||[]); setReplies(rep.replies||[]); if(a.config) setAuto(a.config);
       if(selected){const d=await apiFetch(`/admin/sales-agents/runs/${selected}`);setEvents(d.events||[]);}
     } catch(e){setError(e.message||"Could not load agent status.");}
   }
@@ -39,7 +39,7 @@ export default function SalesAgentsPanel() {
         <label className="text-[10px] text-slate-400">Target market *<input required className="field" value={auto.market||""} onChange={e=>setAuto({...auto,market:e.target.value})} placeholder="e.g. SMEs needing customer support automation"/></label>
         <label className="text-[10px] text-slate-400">Geography<input className="field" value={auto.geography||""} onChange={e=>setAuto({...auto,geography:e.target.value})} placeholder="Kenya, East Africa, global"/></label>
         <label className="text-[10px] text-slate-400">Ideal customer profile<input className="field" value={auto.ideal_customer||""} onChange={e=>setAuto({...auto,ideal_customer:e.target.value})} placeholder="Company size, sector, buyer problems"/></label>
-        <label className="text-[10px] text-slate-400">Run frequency<select className="field" value={auto.interval_hours||24} onChange={e=>setAuto({...auto,interval_hours:Number(e.target.value)})}>{[6,12,24,48,72,168].map(n=><option key={n} value={n}>{n===168?"Weekly":`${n} hours`}</option>)}</select></label>
+        <label className="text-[10px] text-slate-400">Run frequency<select className="field" value={auto.interval_hours||12} onChange={e=>setAuto({...auto,interval_hours:Number(e.target.value)})}>{[1,2,4,6,8,12,24,48,72,168].map(n=><option key={n} value={n}>{n<24?`${n} hour${n===1?"":"s"}`:n===168?"Weekly":`${n} hours`}</option>)}</select></label>
         <label className="text-[10px] text-slate-400">Maximum leads per run<select className="field" value={auto.max_leads||10} onChange={e=>setAuto({...auto,max_leads:Number(e.target.value)})}>{[5,10,20,30,50].map(n=><option key={n} value={n}>{n}</option>)}</select></label>
         <label className="text-[10px] text-slate-400">Workflow objective<input className="field" value={auto.objective||""} onChange={e=>setAuto({...auto,objective:e.target.value})}/></label>
       </div>
@@ -61,6 +61,11 @@ export default function SalesAgentsPanel() {
         <div className="max-h-72 overflow-auto space-y-2">{events.length?events.map((ev,i)=><div key={i} className="rounded-lg bg-black/20 p-3"><p className="text-[10px] text-red-300 font-bold">{ev.agent} · {ev.event_type}</p><p className="text-xs text-slate-300 mt-1">{ev.message}</p></div>):<p className="text-xs text-slate-600">Select a run to inspect agent activity.</p>}</div>
       </div>
     </div>
-    <p className="text-[10px] text-slate-500">Outreach is draft-only. No email, message, or external communication is sent without a separately authorized sending workflow.</p>
+    <div className="grid lg:grid-cols-3 gap-3">
+      <div className="rounded-xl border border-white/10 p-3"><h3 className="text-xs font-bold text-white mb-2">Follow-up queue</h3>{followups.slice(0,8).map(f=><div key={f.id} className="border-t border-white/5 py-2"><p className="text-[11px] text-slate-200">{f.company||f.title}</p><p className="text-[10px] text-slate-500">{f.title} · {new Date(f.due_at).toLocaleDateString()} · {f.status}</p>{f.status==='pending'&&<button onClick={async()=>{await apiFetch(`/admin/sales-agents/followups/${f.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'completed'})});refresh();}} className="text-[10px] text-emerald-300">Mark complete</button>}</div>)}{!followups.length&&<p className="text-[10px] text-slate-500">No scheduled follow-ups.</p>}</div>
+      <div className="rounded-xl border border-white/10 p-3"><h3 className="text-xs font-bold text-white mb-2">Outreach approvals</h3>{drafts.slice(0,8).map(d=><div key={d.id} className="border-t border-white/5 py-2"><p className="text-[11px] text-slate-200">{d.company} · {d.status}</p><p className="text-[10px] text-slate-500">{d.subject}</p>{d.status==='pending'&&<div className="flex gap-3"><button onClick={async()=>{await apiFetch(`/admin/sales-agents/outreach/${d.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'approved'})});refresh();}} className="text-[10px] text-emerald-300">Approve</button><button onClick={async()=>{await apiFetch(`/admin/sales-agents/outreach/${d.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'rejected'})});refresh();}} className="text-[10px] text-red-300">Reject</button></div>}{d.status==='approved'&&<button onClick={async()=>{try{await apiFetch(`/admin/sales-agents/outreach/${d.id}/send`,{method:'POST'});refresh();}catch(e){setError(e.message);}}} className="text-[10px] text-amber-300">Send approved email</button>}</div>)}{!drafts.length&&<p className="text-[10px] text-slate-500">No outreach drafts.</p>}</div>
+      <div className="rounded-xl border border-white/10 p-3"><h3 className="text-xs font-bold text-white mb-2">Inbound replies</h3>{replies.slice(0,8).map(r=><div key={r.id} className="border-t border-white/5 py-2"><p className="text-[11px] text-slate-200">{r.company||r.from_email} · {r.classification}</p><p className="text-[10px] text-slate-500">{r.subject||r.body.slice(0,100)}</p></div>)}{!replies.length&&<p className="text-[10px] text-slate-500">No inbound replies received.</p>}</div>
+    </div>
+    <p className="text-[10px] text-slate-500">Email sending requires an administrator to approve each draft. Reply ingestion requires an inbound-email provider webhook configured with SALES_INBOUND_WEBHOOK_SECRET.</p>
   </section>;
 }
