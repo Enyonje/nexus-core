@@ -1,7 +1,93 @@
 
 import { db } from "../db/db.js";
 
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+// Multi-provider AI gateway. Configure AI_PROVIDER=auto or a preferred provider.
+// Supported native providers: OpenAI, Gemini, Anthropic. OpenAI-compatible:
+// Groq, OpenRouter, DeepSeek, Mistral, Together and custom compatible endpoints.
+const PROVIDERS = {
+  openai: { key: "OPENAI_API_KEY", url: "https://api.openai.com/v1/chat/completions", model: "gpt-4o-mini" },
+  gemini: { key: "GEMINI_API_KEY", model: "gemini-2.5-flash" },
+  anthropic: { key: "ANTHROPIC_API_KEY", url: "https://api.anthropic.com/v1/messages", model: "claude-3-5-haiku-latest" },
+  groq: { key: "GROQ_API_KEY", url: "https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile" },
+  openrouter: { key: "OPENROUTER_API_KEY", url: "https://openrouter.ai/api/v1/chat/completions", model: "openai/gpt-4o-mini" },
+  deepseek: { key: "DEEPSEEK_API_KEY", url: "https://api.deepseek.com/chat/completions", model: "deepseek-chat" },
+  mistral: { key: "MISTRAL_API_KEY", url: "https://api.mistral.ai/v1/chat/completions", model: "mistral-small-latest" },
+  together: { key: "TOGETHER_API_KEY", url: "https://api.together.xyz/v1/chat/completions", model: "meta-llama/Llama-3.3-70B-Instruct-Turbo" }
+};
+const cleanKey = (value) => String(value || "").trim().replace(/^['\"]|['\"]$/g, "");
+function configuredProviders() {
+  const requested = String(process.env.AI_PROVIDER || "auto").toLowerCase().split(/[;,\s]+/).filter(Boolean);
+  const order = requested.includes("auto") || !requested.length
+    ? ["gemini", "openai", "anthropic", "groq", "openrouter", "deepseek", "mistral", "together"]
+    : requested;
+  return [...new Set(order)].filter(name => PROVIDERS[name] && cleanKey(process.env[PROVIDERS[name].key]));
+}
+function providerModel(name) {
+  const specific = process.env[`${name.toUpperCase()}_MODEL`];
+  const preference = String(process.env.AI_PROVIDER || "auto").toLowerCase().trim();
+  return specific || (preference === name ? process.env.SALES_AGENT_MODEL : "") || PROVIDERS[name].model;
+}
+function extractJSON(text) {
+  const raw = String(text || "").trim();
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  try { return JSON.parse(cleaned); } catch {
+    const first = cleaned.indexOf("{"); const last = cleaned.lastIndexOf("}");
+    if (first >= 0 && last > first) return JSON.parse(cleaned.slice(first, last + 1));
+    throw new Error("AI provider returned invalid JSON");
+  }
+}
+async function callOpenAICompatible(name, system, input) {
+  const cfg = PROVIDERS[name];
+  const base = name === "openai" ? (process.env.OPENAI_BASE_URL || cfg.url) :
+    name === "groq" ? (process.env.GROQ_BASE_URL || cfg.url) :
+    name === "openrouter" ? (process.env.OPENROUTER_BASE_URL || cfg.url) :
+    name === "deepseek" ? (process.env.DEEPSEEK_BASE_URL || cfg.url) :
+    name === "mistral" ? (process.env.MISTRAL_BASE_URL || cfg.url) :
+    name === "together" ? (process.env.TOGETHER_BASE_URL || cfg.url) :
+    (process.env.AI_COMPATIBLE_BASE_URL || cfg.url);
+  const model = providerModel(name);
+  const response = await fetch(base, { method: "POST", headers: { Authorization: `Bearer ${cleanKey(process.env[cfg.key])}`, "Content-Type": "application/json", ...(name === "openrouter" ? { "HTTP-Referer": process.env.APP_URL || "https://nexusthecore.com", "X-Title": "Nexus Core Sales Agents" } : {}) }, body: JSON.stringify({ model, temperature: 0.2, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content: JSON.stringify(input) }] }), signal: AbortSignal.timeout(60000) });
+  if (!response.ok) throw new Error(`${name} returned HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error(`${name} returned an empty response`);
+  return extractJSON(content);
+}
+async function callGemini(system, input) {
+  const model = providerModel("gemini");
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(cleanKey(process.env.GEMINI_API_KEY))}`;
+  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: JSON.stringify(input) }] }], generationConfig: { temperature: 0.2, responseMimeType: "application/json" } }), signal: AbortSignal.timeout(60000) });
+  if (!response.ok) throw new Error(`gemini returned HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
+  const data = await response.json();
+  const content = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("");
+  if (!content) throw new Error("gemini returned an empty response");
+  return extractJSON(content);
+}
+async function callAnthropic(system, input) {
+  const model = providerModel("anthropic");
+  const response = await fetch(PROVIDERS.anthropic.url, { method: "POST", headers: { "x-api-key": cleanKey(process.env.ANTHROPIC_API_KEY), "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model, max_tokens: 4096, temperature: 0.2, system: `${system}\nReturn only valid JSON.`, messages: [{ role: "user", content: JSON.stringify(input) }] }), signal: AbortSignal.timeout(60000) });
+  if (!response.ok) throw new Error(`anthropic returned HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
+  const data = await response.json();
+  const content = data.content?.filter(x => x.type === "text").map(x => x.text).join("");
+  if (!content) throw new Error("anthropic returned an empty response");
+  return extractJSON(content);
+}
+export async function generateSalesAIJSON(system, input) {
+  const providers = configuredProviders();
+  if (!providers.length) throw new Error("No AI provider key configured. Set one or more of GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, DEEPSEEK_API_KEY, MISTRAL_API_KEY or TOGETHER_API_KEY.");
+  const errors = [];
+  for (const name of providers) {
+    try {
+      const result = name === "gemini" ? await callGemini(system, input) : name === "anthropic" ? await callAnthropic(system, input) : await callOpenAICompatible(name, system, input);
+      return result;
+    } catch (error) {
+      errors.push(`${name}: ${String(error.message || error).slice(0, 220)}`);
+      // Try the next configured provider for transient, quota, model and auth errors.
+    }
+  }
+  throw new Error(`All configured AI providers failed. ${errors.join(" | ")}`);
+}
+const askAI = generateSalesAIJSON;
 
 async function record(runId, agent, eventType, message, payload = {}) {
   await db.query(

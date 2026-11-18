@@ -1,5 +1,5 @@
 import { db } from "../db/db.js";
-import { executeSalesWorkflow } from "./salesWorkflow.js";
+import { executeSalesWorkflow, generateSalesAIJSON } from "./salesWorkflow.js";
 
 let scheduler = null;
 let worker = null;
@@ -84,10 +84,10 @@ async function processDueFollowup(server) {
     await c.query("COMMIT");
   } catch(e){try{await c.query("ROLLBACK");}catch{} throw e;} finally{c.release();}
   try {
-    if(!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is required to draft due follow-ups");
-    const response=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:process.env.SALES_AGENT_MODEL||"gpt-4o-mini",temperature:0.2,response_format:{type:"json_object"},messages:[{role:"system",content:"Write a concise, respectful B2B follow-up email. Return JSON {subject,body}. Use only supplied evidence. Do not invent prior conversations or promises. Include a clear opt-out-respecting tone."},{role:"user",content:JSON.stringify({company:task.company,website:task.website,contact_name:task.name,qualification_reason:task.qualification_reason,next_action:task.next_action,research:task.research,followup_title:task.title,followup_details:task.details})}]})});
-    if(!response.ok) throw new Error(`OpenAI follow-up drafting failed (${response.status})`);
-    const data=await response.json(); const draft=JSON.parse(data.choices?.[0]?.message?.content||"{}");
+    const draft=await generateSalesAIJSON(
+      "Write a concise, respectful B2B follow-up email. Return JSON {subject,body}. Use only supplied evidence. Do not invent prior conversations or promises. Include a clear opt-out-respecting tone.",
+      {company:task.company,website:task.website,contact_name:task.name,qualification_reason:task.qualification_reason,next_action:task.next_action,research:task.research,followup_title:task.title,followup_details:task.details}
+    );
     if(!draft.subject||!draft.body) throw new Error("AI returned an incomplete follow-up draft");
     await db.query(`INSERT INTO sales_outreach_drafts(lead_id,subject,body,personalization_evidence,status,followup_id)
       VALUES($1,$2,$3,$4,'pending',$5)`,[task.lead_id,String(draft.subject).slice(0,500),String(draft.body).slice(0,12000),"Generated from saved lead research and scheduled follow-up task.",task.id]);

@@ -108,8 +108,14 @@ export default async function salesAgentsRoutes(server) {
   });
 
   server.get("/status",{preHandler:guard},async()=>{
-    return {search_configured:Boolean(process.env.SERPAPI_API_KEY||process.env.SERPAPI_KEY),ai_configured:Boolean(process.env.OPENAI_API_KEY),
-      required_environment:["OPENAI_API_KEY","SERPAPI_API_KEY"],
+    const providers = [
+      ["openai","OPENAI_API_KEY"],["gemini","GEMINI_API_KEY"],["anthropic","ANTHROPIC_API_KEY"],
+      ["groq","GROQ_API_KEY"],["openrouter","OPENROUTER_API_KEY"],["deepseek","DEEPSEEK_API_KEY"],
+      ["mistral","MISTRAL_API_KEY"],["together","TOGETHER_API_KEY"]
+    ].filter(([,key])=>Boolean(String(process.env[key]||"").trim())).map(([name])=>name);
+    return {search_configured:Boolean(process.env.SERPAPI_API_KEY||process.env.SERPAPI_KEY),ai_configured:providers.length>0,
+      ai_provider_preference:process.env.AI_PROVIDER||"auto",configured_ai_providers:providers,
+      required_environment:["SERPAPI_API_KEY","one or more AI provider API keys"],
       smtp_configured:Boolean(process.env.SMTP_HOST&&process.env.SMTP_FROM),
       inbound_reply_webhook_configured:Boolean(process.env.SALES_INBOUND_WEBHOOK_SECRET),
       agents:["Market Research Agent","Lead Discovery Agent","Lead Enrichment Agent","Lead Qualification Agent","Sales Intelligence Agent","Outreach Agent","Follow-up Agent","Opportunity Management Agent"]};
