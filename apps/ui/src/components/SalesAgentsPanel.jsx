@@ -3,16 +3,21 @@ import { apiFetch } from "../lib/api";
 
 export default function SalesAgentsPanel() {
   const [config,setConfig]=useState(null), [runs,setRuns]=useState([]), [selected,setSelected]=useState(null);
-  const [events,setEvents]=useState([]), [busy,setBusy]=useState(false), [error,setError]=useState("");
+  const [events,setEvents]=useState([]), [busy,setBusy]=useState(false), [error,setError]=useState(""), [auto,setAuto]=useState({enabled:false,market:"",geography:"",ideal_customer:"",objective:"Find and qualify potential business customers for Nexus Core",max_leads:10,interval_hours:24}), [autoBusy,setAutoBusy]=useState(false);
   const [form,setForm]=useState({market:"",geography:"",ideal_customer:"",objective:"Find and qualify potential customers for Nexus Core",max_leads:10});
   async function refresh(){
     try {
-      const [s,r]=await Promise.all([apiFetch("/admin/sales-agents/status"),apiFetch("/admin/sales-agents/runs")]);
-      setConfig(s); setRuns(r.runs||[]);
+      const [s,r,a]=await Promise.all([apiFetch("/admin/sales-agents/status"),apiFetch("/admin/sales-agents/runs"),apiFetch("/admin/sales-agents/autopilot")]);
+      setConfig(s); setRuns(r.runs||[]); if(a.config) setAuto(a.config);
       if(selected){const d=await apiFetch(`/admin/sales-agents/runs/${selected}`);setEvents(d.events||[]);}
     } catch(e){setError(e.message||"Could not load agent status.");}
   }
   useEffect(()=>{refresh();const t=setInterval(refresh,5000);return()=>clearInterval(t);},[selected]);
+  async function saveAutopilot(e){
+    e.preventDefault(); setAutoBusy(true); setError("");
+    try { const r=await apiFetch("/admin/sales-agents/autopilot",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(auto)}); setAuto(r.config); await refresh(); }
+    catch(err){setError(err.message||"Could not save autopilot settings.");} finally{setAutoBusy(false);}
+  }
   async function start(e){
     e.preventDefault();setBusy(true);setError("");
     try {const r=await apiFetch("/admin/sales-agents/runs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(form)});
@@ -28,6 +33,18 @@ export default function SalesAgentsPanel() {
       <span className={`rounded-lg px-3 py-2 ${config?.ai_configured?"bg-green-500/10 text-green-300":"bg-amber-500/10 text-amber-300"}`}>AI {config?.ai_configured?"configured":"API key required"}</span>
       <span className={`rounded-lg px-3 py-2 ${config?.search_configured?"bg-green-500/10 text-green-300":"bg-amber-500/10 text-amber-300"}`}>Web research {config?.search_configured?"configured":"search key required"}</span>
     </div>
+    <form onSubmit={saveAutopilot} className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4 space-y-3">
+      <div className="flex items-center justify-between"><div><h3 className="text-sm font-black text-white">Autopilot · persistent background research</h3><p className="text-[10px] text-slate-400">Save your target once. The server will launch scheduled runs without a manual click.</p></div><span className={`text-[10px] font-bold ${auto.enabled?"text-emerald-300":"text-amber-300"}`}>{auto.enabled?"AUTOPILOT ON":"AUTOPILOT OFF"}</span></div>
+      <div className="grid md:grid-cols-2 gap-3">
+        <label className="text-[10px] text-slate-400">Target market *<input required className="field" value={auto.market||""} onChange={e=>setAuto({...auto,market:e.target.value})} placeholder="e.g. SMEs needing customer support automation"/></label>
+        <label className="text-[10px] text-slate-400">Geography<input className="field" value={auto.geography||""} onChange={e=>setAuto({...auto,geography:e.target.value})} placeholder="Kenya, East Africa, global"/></label>
+        <label className="text-[10px] text-slate-400">Ideal customer profile<input className="field" value={auto.ideal_customer||""} onChange={e=>setAuto({...auto,ideal_customer:e.target.value})} placeholder="Company size, sector, buyer problems"/></label>
+        <label className="text-[10px] text-slate-400">Run frequency<select className="field" value={auto.interval_hours||24} onChange={e=>setAuto({...auto,interval_hours:Number(e.target.value)})}>{[6,12,24,48,72,168].map(n=><option key={n} value={n}>{n===168?"Weekly":`${n} hours`}</option>)}</select></label>
+        <label className="text-[10px] text-slate-400">Maximum leads per run<select className="field" value={auto.max_leads||10} onChange={e=>setAuto({...auto,max_leads:Number(e.target.value)})}>{[5,10,20,30,50].map(n=><option key={n} value={n}>{n}</option>)}</select></label>
+        <label className="text-[10px] text-slate-400">Workflow objective<input className="field" value={auto.objective||""} onChange={e=>setAuto({...auto,objective:e.target.value})}/></label>
+      </div>
+      <div className="flex flex-wrap gap-2"><button type="submit" disabled={autoBusy||!config?.ai_configured||!config?.search_configured} className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-40">{autoBusy?"Saving…":"Save autopilot settings"}</button><button type="button" disabled={autoBusy||(!auto.enabled&&!String(auto.market||"").trim())||!config?.ai_configured||!config?.search_configured} onClick={async()=>{setAutoBusy(true);setError("");try{const next={...auto,enabled:!auto.enabled};const r=await apiFetch("/admin/sales-agents/autopilot",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(next)});setAuto(r.config);await refresh();}catch(err){setError(err.message||"Could not change autopilot state.");}finally{setAutoBusy(false);}}} className={`rounded-lg px-4 py-2 text-xs font-black ${auto.enabled?"bg-amber-600":"bg-emerald-700"} text-white`}>{auto.enabled?"Turn autopilot off":"Turn autopilot on"}</button><span className="self-center text-[10px] text-slate-500">Runs automatically on the server at the selected interval.</span></div>
+    </form>
     <form onSubmit={start} className="grid md:grid-cols-2 gap-3">
       <label className="text-[10px] text-slate-400">Target market / industry *<input required className="field" value={form.market} onChange={e=>setForm({...form,market:e.target.value})} placeholder="e.g. customer support software buyers"/></label>
       <label className="text-[10px] text-slate-400">Geography<input className="field" value={form.geography} onChange={e=>setForm({...form,geography:e.target.value})} placeholder="e.g. Kenya, East Africa, United States"/></label>

@@ -24,6 +24,7 @@ import * as businessRoutesMod from "./routes/business.js";
 import * as insightsRoutesMod from "./routes/insights.js";
 import salesRoutesMod from "./routes/sales.js";
 import salesAgentsRoutesMod from "./routes/salesAgents.js";
+import { startSalesAutopilot } from "./agents/salesAutopilot.js";
 import * as integrationsRoutesMod from "./routes/integrations.js";
 import * as dashboardRoutesMod from "../supportops/routes/dashboard.js"; // <--- Added Dashboard Routes
 
@@ -232,6 +233,7 @@ async function start() {
   });
 
   const port = process.env.PORT || env.PORT || 10000;
+  startSalesAutopilot(fastify);
   await fastify.listen({ port: Number(port), host: "0.0.0.0" });
   console.log(`🚀 API running on port ${port} in ${env.NODE_ENV || "development"} mode`);
 }

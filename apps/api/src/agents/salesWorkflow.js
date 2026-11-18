@@ -16,25 +16,22 @@ async function updateRun(runId, patch) {
   await db.query(`UPDATE sales_agent_runs SET ${sets} WHERE id=$1`, [runId, ...values]);
 }
 async function searchWeb(query, limit = 10) {
-  if (process.env.BING_SEARCH_API_KEY) {
-    const url = new URL("https://api.bing.microsoft.com/v7.0/search");
-    url.searchParams.set("q", query);
-    url.searchParams.set("count", String(limit));
-    const r = await fetch(url, { headers: { "Ocp-Apim-Subscription-Key": process.env.BING_SEARCH_API_KEY } });
-    if (!r.ok) throw new Error(`Bing Search failed (${r.status})`);
-    const data = await r.json();
-    return (data.webPages?.value || []).map(x => ({ title:x.name, url:x.url, snippet:x.snippet }));
+  const key = String(process.env.SERPAPI_API_KEY || process.env.SERPAPI_KEY || "").trim().replace(/^['\"]|['\"]$/g, "");
+  if (!key) throw new Error("SerpApi is not configured. Set SERPAPI_API_KEY on the Nexus Core API service.");
+  const url = new URL("https://serpapi.com/search.json");
+  url.searchParams.set("engine", "google");
+  url.searchParams.set("q", query);
+  url.searchParams.set("num", String(limit));
+  url.searchParams.set("api_key", key);
+  const response = await fetch(url, { signal: AbortSignal.timeout(25000) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.error) {
+    const reason = String(data.error || `HTTP ${response.status}`).slice(0, 240);
+    if (response.status === 401 || response.status === 403) throw new Error(`SerpApi authentication rejected the key (${reason}). Check SERPAPI_API_KEY in Render.`);
+    if (response.status === 429) throw new Error(`SerpApi rate limit or search quota reached (${reason}).`);
+    throw new Error(`SerpApi search failed (${response.status}): ${reason}`);
   }
-  if (process.env.SERPAPI_API_KEY) {
-    const url = new URL("https://serpapi.com/search.json");
-    url.searchParams.set("engine","google"); url.searchParams.set("q",query);
-    url.searchParams.set("num",String(limit)); url.searchParams.set("api_key",process.env.SERPAPI_API_KEY);
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`Search provider failed (${r.status})`);
-    const data = await r.json();
-    return (data.organic_results || []).map(x => ({title:x.title,url:x.link,snippet:x.snippet}));
-  }
-  throw new Error("Lead research needs BING_SEARCH_API_KEY or SERPAPI_API_KEY configured on the API service.");
+  return (data.organic_results || []).map(x => ({ title: x.title, url: x.link, snippet: x.snippet }));
 }
 async function askAI(system, input) {
   if (!process.env.OPENAI_API_KEY) throw new Error("AI processing needs OPENAI_API_KEY configured on the API service.");
@@ -106,6 +103,8 @@ export async function executeSalesWorkflow(runId, input) {
         lead=r.rows[0];
       }
       saved.push(lead);
+      await db.query(`INSERT INTO sales_activities(lead_id,activity_type,title,details) VALUES($1,'note',$2,$3)`,
+        [lead.id, "Autonomous AI research completed", `Qualification score: ${lead.qualification_score}. Source: ${sourceUrl || "not supplied"}`]);
     }
     result.prospects=saved;
     await record(runId,"Lead Qualification Agent","completed",`Saved or updated ${saved.length} qualified prospect records.`,{leadIds:saved.map(x=>x.id)});
