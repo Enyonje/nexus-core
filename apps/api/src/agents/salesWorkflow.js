@@ -119,17 +119,7 @@ async function searchWeb(query, limit = 10) {
   }
   return (data.organic_results || []).map(x => ({ title: x.title, url: x.link, snippet: x.snippet }));
 }
-async function askAI(system, input) {
-  if (!process.env.OPENAI_API_KEY) throw new Error("AI processing needs OPENAI_API_KEY configured on the API service.");
-  const r = await fetch(OPENAI_URL, {
-    method:"POST", headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"Content-Type":"application/json"},
-    body:JSON.stringify({model:process.env.SALES_AGENT_MODEL || "gpt-4o-mini",temperature:0.2,
-      response_format:{type:"json_object"},messages:[{role:"system",content:system},{role:"user",content:JSON.stringify(input)}]})
-  });
-  if (!r.ok) throw new Error(`AI provider failed (${r.status}): ${(await r.text()).slice(0,400)}`);
-  const data=await r.json();
-  return JSON.parse(data.choices?.[0]?.message?.content || "{}");
-}
+// All agent AI requests use the multi-provider gateway declared above.
 const parseDomain = (url) => { try { return new URL(url).hostname.replace(/^www\./,""); } catch { return ""; } };
 
 export async function executeSalesWorkflow(runId, input) {
