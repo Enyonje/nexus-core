@@ -1,18 +1,39 @@
-import pkg from "pg";
-const { Pool } = pkg;
+import pg from "pg";
 
-const dbPools = {
-    us: new Pool({ connectionString: process.env.DATABASE_URL_US }),
-    eu: new Pool({ connectionString: process.env.DATABASE_URL_EU }),
-    default: new Pool({ connectionString: process.env.DATABASE_URL }),
-};
+const { Pool } = pg;
+const dbPools = {};
 
 export function getRegionalDbPool(region) {
     const targetRegion = (region || "").toLowerCase();
-    return dbPools[targetRegion] || dbPools.default;
+    const key = ["us", "eu"].includes(targetRegion) ? targetRegion : "default";
+
+    if (dbPools[key]) return dbPools[key];
+
+    const connectionString = key === "us"
+        ? process.env.DATABASE_URL_US
+        : key === "eu"
+            ? process.env.DATABASE_URL_EU
+            : process.env.DATABASE_URL;
+
+    if (!connectionString) {
+        throw new Error(`Database URL is not configured for region: ${key}`);
+    }
+
+    dbPools[key] = new Pool({
+        connectionString,
+        max: 1,
+        idleTimeoutMillis: 10000,
+        connectionTimeoutMillis: 10000,
+        ssl: { rejectUnauthorized: false },
+    });
+
+    dbPools[key].on("error", err => {
+        console.error(`Regional PostgreSQL pool error (${key}):`, err.message);
+    });
+
+    return dbPools[key];
 }
 
 export async function queryRegional(region, text, params) {
-    const pool = getRegionalDbPool(region);
-    return await pool.query(text, params);
+    return getRegionalDbPool(region).query(text, params);
 }

@@ -36,9 +36,22 @@ if (isAiven) {
 export const db = new Pool({
   connectionString: databaseUrl.toString(),
   ssl,
-  max: 10,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 20000,
+  max: 2,
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 10000,
+});
+
+// Dedicated pool for long-lived PostgreSQL LISTEN connections.
+export const notificationDb = new Pool({
+  connectionString: databaseUrl.toString(),
+  ssl,
+  max: 2,
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 10000,
+});
+
+notificationDb.on("error", (err) => {
+  console.error("PostgreSQL notification pool error:", err.message);
 });
 
 db.on("error", (err) => {

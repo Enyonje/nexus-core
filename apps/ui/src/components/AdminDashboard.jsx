@@ -4,6 +4,8 @@ import { apiFetch } from "../lib/api";
 import { useAuth } from "../hooks/useAuth";
 import { formatDate } from "../lib/utils";
 import SalesAgentsPanel from "./SalesAgentsPanel";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 const STAGES = ["new", "qualified", "demo", "proposal", "negotiation", "won", "lost"];
 const TARGETS = [
@@ -19,6 +21,123 @@ const money = (cents, currency = "usd") => new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0
 }).format(Number(cents || 0) / 100);
 
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+
+function parseCSV(text) {
+  const rows = [];
+  let row = [], value = "", quoted = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') {
+      if (quoted && text[i + 1] === '"') {
+        value += '"';
+        i++;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (c === "," && !quoted) {
+      row.push(value.trim());
+      value = "";
+    } else if ((c === "\n" || c === "\r") && !quoted) {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(value.trim());
+      if (row.some(Boolean)) rows.push(row);
+      row = [];
+      value = "";
+    } else {
+      value += c;
+    }
+  }
+
+  row.push(value.trim());
+  if (row.some(Boolean)) rows.push(row);
+  if (rows.length < 2) throw new Error("The CSV file has no lead records.");
+
+  const normalize = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const headers = rows[0].map(normalize);
+  const find = (...names) => headers.findIndex(h => names.includes(h));
+
+  const columns = {
+    name: find("name", "contactname", "fullname", "person", "leadname"),
+    company: find("company", "organization", "organisation", "business"),
+    email: find("email", "emailaddress", "mail"),
+    phone: find("phone", "phonenumber", "mobile", "telephone"),
+    source: find("source", "leadsource"),
+    stage: find("stage", "status"),
+    notes: find("notes", "description", "comments")
+  };
+
+  if (columns.name < 0 && columns.company < 0) {
+    throw new Error("CSV needs a name or company column. Supported headers include name, company, email, phone and notes.");
+  }
+
+  return rows.slice(1).map((cells) => {
+    const get = (key) => columns[key] >= 0 ? (cells[columns[key]] || "").trim() : "";
+    const company = get("company");
+    return {
+      name: get("name") || company,
+      company,
+      email: get("email"),
+      phone: get("phone"),
+      source: get("source") || "CSV Import",
+      stage: ["new", "qualified", "demo", "proposal", "negotiation", "won", "lost"].includes(get("stage").toLowerCase()) ? get("stage").toLowerCase() : "new",
+      notes: get("notes"),
+      estimated_value_cents: 0,
+      currency: "usd",
+      is_enterprise: false
+    };
+  }).filter(x => x.name || x.company);
+}
+
+async function parsePDF(file) {
+  const data = new Uint8Array(await file.arrayBuffer());
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+  let text = "";
+
+  for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
+    const page = await pdf.getPage(pageNo);
+    const content = await page.getTextContent();
+    text += content.items.map(item => item.str).join(" ") + "\n";
+  }
+
+  const lines = text.split(/\n/).map(x => x.trim()).filter(Boolean);
+  const results = [];
+
+  for (const line of lines) {
+    const email = (line.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i) || [])[0] || "";
+    const phone = (line.match(/(?:\+?\d[\d\s().-]{7,}\d)/) || [])[0] || "";
+    if (!email && !phone) continue;
+
+    const name = line
+      .replace(email, "")
+      .replace(phone, "")
+      .replace(/[|,;:•\-–—]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    results.push({
+      name: name || email || phone,
+      company: "",
+      email,
+      phone: phone.replace(/\s+/g, " ").trim(),
+      source: "PDF Import",
+      stage: "new",
+      notes: "Extracted from PDF. Please verify contact and company details.",
+      estimated_value_cents: 0,
+      currency: "usd",
+      is_enterprise: false
+    });
+  }
+
+  if (!results.length) {
+    throw new Error("No email addresses or phone numbers could be extracted. This PDF may be scanned; OCR is not included.");
+  }
+
+  return results;
+}
+
 export default function AdminDashboard() {
   const { role, initializing } = useAuth();
   const [usage, setUsage] = useState(null);
@@ -30,6 +149,10 @@ export default function AdminDashboard() {
   const [stageFilter, setStageFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [importRows, setImportRows] = useState([]);
+  const [importFileName, setImportFileName] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
   const [form, setForm] = useState({
     name: "", company: "", email: "", phone: "", source: "",
     stage: "new", estimated_value: "", currency: "usd",
@@ -86,6 +209,80 @@ export default function AdminDashboard() {
     } finally {
       setSaving(false);
     }
+  }
+
+
+  async function importLeadsFromFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImportRows([]);
+    setImportMessage("");
+    setImportFileName(file.name);
+    setError("");
+
+    try {
+      const extension = file.name.toLowerCase().split(".").pop();
+      let parsed;
+
+      if (extension === "csv") {
+        parsed = parseCSV(await file.text());
+      } else if (extension === "pdf") {
+        parsed = await parsePDF(file);
+      } else {
+        throw new Error("Choose a CSV or PDF file.");
+      }
+
+      const seen = new Set();
+      const marked = parsed.map((lead) => {
+        const email = lead.email.toLowerCase().trim();
+        const duplicate = Boolean(
+          (email && leads.some(x => String(x.email || "").toLowerCase().trim() === email)) ||
+          (email && seen.has(email))
+        );
+        if (email) seen.add(email);
+        return { ...lead, _duplicate: duplicate };
+      });
+
+      setImportRows(marked);
+      setImportMessage(`${marked.length} records extracted. Review them before importing.`);
+    } catch (err) {
+      setError(err.message || "Could not read the selected file.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function importPreviewLeads() {
+    const valid = importRows.filter(row => !row._duplicate && (row.name || row.company));
+    if (!valid.length) {
+      setImportMessage("No new leads to import. Remove duplicates or add valid contact names.");
+      return;
+    }
+
+    setImporting(true);
+    setError("");
+    let created = 0;
+    let failed = 0;
+
+    for (const row of valid) {
+      try {
+        const { _duplicate, ...lead } = row;
+        await apiFetch("/admin/sales/leads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(lead)
+        });
+        created++;
+      } catch (err) {
+        failed++;
+      }
+    }
+
+    setImporting(false);
+    setImportMessage(`Import finished: ${created} created, ${failed} failed, ${importRows.filter(x => x._duplicate).length} duplicates skipped.`);
+    setImportRows([]);
+    await load();
   }
 
   async function updateStage(id, stage) {
@@ -160,6 +357,45 @@ export default function AdminDashboard() {
             <button onClick={() => setShowForm(!showForm)} className="rounded-xl bg-red-600 px-4 py-2.5 text-xs font-black text-white hover:bg-red-500">{showForm ? "Close form" : "+ Add lead"}</button>
           </div>
           {showForm && <form onSubmit={createLead} className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6 rounded-xl border border-white/10 bg-black/20 p-4">
+            <div className="md:col-span-3 rounded-xl border border-dashed border-white/20 bg-slate-950/60 p-4">
+              <div className="text-xs font-bold text-white">Import leads from CSV or PDF</div>
+              <p className="mt-1 text-[10px] text-slate-500">CSV supports name, company, email, phone, source, stage and notes. PDF extraction works best with selectable text.</p>
+              <input
+                type="file"
+                accept=".csv,.pdf,text/csv,application/pdf"
+                onChange={importLeadsFromFile}
+                className="mt-3 block w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-red-600 file:px-4 file:py-2 file:text-xs file:font-bold file:text-white"
+              />
+              {importFileName && <p className="mt-2 text-[10px] text-slate-400">Selected: {importFileName}</p>}
+              {importMessage && <p className="mt-2 text-xs text-emerald-300">{importMessage}</p>}
+              {importRows.length > 0 && <>
+                <div className="mt-4 max-h-64 overflow-auto rounded-lg border border-white/10">
+                  <table className="w-full text-left text-[10px]">
+                    <thead className="sticky top-0 bg-slate-900 text-slate-400">
+                      <tr><th className="p-2">Name</th><th className="p-2">Company</th><th className="p-2">Email / Phone</th><th className="p-2">Check</th></tr>
+                    </thead>
+                    <tbody>
+                      {importRows.map((row, index) => (
+                        <tr key={index} className="border-t border-white/5">
+                          <td className="p-2 text-white">{row.name}</td>
+                          <td className="p-2 text-slate-300">{row.company || "—"}</td>
+                          <td className="p-2 text-slate-400">{row.email || row.phone || "—"}</td>
+                          <td className={`p-2 ${row._duplicate ? "text-amber-300" : "text-emerald-300"}`}>{row._duplicate ? "Duplicate" : "Ready"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <button
+                  type="button"
+                  disabled={importing || !importRows.some(row => !row._duplicate)}
+                  onClick={importPreviewLeads}
+                  className="mt-3 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
+                >
+                  {importing ? "Importing leads..." : `Import ${importRows.filter(row => !row._duplicate).length} leads`}
+                </button>
+              </>}
+            </div>
             <Input label="Contact name *" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
             <Input label="Company" value={form.company} onChange={(v) => setForm({ ...form, company: v })} />
             <Input label="Email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />

@@ -4,6 +4,7 @@ import { executeSalesWorkflow, generateSalesAIJSON } from "./salesWorkflow.js";
 let scheduler = null;
 let worker = null;
 let closing = false;
+let workerBusy = false;
 
 // A durable queue: scheduled and manual runs enter the same PostgreSQL queue.
 export async function enqueueSalesRun(runId, payload = {}) {
@@ -105,9 +106,17 @@ export function startSalesAutopilot(server) {
   closing = false;
   scheduler = setInterval(() => scheduleDueRun(server).catch(err=>server.log.error({err},"Sales scheduler error")), 30_000);
   worker = setInterval(async () => {
-    if (closing) return;
-    try { const didWork=await workOnce(server); if(!didWork) await processDueFollowup(server); } catch(err) { server.log.error({err},"Sales worker error"); }
-  }, 2_000);
+    if (closing || workerBusy) return;
+    workerBusy = true;
+    try {
+      const didWork = await workOnce(server);
+      if (!didWork) await processDueFollowup(server);
+    } catch (err) {
+      server.log.error({err}, "Sales worker error");
+    } finally {
+      workerBusy = false;
+    }
+  }, 5_000);
   scheduler.unref?.(); worker.unref?.();
   scheduleDueRun(server).catch(err=>server.log.error({err},"Initial sales schedule check failed"));
   server.addHook("onClose",async()=>{closing=true;clearInterval(scheduler);clearInterval(worker);scheduler=null;worker=null;});

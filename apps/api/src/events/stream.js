@@ -1,6 +1,6 @@
 // src/events/stream.js
 import { v4 as uuidv4 } from "uuid";
-import { db } from "../db/db.js"; // Postgres pool/connection
+import { db, notificationDb } from "../db/db.js"; // Query and notification pools
 
 // Local map of executionId -> Set of SSE reply objects
 const clients = new Map();
@@ -169,7 +169,7 @@ export function getActiveStreams() {
  * Subscribe to Postgres notifications
  */
 /*(async () => {
-  const client = await db.connect();
+  const client = await notificationDb.connect();
   await client.query("LISTEN execution_events");
 
   client.on("notification", (msg) => {
@@ -212,7 +212,13 @@ async function startNotificationListener() {
   let client;
 
   try {
-    client = await db.connect();
+    client = await notificationDb.connect();
+
+    if (shuttingDown) {
+      client.release();
+      return;
+    }
+
     notificationClient = client;
 
     client.on("notification", (msg) => {
@@ -274,12 +280,17 @@ export async function closeEventStreamListener() {
     reconnectTimer = null;
   }
 
-  if (notificationClient) {
-    try {
-      await notificationClient.query("UNLISTEN execution_events");
-      notificationClient.release();
-    } catch { }
+  const client = notificationClient;
+  notificationClient = null;
 
-    notificationClient = null;
+  if (client) {
+    try {
+      await client.query("UNLISTEN execution_events");
+    } catch { }
+    finally {
+      try {
+        client.release();
+      } catch { }
+    }
   }
 }

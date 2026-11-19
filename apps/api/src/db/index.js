@@ -2,6 +2,9 @@ import pg from "pg";
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
+  max: 1,
+  idleTimeoutMillis: 5000,
+  connectionTimeoutMillis: 10000,
   ssl: { rejectUnauthorized: false }, // Render requires SSL
 });
 

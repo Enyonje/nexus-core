@@ -8,6 +8,9 @@ if (!process.env.DATABASE_URL) {
 
 const isProd = process.env.NODE_ENV === "production";
 
+const prismaDatabaseUrl = new URL(process.env.DATABASE_URL);
+prismaDatabaseUrl.searchParams.set("connection_limit", "3");
+
 // In development, hot reloads would create a new client (and a new connection pool) on every restart.
 // Keeping it on globalThis reuses a single one.
 const globalForPrisma = globalThis;
@@ -15,6 +18,7 @@ const globalForPrisma = globalThis;
 export const prisma =
     globalForPrisma.__prisma ??
     new PrismaClient({
+        datasources: { db: { url: prismaDatabaseUrl.toString() } },
         log: isProd ? ["error"] : ["warn", "error"],
     });
 

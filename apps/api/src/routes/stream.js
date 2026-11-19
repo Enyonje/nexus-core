@@ -1,6 +1,6 @@
 // routes/stream.js
 import { requireAuth } from "../security/authMiddleware.js";
-import { db } from "../db/db.js"; // your Postgres pool/connection
+import { notificationDb } from "../db/db.js";
 
 // Local map of executionId -> Set of SSE reply objects
 const clients = new Map();
@@ -101,12 +101,26 @@ function getActiveStreams() {
 }
 
 /**
- * Subscribe to Postgres NOTIFY channel
+ * Dedicated PostgreSQL notification listener.
  */
-(async () => {
+let routeNotificationClient = null;
+let routeNotificationReconnectTimer = null;
+let routeNotificationClosing = false;
+
+async function startRouteStreamListener() {
+  if (routeNotificationClosing || routeNotificationClient) return;
+
+  let client;
+
   try {
-    const client = await db.connect();
-    await client.query("LISTEN execution_events");
+    client = await notificationDb.connect();
+
+    if (routeNotificationClosing) {
+      client.release();
+      return;
+    }
+
+    routeNotificationClient = client;
 
     client.on("notification", (msg) => {
       try {
@@ -116,10 +130,70 @@ function getActiveStreams() {
         console.error("Failed to parse NOTIFY payload:", err);
       }
     });
+
+    client.on("error", (err) => {
+      console.error("Route stream notification connection error:", err.message);
+
+      if (routeNotificationClient === client) {
+        routeNotificationClient = null;
+      }
+
+      try { client.release(true); } catch {}
+
+      if (!routeNotificationClosing && !routeNotificationReconnectTimer) {
+        routeNotificationReconnectTimer = setTimeout(() => {
+          routeNotificationReconnectTimer = null;
+          startRouteStreamListener();
+        }, 5000);
+        routeNotificationReconnectTimer.unref?.();
+      }
+    });
+
+    await client.query("LISTEN execution_events");
+    console.log("Route stream PostgreSQL listener connected.");
   } catch (err) {
-    console.warn("Postgres LISTEN setup warning:", err.message);
+    if (client) {
+      if (routeNotificationClient === client) {
+        routeNotificationClient = null;
+      }
+      try { client.release(true); } catch {}
+    }
+
+    console.warn("Route stream LISTEN setup warning:", err.message);
+
+    if (!routeNotificationClosing && !routeNotificationReconnectTimer) {
+      routeNotificationReconnectTimer = setTimeout(() => {
+        routeNotificationReconnectTimer = null;
+        startRouteStreamListener();
+      }, 5000);
+      routeNotificationReconnectTimer.unref?.();
+    }
   }
-})();
+}
+
+startRouteStreamListener();
+
+export async function closeRouteStreamListener() {
+  routeNotificationClosing = true;
+
+  if (routeNotificationReconnectTimer) {
+    clearTimeout(routeNotificationReconnectTimer);
+    routeNotificationReconnectTimer = null;
+  }
+
+  const client = routeNotificationClient;
+  routeNotificationClient = null;
+
+  if (client) {
+    try {
+      await client.query("UNLISTEN execution_events");
+    } catch {}
+
+    try {
+      client.release();
+    } catch {}
+  }
+}
 
 export async function streamRoutes(server) {
   /* ===============================

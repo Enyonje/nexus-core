@@ -1,18 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 
 export default function SalesAgentsPanel() {
+  const refreshInFlight = useRef(false);
   const [config,setConfig]=useState(null), [runs,setRuns]=useState([]), [selected,setSelected]=useState(null);
   const [events,setEvents]=useState([]), [followups,setFollowups]=useState([]), [drafts,setDrafts]=useState([]), [replies,setReplies]=useState([]), [busy,setBusy]=useState(false), [error,setError]=useState(""), [auto,setAuto]=useState({enabled:false,market:"",geography:"",ideal_customer:"",objective:"Find and qualify potential business customers for Nexus Core",max_leads:10,interval_hours:24}), [autoBusy,setAutoBusy]=useState(false);
   const [form,setForm]=useState({market:"",geography:"",ideal_customer:"",objective:"Find and qualify potential customers for Nexus Core",max_leads:10});
   async function refresh(){
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
     try {
       const [s,r,a,f,d,rep]=await Promise.all([apiFetch("/admin/sales-agents/status"),apiFetch("/admin/sales-agents/runs"),apiFetch("/admin/sales-agents/autopilot"),apiFetch("/admin/sales-agents/followups"),apiFetch("/admin/sales-agents/outreach"),apiFetch("/admin/sales-agents/replies")]);
       setConfig(s); setRuns(r.runs||[]); setFollowups(f.followups||[]); setDrafts(d.drafts||[]); setReplies(rep.replies||[]); if(a.config) setAuto(a.config);
       if(selected){const d=await apiFetch(`/admin/sales-agents/runs/${selected}`);setEvents(d.events||[]);}
-    } catch(e){setError(e.message||"Could not load agent status.");}
+    } catch(e){
+      setError(e.message||"Could not load agent status.");
+    } finally {
+      refreshInFlight.current = false;
+    }
   }
-  useEffect(()=>{refresh();const t=setInterval(refresh,5000);return()=>clearInterval(t);},[selected]);
+  useEffect(()=>{
+    refresh();
+    const t=setInterval(()=>{
+      if(document.visibilityState === "visible") refresh();
+    },15000);
+    return()=>clearInterval(t);
+  },[selected]);
   async function saveAutopilot(e){
     e.preventDefault(); setAutoBusy(true); setError("");
     try { const r=await apiFetch("/admin/sales-agents/autopilot",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(auto)}); setAuto(r.config); await refresh(); }

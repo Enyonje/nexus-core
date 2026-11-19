@@ -1,5 +1,8 @@
-// server.js
 import "dotenv/config";
+import { disconnectPrisma } from "./config/prisma.js";
+import { notificationDb } from "./db/db.js";
+import { closeEventStreamListener } from "./events/stream.js";
+// server.js
 import Fastify from 'fastify';
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
@@ -138,6 +141,9 @@ async function start() {
     try {
       await fastify.register(fastifyPostgres, {
         connectionString: env.DATABASE_URL,
+        max: 2,
+        idleTimeoutMillis: 10000,
+        connectionTimeoutMillis: 10000,
         ssl: env.NODE_ENV === "production"
           ? { ca: env.PG_CA_CERT, rejectUnauthorized: false }
           : false,
@@ -231,6 +237,18 @@ async function start() {
   await initializeRealtime();
   fastify.addHook("onClose", async () => {
     await closeRealtime();
+  });
+
+  fastify.addHook("onClose", async () => {
+    await Promise.allSettled([
+      closeEventStreamListener(),
+      streamRoutesMod.closeRouteStreamListener(),
+    ]);
+    await notificationDb.end();
+  });
+
+  fastify.addHook("onClose", async () => {
+    await disconnectPrisma();
   });
 
   startSalesAutopilot(fastify);
