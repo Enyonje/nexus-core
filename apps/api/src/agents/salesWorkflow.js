@@ -17,10 +17,14 @@ const PROVIDERS = {
 const cleanKey = (value) => String(value || "").trim().replace(/^['\"]|['\"]$/g, "");
 function configuredProviders() {
   const requested = String(process.env.AI_PROVIDER || "auto").toLowerCase().split(/[;,\s]+/).filter(Boolean);
+  const defaults = ["gemini", "openai", "anthropic", "groq", "openrouter", "deepseek", "mistral", "together"];
   const order = requested.includes("auto") || !requested.length
-    ? ["gemini", "openai", "anthropic", "groq", "openrouter", "deepseek", "mistral", "together"]
-    : requested;
-  return [...new Set(order)].filter(name => PROVIDERS[name] && cleanKey(process.env[PROVIDERS[name].key]));
+    ? defaults
+    : [...requested, ...defaults];
+
+  return [...new Set(order)].filter(
+    name => PROVIDERS[name] && cleanKey(process.env[PROVIDERS[name].key])
+  );
 }
 function providerModel(name) {
   const specific = process.env[`${name.toUpperCase()}_MODEL`];
@@ -72,19 +76,48 @@ async function callAnthropic(system, input) {
   if (!content) throw new Error("anthropic returned an empty response");
   return extractJSON(content);
 }
+function isRetryableAIError(error) {
+  const message = String(error?.message || error);
+  return /HTTP (429|500|502|503|504)|timeout|timed out|ECONNRESET|ECONNREFUSED|EAI_AGAIN|fetch failed/i.test(message);
+}
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function callSalesProvider(name, system, input) {
+  if (name === "gemini") return callGemini(system, input);
+  if (name === "anthropic") return callAnthropic(system, input);
+  return callOpenAICompatible(name, system, input);
+}
+
 export async function generateSalesAIJSON(system, input) {
   const providers = configuredProviders();
-  if (!providers.length) throw new Error("No AI provider key configured. Set one or more of GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, DEEPSEEK_API_KEY, MISTRAL_API_KEY or TOGETHER_API_KEY.");
+  if (!providers.length) throw new Error("No AI provider key configured.");
+
   const errors = [];
+
   for (const name of providers) {
-    try {
-      const result = name === "gemini" ? await callGemini(system, input) : name === "anthropic" ? await callAnthropic(system, input) : await callOpenAICompatible(name, system, input);
-      return result;
-    } catch (error) {
-      errors.push(`${name}: ${String(error.message || error).slice(0, 220)}`);
-      // Try the next configured provider for transient, quota, model and auth errors.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const result = await callSalesProvider(name, system, input);
+        console.info(`[SalesAI] Request succeeded using ${name}.`);
+        return result;
+      } catch (error) {
+        const message = String(error.message || error).slice(0, 220);
+        const retry = isRetryableAIError(error) && attempt < 2;
+
+        console.warn(`[SalesAI] ${name} failed (attempt ${attempt + 1}/3): ${message}`);
+
+        if (retry) {
+          await sleep(800 * (2 ** attempt) + Math.floor(Math.random() * 300));
+          continue;
+        }
+
+        errors.push(`${name}: ${message}`);
+        break;
+      }
     }
   }
+
   throw new Error(`All configured AI providers failed. ${errors.join(" | ")}`);
 }
 const askAI = generateSalesAIJSON;
