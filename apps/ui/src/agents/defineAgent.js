@@ -11,6 +11,7 @@ export const CATEGORIES = {
   finance: "FinTech & Payments",
   analytics: "Data Intelligence",
   operations: "Operations",
+  sales: "Sales & Marketing",
 };
 export const STATUSES = {
   live: "Production Ready",
