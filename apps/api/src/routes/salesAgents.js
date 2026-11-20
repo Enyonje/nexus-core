@@ -2,6 +2,7 @@
 import { db } from "../db/db.js";
 import { requireAuth } from "../security/authMiddleware.js";
 import { enqueueSalesRun } from "../agents/salesAutopilot.js";
+import { verifyEmailTransport } from "../services/mailer.js";
 
 export default async function salesAgentsRoutes(server) {
   const admin = async (req, reply) => {
@@ -72,8 +73,17 @@ export default async function salesAgentsRoutes(server) {
     const status=String(req.body?.status||"");
     if(!["approved","rejected"].includes(status)) return reply.code(400).send({error:"Status must be approved or rejected"});
     const r=await db.query(`UPDATE sales_outreach_drafts SET status=$2,approved_by=$3,approved_at=CASE WHEN $2='approved' THEN NOW() ELSE NULL END WHERE id=$1 AND status='pending' RETURNING *`,[req.params.id,status,req.user.id]);
-    if(!r.rowCount) return reply.code(404).send({error:"Pending draft not found"});
-    return {draft:r.rows[0]};
+    if(r.rowCount) return {draft:r.rows[0]};
+
+    const existing=await db.query(`SELECT * FROM sales_outreach_drafts WHERE id=$1`,[req.params.id]);
+    if(!existing.rowCount) return reply.code(404).send({error:"Outreach draft not found"});
+
+    if(existing.rows[0].status===status) return {draft:existing.rows[0]};
+
+    return reply.code(409).send({
+      error:`Draft is already ${existing.rows[0].status}.`,
+      current_status:existing.rows[0].status
+    });
   });
   server.post("/outreach/:id/send",{preHandler:guard},async(req,reply)=>{
     const {default:nodemailer}=await import("nodemailer");
@@ -105,6 +115,19 @@ export default async function salesAgentsRoutes(server) {
   server.get("/replies",{preHandler:guard},async()=>{
     const r=await db.query(`SELECT r.*,l.company FROM sales_inbound_replies r LEFT JOIN sales_leads l ON l.id=r.lead_id ORDER BY r.received_at DESC LIMIT 200`);
     return {replies:r.rows};
+  });
+
+  server.post("/smtp-test",{preHandler:guard},async(req,reply)=>{
+    try {
+      await verifyEmailTransport();
+      return {verified:true,message:"SMTP connection verified successfully."};
+    } catch(error) {
+      req.log.error({err:error},"Sales SMTP verification failed");
+      return reply.code(502).send({
+        verified:false,
+        error:"SMTP connection failed. Check SMTP settings in Render."
+      });
+    }
   });
 
   server.get("/status",{preHandler:guard},async()=>{
