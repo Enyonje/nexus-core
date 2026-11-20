@@ -117,7 +117,7 @@ function createSafeDispatcher() {
   });
 }
 
-async function fetchPublicPage(value) {
+export async function fetchPublicPage(value) {
   let url = value;
 
   for (let redirect = 0; redirect <= 3; redirect++) {
