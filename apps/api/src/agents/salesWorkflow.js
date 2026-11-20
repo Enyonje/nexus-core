@@ -1,5 +1,6 @@
 
 import { db } from "../db/db.js";
+import { enrichCompanyContact } from "./contactEnrichment.js";
 
 // Multi-provider AI gateway. Configure AI_PROVIDER=auto or a preferred provider.
 // Supported native providers: OpenAI, Gemini, Anthropic. OpenAI-compatible:
@@ -188,12 +189,70 @@ export async function executeSalesWorkflow(runId, input) {
     );
     result.agents.push("Lead Enrichment Agent");
 
+    // 3b. Visit public company websites and discover published contact emails.
+    await record(runId,"Website Contact Research Agent","started",
+      "Checking public company websites and contact pages for published business email addresses.");
+
+    const contactEnrichedProspects = await Promise.all(
+      (enriched.prospects || prospects).map(async prospect => {
+        const website = prospect.website || null;
+
+        try {
+          const contact = await enrichCompanyContact(website);
+          return { ...prospect, contact_enrichment: contact };
+        } catch (error) {
+          return {
+            ...prospect,
+            contact_enrichment: {
+              email: null,
+              contact_status: "enrichment_error",
+              mailbox_deliverability: "unknown",
+              error: String(error.message || error).slice(0, 200)
+            }
+          };
+        }
+      })
+    );
+
+    const discoveredEmails = contactEnrichedProspects.filter(
+      p => p.contact_enrichment?.email
+    ).length;
+
+    result.contact_enrichment = {
+      companies_checked: contactEnrichedProspects.length,
+      public_emails_found: discoveredEmails,
+      emails_with_mx: contactEnrichedProspects.filter(
+        p => p.contact_enrichment?.domain_mx_found
+      ).length,
+      emails_missing: contactEnrichedProspects.length - discoveredEmails
+    };
+
+    await record(runId,"Website Contact Research Agent","completed",
+      `Checked ${contactEnrichedProspects.length} companies; found ${discoveredEmails} published email addresses.`,
+      result.contact_enrichment);
+
     // 4. Qualification agent
     await record(runId,"Lead Qualification Agent","started","Scoring prospects against the requested ideal customer profile.");
     const qualified = await askAI(
       "Score each company from 0 to 100 for fit to the supplied B2B ICP. Evidence-based only. Return JSON {prospects:[{company,website,description,industry,source_url,buying_signals,contact_role,company_size,fit_summary,score,qualification_reason,next_action,is_enterprise}]} . Do not create personal contact data. score integer.",
-      {market:input.market,ideal_customer:input.ideal_customer,geography:input.geography,prospects:enriched.prospects||prospects}
+      {market:input.market,ideal_customer:input.ideal_customer,geography:input.geography,prospects:contactEnrichedProspects}
     );
+    // Restore website research data in case the AI qualification response
+    // omits fields supplied to it.
+    const contactByCompany = new Map(
+      contactEnrichedProspects.map(x => [
+        String(x.company || "").trim().toLowerCase(),
+        x.contact_enrichment || {}
+      ])
+    );
+
+    for (const prospect of (qualified.prospects || [])) {
+      const contact = contactByCompany.get(
+        String(prospect.company || "").trim().toLowerCase()
+      );
+      if (contact) prospect.contact_enrichment = contact;
+    }
+
     result.agents.push("Lead Qualification Agent");
     const saved=[];
     for (const p of (qualified.prospects||[]).slice(0,input.max_leads)) {
@@ -213,6 +272,20 @@ export async function executeSalesWorkflow(runId, input) {
           [p.company,qualifiedStage,Boolean(p.is_enterprise),website,sourceUrl,JSON.stringify(p),score,p.qualification_reason||p.fit_summary||null,p.next_action||"Review prospect",p.description||null]);
         lead=r.rows[0];
       }
+      // Preserve manually entered CRM emails; only fill empty email fields
+      // with addresses actually found on the company's public website.
+      const contact = p.contact_enrichment || {};
+      const refreshed = await db.query(
+        `UPDATE sales_leads
+         SET email=COALESCE(email,$2),
+             research=COALESCE(research,'{}'::jsonb) ||
+               jsonb_build_object('contact_enrichment',$3::jsonb),
+             updated_at=NOW()
+         WHERE id=$1 RETURNING *`,
+        [lead.id, contact.email || null, JSON.stringify(contact)]
+      );
+      lead = refreshed.rows[0];
+
       saved.push(lead);
       await db.query(`INSERT INTO sales_activities(lead_id,activity_type,title,details) VALUES($1,'note',$2,$3)`,
         [lead.id, "Autonomous AI research completed", `Qualification score: ${lead.qualification_score}. Source: ${sourceUrl || "not supplied"}`]);
@@ -227,11 +300,18 @@ export async function executeSalesWorkflow(runId, input) {
     result.agents.push("Sales Intelligence Agent");
     await record(runId,"Sales Intelligence Agent","completed","Sales intelligence report generated.",intel);
     await record(runId,"Outreach Agent","started","Drafting personalized outreach; no messages will be sent automatically.");
-    const drafts=await askAI("Create a concise first-touch B2B email draft for each prospect. Return JSON {drafts:[{company,subject,body,personalization_evidence,approval_required:true}]}. Never claim a relationship or fact not in supplied evidence. These are drafts only; do not send.",{market:input.market,product_context:input.objective,prospects:saved.map(x=>({company:x.company,website:x.website,industry:x.research?.industry,signals:x.research?.buying_signals,fit:x.qualification_reason}))});
-    result.outreach_drafts=drafts.drafts||[];
+    const emailLeads = saved.filter(x => x.email);
+    const drafts = emailLeads.length
+      ? await askAI("Create a concise first-touch B2B email draft for each supplied prospect. Return JSON {drafts:[{company,subject,body,personalization_evidence,approval_required:true}]}. Only draft for the supplied leads, which all have an email address. Never claim a relationship or fact not in supplied evidence. These are drafts only; do not send.",{market:input.market,product_context:input.objective,prospects:emailLeads.map(x=>({company:x.company,email:x.email,website:x.website,industry:x.research?.industry,signals:x.research?.buying_signals,fit:x.qualification_reason}))})
+      : { drafts: [] };
+
+    result.outreach_drafts=(drafts.drafts||[]).filter(d =>
+      emailLeads.some(x => String(x.company||"").toLowerCase()===String(d.company||"").toLowerCase())
+    );
+
     for (const d of result.outreach_drafts) {
       const lead=saved.find(x=>String(x.company||"").toLowerCase()===String(d.company||"").toLowerCase());
-      if (!lead) continue;
+      if (!lead || !lead.email) continue;
       await db.query(`INSERT INTO sales_outreach_drafts(lead_id,subject,body,personalization_evidence,status)
         VALUES($1,$2,$3,$4,'pending')`,[lead.id,String(d.subject||"Nexus Core introduction").slice(0,500),String(d.body||"").slice(0,12000),String(d.personalization_evidence||"").slice(0,2000)]);
     }
@@ -250,6 +330,33 @@ export async function executeSalesWorkflow(runId, input) {
         [lead.id,String(f.action||"Review prospect and follow up").slice(0,500),String(f.reason||f.when||"").slice(0,2000),days,runId]);
     }
     result.agents.push("Follow-up Agent");
+    // Leads without an email receive a contact-research task, not an email draft.
+    let contactTasksCreated = 0;
+    for (const lead of saved.filter(x => !x.email)) {
+      const title = lead.website
+        ? "Find a business contact through the company website"
+        : "Research the company's official website and contact details";
+
+      const details = lead.website
+        ? `No public email address was found during website research. Visit ${lead.website} and use its official contact page or contact form. Do not guess an email address.`
+        : "No email address or usable company website was found. Research the official company website and identify a public business contact channel.";
+
+      const task = await db.query(
+        `INSERT INTO sales_followups(lead_id,title,details,due_at,status,source_run_id)
+         SELECT $1,$2,$3,NOW()+INTERVAL '1 day','pending',$4
+         WHERE NOT EXISTS (
+           SELECT 1 FROM sales_followups
+           WHERE lead_id=$1 AND title=$2 AND status='pending'
+         )
+         RETURNING id`,
+        [lead.id,title,details,runId]
+      );
+
+      if (task.rowCount) contactTasksCreated++;
+    }
+
+    result.contact_enrichment.contact_tasks_created = contactTasksCreated;
+
     const opp=await askAI("Return JSON {opportunity_recommendations:[{company,stage_recommendation,estimated_value_guidance,reason}]}. Do not invent monetary values; use null where unknown.",{prospects:saved.map(x=>({company:x.company,score:x.qualification_score,enterprise:x.is_enterprise,reason:x.qualification_reason}))});
     result.opportunity_recommendations=opp.opportunity_recommendations||[];
     result.agents.push("Opportunity Management Agent");
