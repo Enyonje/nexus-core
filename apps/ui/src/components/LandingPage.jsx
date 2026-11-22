@@ -1,39 +1,632 @@
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, ArrowUpRight, Bot, TrendingUp, Target, Headset, Workflow, Sparkles, Building2, Store, CheckCircle2, Zap, Globe2 } from "lucide-react";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  TrendingUp,
+  Target,
+  Headset,
+  Sparkles,
+  CheckCircle2,
+  Zap,
+  Building2,
+  CalendarCheck,
+  MessageSquareMore,
+  Share2,
+} from "lucide-react";
 
-const pillars = [
-  { name: "Grow", eyebrow: "CUSTOMER ACQUISITION", text: "Build visibility, publish consistently and find more of the right customers.", icon: TrendingUp, color: "text-violet-300", bg: "bg-violet-400/10", border: "border-violet-400/20", points: ["Social media operations", "Marketing intelligence", "SEO and growth workflows"] },
-  { name: "Sell", eyebrow: "REVENUE GENERATION", text: "Turn prospects into customers with organised, intelligent sales workflows.", icon: Target, color: "text-cyan-300", bg: "bg-cyan-400/10", border: "border-cyan-400/20", points: ["Lead discovery and qualification", "Sales follow-ups", "Pipeline and proposals"] },
-  { name: "Serve", eyebrow: "CUSTOMER EXPERIENCE", text: "Give customers faster, more consistent support across their conversations.", icon: Headset, color: "text-emerald-300", bg: "bg-emerald-400/10", border: "border-emerald-400/20", points: ["Omnichannel support workflows", "Ticket triage and escalation", "Customer success operations"] },
-  { name: "Operate", eyebrow: "BUSINESS OPERATIONS", text: "Reduce repetitive work and make important business processes repeatable.", icon: Workflow, color: "text-amber-300", bg: "bg-amber-400/10", border: "border-amber-400/20", points: ["Workflow automation", "Business process management", "Specialist compliance tools"] },
+const PRODUCTS = [
+  {
+    id: "socialops",
+    name: "SocialOps",
+    role: "Your AI marketing team",
+    badge: "MARKETING & GROWTH",
+    description:
+      "Plan, create and coordinate social media operations to keep your brand active and consistent.",
+    path: "/agents",
+    icon: TrendingUp,
+    accent: "text-violet-300",
+    bg: "bg-violet-400/10",
+    border: "border-violet-400/25",
+    pill: "bg-violet-400/15 text-violet-200 border-violet-400/30",
+    highlights: [
+      "Content planning & consistent publishing cadence",
+      "Coordinated campaign & channel execution",
+      "Always-on brand visibility without manual bottleneck",
+    ],
+    previewItems: [
+      { label: "Content Calendar", status: "Scheduled · Multi-Channel" },
+      { label: "Campaign Coordination", status: "Active · Daily Cadence" },
+      { label: "Brand Consistency", status: "Automated Drafts & Queue" },
+    ],
+  },
+  {
+    id: "sales-assistant",
+    name: "Sales Assistant AI",
+    role: "Your AI sales assistant",
+    badge: "REVENUE & PIPELINE",
+    description:
+      "Support lead discovery, qualification, sales conversations and follow-up workflows.",
+    path: "/agents",
+    icon: Target,
+    accent: "text-cyan-300",
+    bg: "bg-cyan-400/10",
+    border: "border-cyan-400/25",
+    pill: "bg-cyan-400/15 text-cyan-200 border-cyan-400/30",
+    highlights: [
+      "Lead discovery & structured prospect qualification",
+      "Consistent sales conversation & reply support",
+      "Automated follow-up workflows so leads never go cold",
+    ],
+    previewItems: [
+      { label: "Lead Discovery & Scoring", status: "High-Intent Prospects Queued" },
+      { label: "Sales Conversations", status: "Instant Qualification Ready" },
+      { label: "Follow-Up Workflows", status: "Automated Cadence Active" },
+    ],
+  },
+  {
+    id: "supportops",
+    name: "SupportOps",
+    role: "Your AI customer support workspace",
+    badge: "CUSTOMER EXPERIENCE",
+    description:
+      "Coordinate customer support operations, ticket workflows and escalation visibility.",
+    path: "/supportops",
+    icon: Headset,
+    accent: "text-emerald-300",
+    bg: "bg-emerald-400/10",
+    border: "border-emerald-400/25",
+    pill: "bg-emerald-400/15 text-emerald-200 border-emerald-400/30",
+    highlights: [
+      "Centralized support operations & ticket workflows",
+      "Clear escalation visibility for urgent issues",
+      "Faster, structured resolution across customer queues",
+    ],
+    previewItems: [
+      { label: "Ticket Workflows", status: "Triaged & Routed Automatically" },
+      { label: "Escalation Visibility", status: "Real-Time SLA & Priority View" },
+      { label: "Support Operations", status: "Unified Team Workspace" },
+    ],
+  },
 ];
-const products = [
-  { name: "SocialOps", role: "Your AI marketing team", description: "Plan, create and coordinate social media operations to keep your brand active and consistent.", dept: "GROW", icon: TrendingUp, path: "/agents", accent: "text-violet-300" },
-  { name: "Sales Assistant AI", role: "Your AI sales assistant", description: "Support lead discovery, qualification, sales conversations and follow-up workflows.", dept: "SELL", icon: Target, path: "/agents", accent: "text-cyan-300" },
-  { name: "SupportOps", role: "Your AI customer support workspace", description: "Coordinate customer support operations, ticket workflows and escalation visibility.", dept: "SERVE", icon: Headset, path: "/supportops", accent: "text-emerald-300" },
+
+const segments = [
+  {
+    name: "Digital agencies",
+    focus: "Consistent client marketing, lead follow-ups & account support",
+    icon: Share2,
+  },
+  {
+    name: "Professional services",
+    focus: "Inbound lead qualification, proposal follow-ups & client care",
+    icon: CalendarCheck,
+  },
+  {
+    name: "E-commerce & retail",
+    focus: "Active social promotion, buyer questions & order support tickets",
+    icon: MessageSquareMore,
+  },
+  {
+    name: "B2B & trade companies",
+    focus: "Prospect outreach, partner follow-ups & inquiry escalation",
+    icon: Building2,
+  },
+  {
+    name: "Growing SMEs",
+    focus: "Lean operations across marketing, sales & customer support",
+    icon: Zap,
+  },
+  {
+    name: "Online businesses",
+    focus: "24/7 customer responsiveness without scaling headcount first",
+    icon: Sparkles,
+  },
 ];
-const segments = ["Digital agencies", "Professional services", "E-commerce & retail", "Real estate", "Growing SMEs", "Online businesses"];
 
 export default function LandingPage() {
   const location = useLocation();
-  return <div className="min-h-screen overflow-hidden bg-[#07111f] font-sans text-white selection:bg-cyan-400/30">
-    <div className="pointer-events-none fixed inset-0"><div className="absolute inset-0 bg-[linear-gradient(to_right,#94a3b808_1px,transparent_1px),linear-gradient(to_bottom,#94a3b808_1px,transparent_1px)] bg-[size:4rem_4rem]"/><div className="absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full bg-cyan-500/10 blur-[140px]"/><div className="absolute -right-40 top-[35%] h-[520px] w-[520px] rounded-full bg-blue-600/10 blur-[150px]"/></div>
-    <header className="relative z-20 mx-auto flex max-w-7xl items-center justify-between border-b border-white/[0.07] px-5 py-5 md:px-8"><Link to="/" className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 text-xl font-black shadow-lg shadow-cyan-950/40">N</span><span className="text-lg font-black tracking-tight">Nexus<span className="text-cyan-300">Core</span><small className="mt-0.5 block text-[8px] font-bold uppercase tracking-[.22em] text-slate-500">AI business ecosystem</small></span></Link><nav className="hidden items-center gap-8 text-[11px] font-bold text-slate-400 md:flex"><a href="#ecosystem" className="hover:text-white">Ecosystem</a><a href="#applications" className="hover:text-white">Applications</a><a href="#businesses" className="hover:text-white">Who it's for</a><Link to="/agents" className="hover:text-white">Marketplace</Link><Link to="/pricing" className="hover:text-white">Pricing</Link></nav><div className="flex items-center gap-2"><Link to="/login" state={{from:location.pathname}} className="hidden rounded-xl px-4 py-2.5 text-[10px] font-bold text-slate-300 hover:bg-white/5 sm:block">Log in</Link><Link to="/register" className="rounded-xl bg-cyan-400 px-4 py-3 text-[10px] font-black text-slate-950 hover:bg-cyan-300">Get started <ArrowUpRight size={13} className="ml-1 inline"/></Link></div></header>
+  const [selectedProductId, setSelectedProductId] = useState("socialops");
 
-    <main className="relative z-10">
-      <section className="mx-auto grid max-w-7xl items-center gap-12 px-5 pb-20 pt-20 md:px-8 md:pb-28 md:pt-28 lg:grid-cols-[1.05fr_.95fr]"><motion.div initial={{opacity:0,y:18}} animate={{opacity:1,y:0}} transition={{duration:.55}}><span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/[0.07] px-3 py-2 text-[9px] font-black uppercase tracking-[.2em] text-cyan-200"><Sparkles size={12}/> AI-powered business operations</span><h1 className="mt-7 max-w-3xl text-5xl font-black leading-[1.02] tracking-[-.045em] md:text-7xl">Your business.<br/><span className="bg-gradient-to-r from-cyan-300 via-blue-300 to-violet-300 bg-clip-text text-transparent">Your AI workforce.</span><br/>One ecosystem.</h1><p className="mt-7 max-w-xl text-base leading-8 text-slate-400">Attract customers, convert more sales, serve customers better and automate everyday operations — with specialised AI employees working across one connected business workspace.</p><div className="mt-9 flex flex-col gap-3 sm:flex-row"><Link to="/register" className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-400 px-7 py-4 text-[11px] font-black uppercase tracking-wider text-slate-950 shadow-xl shadow-cyan-950/30 hover:bg-cyan-300">Build your AI workforce <ArrowRight size={15}/></Link><Link to="/agents" className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-7 py-4 text-[11px] font-bold text-white hover:bg-white/[0.07]">Explore applications <ArrowUpRight size={14}/></Link></div><div className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-[10px] font-semibold text-slate-500"><span className="flex items-center gap-1.5"><CheckCircle2 size={13} className="text-cyan-300"/> Start with one business need</span><span className="flex items-center gap-1.5"><CheckCircle2 size={13} className="text-cyan-300"/> Expand as you grow</span><span className="flex items-center gap-1.5"><CheckCircle2 size={13} className="text-cyan-300"/> Connected workflows</span></div></motion.div>
-        <motion.div initial={{opacity:0,scale:.96}} animate={{opacity:1,scale:1}} transition={{duration:.65,delay:.12}} className="relative"><div className="absolute inset-8 rounded-full bg-cyan-400/10 blur-[80px]"/><div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-[#0b1a2c]/90 p-5 shadow-2xl shadow-black/40 backdrop-blur-xl md:p-7"><div className="flex items-center justify-between border-b border-white/[0.08] pb-5"><div><p className="text-[9px] font-black uppercase tracking-[.2em] text-cyan-300">Nexus business workspace</p><h2 className="mt-1 text-lg font-black">Your business at a glance</h2></div><span className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1.5 text-[8px] font-black text-emerald-300">CONNECTED WORKSPACE</span></div><div className="mt-5 grid grid-cols-2 gap-3">{[{n:"GROW",d:"Attract customers",i:TrendingUp,c:"text-violet-300",b:"bg-violet-400/10"},{n:"SELL",d:"Convert prospects",i:Target,c:"text-cyan-300",b:"bg-cyan-400/10"},{n:"SERVE",d:"Support customers",i:Headset,c:"text-emerald-300",b:"bg-emerald-400/10"},{n:"OPERATE",d:"Automate work",i:Workflow,c:"text-amber-300",b:"bg-amber-400/10"}].map(x=><div key={x.n} className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><span className={`inline-flex rounded-xl p-2.5 ${x.b} ${x.c}`}><x.i size={18}/></span><p className="mt-4 text-[9px] font-black tracking-[.18em] text-slate-500">{x.n}</p><p className="mt-1 text-sm font-bold text-white">{x.d}</p></div>)}</div><div className="mt-4 rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.045] p-4"><div className="flex items-center gap-2"><Bot size={16} className="text-cyan-300"/><p className="text-xs font-bold text-white">Your AI workforce</p><span className="ml-auto text-[8px] font-bold uppercase tracking-wider text-slate-500">Specialised employees</span></div><div className="mt-4 flex flex-wrap gap-2">{["Marketing manager","Sales assistant","Support agent","Workflow operator"].map((x,i)=><span key={x} className="rounded-lg border border-white/[0.07] bg-[#07111f] px-3 py-2 text-[9px] font-semibold text-slate-300"><span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${["bg-violet-300","bg-cyan-300","bg-emerald-300","bg-amber-300"][i]}`}/>{x}</span>)}</div></div><p className="mt-4 text-center text-[9px] text-slate-600">One business workspace · Specialised applications · Connected workflows</p></div></motion.div>
-      </section>
+  const activeProduct =
+    PRODUCTS.find((p) => p.id === selectedProductId) || PRODUCTS[0];
+  const ActiveIcon = activeProduct.icon;
 
-      <section id="ecosystem" className="border-y border-white/[0.06] bg-white/[0.015] px-5 py-20 md:px-8"><div className="mx-auto max-w-7xl"><div className="mx-auto mb-12 max-w-2xl text-center"><p className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">One connected business ecosystem</p><h2 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">Every department has a job.<br/>Every AI employee has a purpose.</h2><p className="mt-4 text-sm leading-7 text-slate-400">Nexus Core organises AI around the outcomes businesses care about — not around technical agent infrastructure.</p></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{pillars.map(({name,eyebrow,text,icon:Icon,color,bg,border,points})=><article key={name} className={`rounded-2xl border ${border} bg-[#0b192a] p-6 transition hover:-translate-y-1 hover:bg-[#102239]`}><span className={`inline-flex rounded-xl p-3 ${bg} ${color}`}><Icon size={21}/></span><p className="mt-5 text-[8px] font-black tracking-[.2em] text-slate-500">{eyebrow}</p><h3 className="mt-1 text-xl font-black">{name}</h3><p className="mt-3 min-h-[60px] text-xs leading-6 text-slate-400">{text}</p><ul className="mt-5 space-y-2 border-t border-white/[0.07] pt-4">{points.map(p=><li key={p} className="flex gap-2 text-[10px] text-slate-400"><CheckCircle2 size={13} className={`shrink-0 ${color}`}/>{p}</li>)}</ul></article>)}</div></div></section>
+  // High-CTR Search Engine Metadata & Structured Schema
+  useEffect(() => {
+    document.title =
+      "NexusCore | SocialOps, Sales Assistant AI & SupportOps for Growing Businesses";
 
-      <section id="applications" className="mx-auto max-w-7xl px-5 py-20 md:px-8"><div className="flex flex-col justify-between gap-5 md:flex-row md:items-end"><div><p className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">Specialised business applications</p><h2 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">Meet your AI employees.</h2><p className="mt-3 max-w-xl text-sm leading-7 text-slate-400">Start with the business function you need most. Add more applications as your team and operations grow.</p></div><Link to="/agents" className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-cyan-300 hover:text-cyan-200">Explore agent marketplace <ArrowRight size={14}/></Link></div><div className="mt-9 grid gap-4 lg:grid-cols-3">{products.map(({name,role,description,dept,icon:Icon,path,accent})=><article key={name} className="rounded-2xl border border-white/[0.08] bg-[#0b192a] p-6"><div className="flex items-center justify-between"><span className={`rounded-xl bg-white/[0.04] p-3 ${accent}`}><Icon size={21}/></span><span className="rounded-full border border-white/10 px-2.5 py-1 text-[8px] font-black tracking-wider text-slate-500">{dept}</span></div><p className="mt-5 text-[9px] font-bold uppercase tracking-[.16em] text-slate-500">{role}</p><h3 className="mt-1 text-xl font-black">{name}</h3><p className="mt-3 min-h-[64px] text-xs leading-6 text-slate-400">{description}</p><Link to={path} className="mt-5 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-cyan-300 hover:text-cyan-200">Explore solution <ArrowUpRight size={14}/></Link></article>)}</div></section>
+    const setMeta = (attr, key, content) => {
+      let tag = document.querySelector(`meta[${attr}="${key}"]`);
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute(attr, key);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute("content", content);
+    };
 
-      <section id="businesses" className="border-y border-white/[0.06] bg-[#0a1727] px-5 py-20 md:px-8"><div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[.85fr_1.15fr] lg:items-center"><div><p className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">Built around your business</p><h2 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">Your industry.<br/>Your priorities.<br/>Your workspace.</h2><p className="mt-4 text-sm leading-7 text-slate-400">Tell Nexus Core what kind of business you run and what you want to improve. Your workspace can guide you toward relevant applications and workflows.</p><Link to="/register" className="mt-7 inline-flex items-center gap-2 rounded-xl bg-cyan-400 px-6 py-3.5 text-[10px] font-black uppercase tracking-wider text-slate-950 hover:bg-cyan-300">Create your workspace <ArrowRight size={14}/></Link></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{segments.map((s,i)=><div key={s} className="flex min-h-24 flex-col justify-between rounded-2xl border border-white/[0.08] bg-white/[0.025] p-4"><Building2 size={17} className={i%2===0?"text-cyan-300":"text-violet-300"}/><p className="mt-4 text-xs font-bold text-slate-200">{s}</p></div>)}</div></div></section>
+    const description =
+      "Run marketing with SocialOps, sales discovery and follow-ups with Sales Assistant AI, and support ticket workflows with SupportOps in one connected workspace.";
 
-      <section className="mx-auto max-w-7xl px-5 py-20 md:px-8"><div className="relative overflow-hidden rounded-[28px] border border-cyan-300/20 bg-gradient-to-br from-[#12314a] via-[#10243b] to-[#161d38] px-6 py-14 text-center md:px-12"><div className="absolute -right-20 -top-32 h-72 w-72 rounded-full bg-cyan-300/10 blur-3xl"/><div className="relative mx-auto max-w-2xl"><span className="inline-flex items-center gap-2 text-[9px] font-black uppercase tracking-[.2em] text-cyan-200"><Zap size={13}/> Start building your AI workforce</span><h2 className="mt-4 text-3xl font-black tracking-tight md:text-5xl">Less busywork.<br/>More business momentum.</h2><p className="mt-5 text-sm leading-7 text-slate-300">Give your business a connected workspace for growth, sales, customer experience and operations.</p><div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row"><Link to="/register" className="rounded-xl bg-cyan-400 px-7 py-4 text-[10px] font-black uppercase tracking-wider text-slate-950 hover:bg-cyan-300">Get started free <ArrowRight size={14} className="ml-1 inline"/></Link><Link to="/pricing" className="rounded-xl border border-white/15 px-7 py-4 text-[10px] font-bold text-white hover:bg-white/5">Explore pricing</Link></div></div></div></section>
-    </main>
-    <footer className="relative z-10 border-t border-white/[0.07] px-5 py-8 md:px-8"><div className="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-[10px] text-slate-600 sm:flex-row"><span>© {new Date().getFullYear()} Nexus Core. Your business. Your AI workforce. One ecosystem.</span><div className="flex gap-5"><Link to="/contact" className="hover:text-slate-300">Contact</Link><Link to="/privacy-policy" className="hover:text-slate-300">Privacy</Link><Link to="/terms-of-service" className="hover:text-slate-300">Terms</Link></div></div></footer>
-  </div>;
+    setMeta("name", "description", description);
+    setMeta("property", "og:title", document.title);
+    setMeta("property", "og:description", description);
+    setMeta("property", "og:type", "website");
+
+    const scriptId = "nexuscore-products-jsonld";
+    let script = document.getElementById(scriptId);
+    if (!script) {
+      script = document.createElement("script");
+      script.id = scriptId;
+      script.type = "application/ld+json";
+      document.head.appendChild(script);
+    }
+    script.textContent = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      name: "NexusCore",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      description,
+      featureList: [
+        "SocialOps - Plan, create and coordinate social media operations",
+        "Sales Assistant AI - Lead discovery, qualification, sales conversations and follow-up workflows",
+        "SupportOps - Customer support operations, ticket workflows and escalation visibility",
+      ],
+    });
+  }, []);
+
+  return (
+    <div className="min-h-screen overflow-hidden bg-[#07111f] font-sans text-white selection:bg-cyan-400/30">
+      {/* Ambient Background */}
+      <div className="pointer-events-none fixed inset-0">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#94a3b808_1px,transparent_1px),linear-gradient(to_bottom,#94a3b808_1px,transparent_1px)] bg-[size:4rem_4rem]" />
+        <div className="absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full bg-cyan-500/10 blur-[140px]" />
+        <div className="absolute -right-40 top-[35%] h-[520px] w-[520px] rounded-full bg-blue-600/10 blur-[150px]" />
+      </div>
+
+      {/* Header */}
+      <header className="relative z-20 mx-auto flex max-w-7xl items-center justify-between border-b border-white/[0.07] px-5 py-5 md:px-8">
+        <Link to="/" className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 text-xl font-black text-slate-950 shadow-lg shadow-cyan-950/40">
+            N
+          </span>
+          <span className="text-lg font-black tracking-tight">
+            Nexus<span className="text-cyan-300">Core</span>
+            <small className="mt-0.5 block text-[8px] font-bold uppercase tracking-[.22em] text-slate-500">
+              AI business ecosystem
+            </small>
+          </span>
+        </Link>
+
+        <nav className="hidden items-center gap-8 text-[11px] font-bold text-slate-400 md:flex">
+          <a href="#products" className="hover:text-white">
+            Products
+          </a>
+          <a href="#how-it-works" className="hover:text-white">
+            How it works
+          </a>
+          <a href="#businesses" className="hover:text-white">
+            Who it&apos;s for
+          </a>
+          <Link to="/agents" className="hover:text-white">
+            Marketplace
+          </Link>
+          <Link to="/pricing" className="hover:text-white">
+            Pricing
+          </Link>
+        </nav>
+
+        <div className="flex items-center gap-2">
+          <Link
+            to="/login"
+            state={{ from: location.pathname }}
+            className="hidden rounded-xl px-4 py-2.5 text-[10px] font-bold text-slate-300 hover:bg-white/5 sm:block"
+          >
+            Log in
+          </Link>
+          <Link
+            to="/register"
+            className="rounded-xl bg-cyan-400 px-4 py-3 text-[10px] font-black text-slate-950 hover:bg-cyan-300"
+          >
+            Get started <ArrowUpRight size={13} className="ml-1 inline" />
+          </Link>
+        </div>
+      </header>
+
+      <main className="relative z-10">
+        {/* HERO SECTION */}
+        <section className="mx-auto grid max-w-7xl items-center gap-12 px-5 pb-20 pt-16 md:px-8 md:pb-24 md:pt-24 lg:grid-cols-[1.05fr_.95fr]">
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/[0.07] px-3.5 py-2 text-[9px] font-black uppercase tracking-[.2em] text-cyan-200">
+              <Sparkles size={12} /> SocialOps · Sales Assistant AI · SupportOps
+            </span>
+
+            <h1 className="mt-6 max-w-3xl text-4xl font-black leading-[1.04] tracking-[-.04em] sm:text-5xl md:text-6xl">
+              Consistent marketing.{" "}
+              <span className="bg-gradient-to-r from-cyan-300 via-blue-300 to-violet-300 bg-clip-text text-transparent">
+                Faster sales follow-ups.
+              </span>{" "}
+              Structured support.
+            </h1>
+
+            <p className="mt-6 max-w-xl text-base leading-7 text-slate-300">
+              Stop letting leads slip through cracks or support queues pile up. Run{" "}
+              <strong className="text-white">SocialOps</strong> for your marketing,{" "}
+              <strong className="text-white">Sales Assistant AI</strong> for lead qualification &amp; follow-ups, and{" "}
+              <strong className="text-white">SupportOps</strong> for customer tickets and escalations.
+            </p>
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <a
+                href="#products"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-400 px-7 py-4 text-[11px] font-black uppercase tracking-wider text-slate-950 shadow-xl shadow-cyan-950/30 hover:bg-cyan-300"
+              >
+                Explore solutions <ArrowRight size={15} />
+              </a>
+              <Link
+                to="/register"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.03] px-7 py-4 text-[11px] font-bold uppercase tracking-wider text-white hover:bg-white/[0.08]"
+              >
+                Start free workspace <ArrowUpRight size={14} />
+              </Link>
+            </div>
+
+            <div className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-[11px] font-semibold text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 size={14} className="text-cyan-300" /> Start with one product
+              </span>
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 size={14} className="text-cyan-300" /> Built for active daily workflows
+              </span>
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 size={14} className="text-cyan-300" /> Scale across teams as you grow
+              </span>
+            </div>
+          </motion.div>
+
+          {/* INTERACTIVE PRODUCT WORKSPACE PREVIEW */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+            className="relative"
+          >
+            <div className="absolute inset-8 rounded-full bg-cyan-400/10 blur-[85px]" />
+            <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-[#0b1a2c]/95 p-5 shadow-2xl shadow-black/50 backdrop-blur-xl md:p-7">
+              <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[.2em] text-cyan-300">
+                    NexusCore Product Suite
+                  </p>
+                  <h2 className="mt-1 text-lg font-black text-white">
+                    Choose a product to preview
+                  </h2>
+                </div>
+                <span className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-[9px] font-black text-emerald-300">
+                  3 CORE PRODUCTS
+                </span>
+              </div>
+
+              {/* Interactive Product Tabs */}
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                {PRODUCTS.map((prod) => {
+                  const isSelected = prod.id === selectedProductId;
+                  return (
+                    <button
+                      key={prod.id}
+                      type="button"
+                      onClick={() => setSelectedProductId(prod.id)}
+                      className={`rounded-xl border px-3 py-2.5 text-left transition ${isSelected
+                        ? "border-cyan-400/50 bg-cyan-400/15 text-white"
+                        : "border-white/[0.07] bg-white/[0.02] text-slate-400 hover:bg-white/[0.05] hover:text-white"
+                        }`}
+                    >
+                      <p className="truncate text-xs font-black">{prod.name}</p>
+                      <p className="mt-0.5 truncate text-[9px] text-slate-400">
+                        {prod.badge}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Active Product Detail Panel */}
+              <div className="mt-4 rounded-2xl border border-white/[0.08] bg-[#07111f] p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className={`rounded-xl p-3 ${activeProduct.bg} ${activeProduct.accent}`}>
+                      <ActiveIcon size={20} />
+                    </span>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        {activeProduct.role}
+                      </p>
+                      <h3 className="text-lg font-black text-white">
+                        {activeProduct.name}
+                      </h3>
+                    </div>
+                  </div>
+                  <Link
+                    to={activeProduct.path}
+                    className="inline-flex items-center gap-1 rounded-lg bg-cyan-400 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-950 hover:bg-cyan-300"
+                  >
+                    Explore solution <ArrowUpRight size={12} />
+                  </Link>
+                </div>
+
+                <p className="mt-3.5 text-xs leading-6 text-slate-300">
+                  {activeProduct.description}
+                </p>
+
+                <div className="mt-4 space-y-2 border-t border-white/[0.07] pt-4">
+                  {activeProduct.previewItems.map((row) => (
+                    <div
+                      key={row.label}
+                      className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 text-xs"
+                    >
+                      <span className="font-semibold text-slate-200">{row.label}</span>
+                      <span className={`text-[10px] font-bold ${activeProduct.accent}`}>
+                        {row.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </section>
+
+        {/* CORE PRODUCTS SHOWCASE */}
+        <section
+          id="products"
+          className="border-y border-white/[0.06] bg-white/[0.015] px-5 py-20 md:px-8"
+        >
+          <div className="mx-auto max-w-7xl">
+            <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">
+                  Core AI Products
+                </p>
+                <h2 className="mt-2.5 text-3xl font-black tracking-tight md:text-4xl">
+                  Built for marketing, sales &amp; support teams.
+                </h2>
+                <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-400">
+                  Pick the exact product your business needs right now—or run all three together as one connected operating system.
+                </p>
+              </div>
+              <Link
+                to="/agents"
+                className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-cyan-300 hover:text-cyan-200"
+              >
+                Browse all solutions <ArrowRight size={14} />
+              </Link>
+            </div>
+
+            <div className="mt-10 grid gap-5 lg:grid-cols-3">
+              {PRODUCTS.map((product) => {
+                const Icon = product.icon;
+                return (
+                  <article
+                    key={product.id}
+                    className={`flex flex-col justify-between rounded-2xl border ${product.border} bg-[#0b192a] p-6 transition hover:-translate-y-1 hover:bg-[#0f2138]`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`rounded-xl p-3 ${product.bg} ${product.accent}`}>
+                          <Icon size={22} />
+                        </span>
+                        <span
+                          className={`rounded-full border px-3 py-1 text-[9px] font-black tracking-wider ${product.pill}`}
+                        >
+                          {product.badge}
+                        </span>
+                      </div>
+
+                      <p className="mt-5 text-[10px] font-bold uppercase tracking-[.16em] text-slate-400">
+                        {product.role}
+                      </p>
+                      <h3 className="mt-1 text-2xl font-black text-white">
+                        {product.name}
+                      </h3>
+                      <p className="mt-3 text-sm leading-6 text-slate-300">
+                        {product.description}
+                      </p>
+
+                      <ul className="mt-5 space-y-2.5 border-t border-white/[0.08] pt-4">
+                        {product.highlights.map((pt) => (
+                          <li key={pt} className="flex items-start gap-2 text-xs text-slate-400">
+                            <CheckCircle2
+                              size={14}
+                              className={`mt-0.5 shrink-0 ${product.accent}`}
+                            />
+                            <span>{pt}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="mt-7 border-t border-white/[0.08] pt-4">
+                      <Link
+                        to={product.path}
+                        className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-wider text-cyan-300 hover:text-cyan-200"
+                      >
+                        Explore solution <ArrowUpRight size={15} />
+                      </Link>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        {/* HOW THE THREE WORK TOGETHER */}
+        <section id="how-it-works" className="mx-auto max-w-7xl px-5 py-20 md:px-8">
+          <div className="mx-auto mb-12 max-w-2xl text-center">
+            <p className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">
+              End-to-End Business Flow
+            </p>
+            <h2 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">
+              From first impression to loyal customer.
+            </h2>
+            <p className="mt-3 text-sm leading-7 text-slate-400">
+              Keep your brand visible, qualify and follow up with prospects faster, and resolve customer tickets with clear escalation visibility.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-violet-400/20 bg-[#0b192a] p-6">
+              <span className="text-[10px] font-black uppercase tracking-widest text-violet-300">
+                01 · SOCIALOPS
+              </span>
+              <h3 className="mt-2 text-lg font-black text-white">Your AI marketing team</h3>
+              <p className="mt-2 text-xs leading-6 text-slate-400">
+                Plan, create and coordinate social media operations to keep your brand active and consistent.
+              </p>
+              <Link
+                to="/agents"
+                className="mt-4 inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-cyan-300 hover:text-cyan-200"
+              >
+                Explore solution <ArrowUpRight size={13} />
+              </Link>
+            </div>
+
+            <div className="rounded-2xl border border-cyan-400/20 bg-[#0b192a] p-6">
+              <span className="text-[10px] font-black uppercase tracking-widest text-cyan-300">
+                02 · SALES ASSISTANT AI
+              </span>
+              <h3 className="mt-2 text-lg font-black text-white">Your AI sales assistant</h3>
+              <p className="mt-2 text-xs leading-6 text-slate-400">
+                Support lead discovery, qualification, sales conversations and follow-up workflows.
+              </p>
+              <Link
+                to="/agents"
+                className="mt-4 inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-cyan-300 hover:text-cyan-200"
+              >
+                Explore solution <ArrowUpRight size={13} />
+              </Link>
+            </div>
+
+            <div className="rounded-2xl border border-emerald-400/20 bg-[#0b192a] p-6">
+              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-300">
+                03 · SUPPORT-OPS
+              </span>
+              <h3 className="mt-2 text-lg font-black text-white">Your AI customer support workspace</h3>
+              <p className="mt-2 text-xs leading-6 text-slate-400">
+                Coordinate customer support operations, ticket workflows and escalation visibility.
+              </p>
+              <Link
+                to="/supportops"
+                className="mt-4 inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-cyan-300 hover:text-cyan-200"
+              >
+                Explore solution <ArrowUpRight size={13} />
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* WHO IT'S FOR */}
+        <section
+          id="businesses"
+          className="border-y border-white/[0.06] bg-[#0a1727] px-5 py-20 md:px-8"
+        >
+          <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[.85fr_1.15fr] lg:items-center">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">
+                Built for growing businesses
+              </p>
+              <h2 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">
+                Any business model.<br />Your AI team at work.
+              </h2>
+              <p className="mt-4 text-sm leading-7 text-slate-400">
+                Whether you are generating leads, closing deals, or handling daily customer tickets, NexusCore gives you practical AI products built for real execution.
+              </p>
+              <Link
+                to="/register"
+                className="mt-7 inline-flex items-center gap-2 rounded-xl bg-cyan-400 px-6 py-3.5 text-[11px] font-black uppercase tracking-wider text-slate-950 hover:bg-cyan-300"
+              >
+                Create your workspace <ArrowRight size={14} />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+              {segments.map(({ name, focus, icon: Icon }, i) => (
+                <div
+                  key={name}
+                  className="flex flex-col justify-between rounded-2xl border border-white/[0.08] bg-white/[0.025] p-5"
+                >
+                  <Icon
+                    size={18}
+                    className={i % 2 === 0 ? "text-cyan-300" : "text-violet-300"}
+                  />
+                  <div className="mt-4">
+                    <h3 className="text-sm font-bold text-white">{name}</h3>
+                    <p className="mt-1.5 text-xs leading-5 text-slate-400">{focus}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* BOTTOM CTA */}
+        <section className="mx-auto max-w-7xl px-5 py-20 md:px-8">
+          <div className="relative overflow-hidden rounded-[28px] border border-cyan-300/20 bg-gradient-to-br from-[#12314a] via-[#10243b] to-[#161d38] px-6 py-14 text-center md:px-12">
+            <div className="absolute -right-20 -top-32 h-72 w-72 rounded-full bg-cyan-300/10 blur-3xl" />
+            <div className="relative mx-auto max-w-2xl">
+              <span className="inline-flex items-center gap-2 text-[9px] font-black uppercase tracking-[.2em] text-cyan-200">
+                <Zap size={13} /> SocialOps · Sales Assistant AI · SupportOps
+              </span>
+              <h2 className="mt-4 text-3xl font-black tracking-tight md:text-5xl">
+                Turn attention into revenue and calm operations.
+              </h2>
+              <p className="mt-5 text-sm leading-7 text-slate-300">
+                Start with SocialOps, Sales Assistant AI, or SupportOps today and build a smoother workflow across your business.
+              </p>
+              <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+                <Link
+                  to="/register"
+                  className="rounded-xl bg-cyan-400 px-7 py-4 text-[11px] font-black uppercase tracking-wider text-slate-950 hover:bg-cyan-300"
+                >
+                  Get started free <ArrowRight size={14} className="ml-1 inline" />
+                </Link>
+                <Link
+                  to="/pricing"
+                  className="rounded-xl border border-white/15 px-7 py-4 text-[11px] font-bold uppercase tracking-wider text-white hover:bg-white/5"
+                >
+                  Explore pricing
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer className="relative z-10 border-t border-white/[0.07] px-5 py-8 md:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-[11px] text-slate-500 sm:flex-row">
+          <span>
+            © {new Date().getFullYear()} Nexus Core. SocialOps · Sales Assistant AI · SupportOps.
+          </span>
+          <div className="flex gap-5">
+            <Link to="/contact" className="hover:text-slate-300">
+              Contact
+            </Link>
+            <Link to="/privacy-policy" className="hover:text-slate-300">
+              Privacy
+            </Link>
+            <Link to="/terms-of-service" className="hover:text-slate-300">
+              Terms
+            </Link>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
 }
