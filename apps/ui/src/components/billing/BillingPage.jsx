@@ -13,7 +13,7 @@ const fmtDate = (d) =>
     : "—";
 
 /** Signed-in billing overview for one product: current plan, renewal, direct checkout, Stripe portal. */
-export default function BillingPage({ product: slug = "nexus-core", useProductAuth }) {
+export default function BillingPage({ product: slug = "billing", useProductAuth }) {
   const product = PRODUCTS[slug];
   const auth = useProductAuth();
   const location = useLocation();
@@ -29,7 +29,7 @@ export default function BillingPage({ product: slug = "nexus-core", useProductAu
 
   const load = useCallback(async () => {
     try {
-      setSub(await auth.api(`/${slug}/billing/subscription`));
+      setSub(await auth.api(`/${slug}/subscription`));
       setError("");
     } catch (err) {
       setError(err.message || "Could not load your plan.");
@@ -61,7 +61,7 @@ export default function BillingPage({ product: slug = "nexus-core", useProductAu
     setBusy(true);
     setError("");
     try {
-      const res = await auth.api(`/${slug}/billing/checkout`, {
+      const res = await auth.api(`/${slug}/checkout`, {
         method: "POST",
         body: { plan: planKey, interval },
       });
@@ -77,7 +77,7 @@ export default function BillingPage({ product: slug = "nexus-core", useProductAu
     setBusy(true);
     setError("");
     try {
-      const res = await auth.api(`/${slug}/billing/portal`, { method: "POST" });
+      const res = await auth.api(`/${slug}/portal`, { method: "POST" });
       window.location.assign(res.url);
     } catch (err) {
       setError(err.message);
