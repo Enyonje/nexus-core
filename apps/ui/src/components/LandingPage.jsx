@@ -10,6 +10,9 @@ import {
   Sparkles,
   CheckCircle2,
   Zap,
+  ShieldCheck,
+  Eye,
+  Lock,
   Building2,
   CalendarCheck,
   MessageSquareMore,
@@ -91,6 +94,33 @@ const PRODUCTS = [
   },
 ];
 
+const GOVERNANCE_PILLARS = [
+  {
+    title: "Controlled Tool Access",
+    description:
+      "Every AI agent operates inside strict permission boundaries with scoped API credentials and workspace isolation.",
+    icon: Lock,
+    accent: "text-cyan-300",
+    bg: "bg-cyan-400/10",
+  },
+  {
+    title: "Human Approvals & Governance",
+    description:
+      "Configure human-in-the-loop checkpoints before external emails, social posts, or sensitive escalations execute.",
+    icon: ShieldCheck,
+    accent: "text-emerald-300",
+    bg: "bg-emerald-400/10",
+  },
+  {
+    title: "Execution Visibility",
+    description:
+      "Monitor real-time workflow runs, ticket escalations, and audit logs across SocialOps, Sales Assistant AI, and SupportOps.",
+    icon: Eye,
+    accent: "text-violet-300",
+    bg: "bg-violet-400/10",
+  },
+];
+
 const segments = [
   {
     name: "Digital agencies",
@@ -132,10 +162,13 @@ export default function LandingPage() {
     PRODUCTS.find((p) => p.id === selectedProductId) || PRODUCTS[0];
   const ActiveIcon = activeProduct.icon;
 
-  // High-CTR Search Engine Metadata & Structured Schema
   useEffect(() => {
-    document.title =
-      "NexusCore | SocialOps, Sales Assistant AI & SupportOps for Growing Businesses";
+    const title = "Nexus Core | AI Agents & Business Workflow Automation";
+    const description =
+      "Coordinate AI agents and business workflows with controlled tool access, human approvals and execution visibility. Explore Nexus Core.";
+    const canonicalUrl = "https://nexusthecore.com/";
+
+    document.title = title;
 
     const setMeta = (attr, key, content) => {
       let tag = document.querySelector(`meta[${attr}="${key}"]`);
@@ -147,35 +180,19 @@ export default function LandingPage() {
       tag.setAttribute("content", content);
     };
 
-    const description =
-      "Run marketing with SocialOps, sales discovery and follow-ups with Sales Assistant AI, and support ticket workflows with SupportOps in one connected workspace.";
-
     setMeta("name", "description", description);
-    setMeta("property", "og:title", document.title);
+    setMeta("property", "og:title", title);
     setMeta("property", "og:description", description);
+    setMeta("property", "og:url", canonicalUrl);
     setMeta("property", "og:type", "website");
 
-    const scriptId = "nexuscore-products-jsonld";
-    let script = document.getElementById(scriptId);
-    if (!script) {
-      script = document.createElement("script");
-      script.id = scriptId;
-      script.type = "application/ld+json";
-      document.head.appendChild(script);
+    let canonical = document.querySelector('link[rel="canonical"]');
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.setAttribute("rel", "canonical");
+      document.head.appendChild(canonical);
     }
-    script.textContent = JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      name: "NexusCore",
-      applicationCategory: "BusinessApplication",
-      operatingSystem: "Web",
-      description,
-      featureList: [
-        "SocialOps - Plan, create and coordinate social media operations",
-        "Sales Assistant AI - Lead discovery, qualification, sales conversations and follow-up workflows",
-        "SupportOps - Customer support operations, ticket workflows and escalation visibility",
-      ],
-    });
+    canonical.setAttribute("href", canonicalUrl);
   }, []);
 
   return (
@@ -187,7 +204,7 @@ export default function LandingPage() {
         <div className="absolute -right-40 top-[35%] h-[520px] w-[520px] rounded-full bg-blue-600/10 blur-[150px]" />
       </div>
 
-      {/* Header */}
+      {/* Header (Uses <span> for brand logo, never <h1>) */}
       <header className="relative z-20 mx-auto flex max-w-7xl items-center justify-between border-b border-white/[0.07] px-5 py-5 md:px-8">
         <Link to="/" className="flex items-center gap-3">
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 text-xl font-black text-slate-950 shadow-lg shadow-cyan-950/40">
@@ -201,12 +218,15 @@ export default function LandingPage() {
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-8 text-[11px] font-bold text-slate-400 md:flex">
+        <nav
+          aria-label="Primary Navigation"
+          className="hidden items-center gap-8 text-[11px] font-bold text-slate-400 md:flex"
+        >
           <a href="#products" className="hover:text-white">
             Products
           </a>
-          <a href="#how-it-works" className="hover:text-white">
-            How it works
+          <a href="#governance" className="hover:text-white">
+            Governance
           </a>
           <a href="#businesses" className="hover:text-white">
             Who it&apos;s for
@@ -237,7 +257,7 @@ export default function LandingPage() {
       </header>
 
       <main className="relative z-10">
-        {/* HERO SECTION */}
+        {/* HERO SECTION — Contains the SOLE <h1> on the page */}
         <section className="mx-auto grid max-w-7xl items-center gap-12 px-5 pb-20 pt-16 md:px-8 md:pb-24 md:pt-24 lg:grid-cols-[1.05fr_.95fr]">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
@@ -249,18 +269,17 @@ export default function LandingPage() {
             </span>
 
             <h1 className="mt-6 max-w-3xl text-4xl font-black leading-[1.04] tracking-[-.04em] sm:text-5xl md:text-6xl">
-              Consistent marketing.{" "}
+              AI Agents &amp;{" "}
               <span className="bg-gradient-to-r from-cyan-300 via-blue-300 to-violet-300 bg-clip-text text-transparent">
-                Faster sales follow-ups.
-              </span>{" "}
-              Structured support.
+                Business Workflow Automation
+              </span>
             </h1>
 
             <p className="mt-6 max-w-xl text-base leading-7 text-slate-300">
-              Stop letting leads slip through cracks or support queues pile up. Run{" "}
-              <strong className="text-white">SocialOps</strong> for your marketing,{" "}
-              <strong className="text-white">Sales Assistant AI</strong> for lead qualification &amp; follow-ups, and{" "}
-              <strong className="text-white">SupportOps</strong> for customer tickets and escalations.
+              Coordinate AI agents and business workflows with controlled tool access, human approvals and execution visibility. Run{" "}
+              <strong className="text-white">SocialOps</strong>,{" "}
+              <strong className="text-white">Sales Assistant AI</strong>, and{" "}
+              <strong className="text-white">SupportOps</strong> in one connected workspace.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -280,13 +299,13 @@ export default function LandingPage() {
 
             <div className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-[11px] font-semibold text-slate-400">
               <span className="flex items-center gap-1.5">
-                <CheckCircle2 size={14} className="text-cyan-300" /> Start with one product
+                <CheckCircle2 size={14} className="text-cyan-300" /> Controlled tool access
               </span>
               <span className="flex items-center gap-1.5">
-                <CheckCircle2 size={14} className="text-cyan-300" /> Built for active daily workflows
+                <CheckCircle2 size={14} className="text-cyan-300" /> Human approvals
               </span>
               <span className="flex items-center gap-1.5">
-                <CheckCircle2 size={14} className="text-cyan-300" /> Scale across teams as you grow
+                <CheckCircle2 size={14} className="text-cyan-300" /> Execution visibility
               </span>
             </div>
           </motion.div>
@@ -305,16 +324,15 @@ export default function LandingPage() {
                   <p className="text-[9px] font-black uppercase tracking-[.2em] text-cyan-300">
                     NexusCore Product Suite
                   </p>
-                  <h2 className="mt-1 text-lg font-black text-white">
+                  <p className="mt-1 text-lg font-black text-white">
                     Choose a product to preview
-                  </h2>
+                  </p>
                 </div>
                 <span className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-[9px] font-black text-emerald-300">
                   3 CORE PRODUCTS
                 </span>
               </div>
 
-              {/* Interactive Product Tabs */}
               <div className="mt-4 grid grid-cols-3 gap-2">
                 {PRODUCTS.map((prod) => {
                   const isSelected = prod.id === selectedProductId;
@@ -337,7 +355,6 @@ export default function LandingPage() {
                 })}
               </div>
 
-              {/* Active Product Detail Panel */}
               <div className="mt-4 rounded-2xl border border-white/[0.08] bg-[#07111f] p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -348,9 +365,9 @@ export default function LandingPage() {
                       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                         {activeProduct.role}
                       </p>
-                      <h3 className="text-lg font-black text-white">
+                      <p className="text-lg font-black text-white">
                         {activeProduct.name}
-                      </h3>
+                      </p>
                     </div>
                   </div>
                   <Link
@@ -383,7 +400,7 @@ export default function LandingPage() {
           </motion.div>
         </section>
 
-        {/* CORE PRODUCTS SHOWCASE */}
+        {/* CORE PRODUCTS SHOWCASE (H2 -> H3 Hierarchy) */}
         <section
           id="products"
           className="border-y border-white/[0.06] bg-white/[0.015] px-5 py-20 md:px-8"
@@ -395,7 +412,7 @@ export default function LandingPage() {
                   Core AI Products
                 </p>
                 <h2 className="mt-2.5 text-3xl font-black tracking-tight md:text-4xl">
-                  Built for marketing, sales &amp; support teams.
+                  Built for marketing, sales &amp; support workflows.
                 </h2>
                 <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-400">
                   Pick the exact product your business needs right now—or run all three together as one connected operating system.
@@ -467,68 +484,33 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* HOW THE THREE WORK TOGETHER */}
-        <section id="how-it-works" className="mx-auto max-w-7xl px-5 py-20 md:px-8">
+        {/* GOVERNANCE & ARCHITECTURE SECTION — Matches Meta Description H2s */}
+        <section id="governance" className="mx-auto max-w-7xl px-5 py-20 md:px-8">
           <div className="mx-auto mb-12 max-w-2xl text-center">
             <p className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">
-              End-to-End Business Flow
+              Enterprise Control &amp; Architecture
             </p>
-            <h2 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">
-              From first impression to loyal customer.
-            </h2>
+            <p className="mt-3 text-3xl font-black tracking-tight md:text-4xl">
+              Safe, auditable AI execution.
+            </p>
             <p className="mt-3 text-sm leading-7 text-slate-400">
-              Keep your brand visible, qualify and follow up with prospects faster, and resolve customer tickets with clear escalation visibility.
+              Every workflow in Nexus Core is built with clear operational guardrails so your team stays in command.
             </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl border border-violet-400/20 bg-[#0b192a] p-6">
-              <span className="text-[10px] font-black uppercase tracking-widest text-violet-300">
-                01 · SOCIALOPS
-              </span>
-              <h3 className="mt-2 text-lg font-black text-white">Your AI marketing team</h3>
-              <p className="mt-2 text-xs leading-6 text-slate-400">
-                Plan, create and coordinate social media operations to keep your brand active and consistent.
-              </p>
-              <Link
-                to="/agents"
-                className="mt-4 inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-cyan-300 hover:text-cyan-200"
+          <div className="grid gap-5 md:grid-cols-3">
+            {GOVERNANCE_PILLARS.map(({ title, description, icon: Icon, accent, bg }) => (
+              <article
+                key={title}
+                className="rounded-2xl border border-white/[0.08] bg-[#0b192a] p-6"
               >
-                Explore solution <ArrowUpRight size={13} />
-              </Link>
-            </div>
-
-            <div className="rounded-2xl border border-cyan-400/20 bg-[#0b192a] p-6">
-              <span className="text-[10px] font-black uppercase tracking-widest text-cyan-300">
-                02 · SALES ASSISTANT AI
-              </span>
-              <h3 className="mt-2 text-lg font-black text-white">Your AI sales assistant</h3>
-              <p className="mt-2 text-xs leading-6 text-slate-400">
-                Support lead discovery, qualification, sales conversations and follow-up workflows.
-              </p>
-              <Link
-                to="/agents"
-                className="mt-4 inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-cyan-300 hover:text-cyan-200"
-              >
-                Explore solution <ArrowUpRight size={13} />
-              </Link>
-            </div>
-
-            <div className="rounded-2xl border border-emerald-400/20 bg-[#0b192a] p-6">
-              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-300">
-                03 · SUPPORT-OPS
-              </span>
-              <h3 className="mt-2 text-lg font-black text-white">Your AI customer support workspace</h3>
-              <p className="mt-2 text-xs leading-6 text-slate-400">
-                Coordinate customer support operations, ticket workflows and escalation visibility.
-              </p>
-              <Link
-                to="/supportops"
-                className="mt-4 inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-cyan-300 hover:text-cyan-200"
-              >
-                Explore solution <ArrowUpRight size={13} />
-              </Link>
-            </div>
+                <span className={`inline-flex rounded-xl p-3 ${bg} ${accent}`}>
+                  <Icon size={21} />
+                </span>
+                <h2 className="mt-5 text-xl font-black text-white">{title}</h2>
+                <p className="mt-3 text-xs leading-6 text-slate-400">{description}</p>
+              </article>
+            ))}
           </div>
         </section>
 
@@ -546,7 +528,7 @@ export default function LandingPage() {
                 Any business model.<br />Your AI team at work.
               </h2>
               <p className="mt-4 text-sm leading-7 text-slate-400">
-                Whether you are generating leads, closing deals, or handling daily customer tickets, NexusCore gives you practical AI products built for real execution.
+                Whether you are generating leads, closing deals, or handling daily customer tickets, Nexus Core gives you practical AI products built for real execution.
               </p>
               <Link
                 to="/register"
@@ -612,9 +594,18 @@ export default function LandingPage() {
       <footer className="relative z-10 border-t border-white/[0.07] px-5 py-8 md:px-8">
         <div className="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-[11px] text-slate-500 sm:flex-row">
           <span>
-            © {new Date().getFullYear()} Nexus Core. SocialOps · Sales Assistant AI · SupportOps.
+            © {new Date().getFullYear()} Nexus Core. AI Agents &amp; Business Workflow Automation.
           </span>
           <div className="flex gap-5">
+            <Link to="/agents" className="hover:text-slate-300">
+              Agents
+            </Link>
+            <Link to="/supportops" className="hover:text-slate-300">
+              SupportOps
+            </Link>
+            <Link to="/pricing" className="hover:text-slate-300">
+              Pricing
+            </Link>
             <Link to="/contact" className="hover:text-slate-300">
               Contact
             </Link>
