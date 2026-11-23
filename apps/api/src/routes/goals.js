@@ -78,14 +78,6 @@ export async function goalsRoutes(app) {
       const userId = req.identity?.sub;
       const orgId = req.identity?.org_id;
       const { goalType, payload } = req.body;
-      const body = {
-        goalType,
-        payload: {
-          ...(plan.length ? { ...payload, plan } : payload),
-          settings,
-        },
-      };
-
       if (!userId || !orgId) {
         return reply.code(400).send({ error: "Missing userId or orgId in token" });
       }
