@@ -156,7 +156,7 @@ async function auditLog(executionId, status, meta = {}) {
   try {
     await db.query(
       `INSERT INTO execution_audit (id, execution_id, status, meta, created_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, NOW())`,
+       VALUES (gen_random_uuid()::text, $1, $2, $3, NOW())`,
       [executionId, status, JSON.stringify(meta)]
     );
     await publishAudit(executionId, status, meta);

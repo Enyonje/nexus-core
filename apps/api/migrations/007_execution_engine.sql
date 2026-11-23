@@ -3,7 +3,7 @@ BEGIN;
 -- Execution steps (individual nodes in a plan)
 CREATE TABLE IF NOT EXISTS execution_steps (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  execution_id UUID REFERENCES executions(id) ON DELETE CASCADE,
+  execution_id TEXT REFERENCES executions(id) ON DELETE CASCADE,
   step_key TEXT NOT NULL,
   step_type TEXT,
   status TEXT CHECK (

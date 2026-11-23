@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS agents (
 -- Agent-to-Agent contracts
 CREATE TABLE IF NOT EXISTS agent_contracts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  execution_id UUID REFERENCES executions(id) ON DELETE CASCADE,
+  execution_id TEXT REFERENCES executions(id) ON DELETE CASCADE,
   requester_agent UUID REFERENCES agents(id) ON DELETE CASCADE,
   responder_agent UUID REFERENCES agents(id) ON DELETE CASCADE,
   contract JSONB NOT NULL,

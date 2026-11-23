@@ -29,6 +29,7 @@ import salesRoutesMod from "./routes/sales.js";
 import salesAgentsRoutes from "./routes/salesAgents.js";
 import { startSalesAutopilot } from "./agents/salesAutopilot.js";
 import * as integrationsRoutesMod from "./routes/integrations.js";
+import { nexusCoreBillingRoutes } from "./routes/nexusCoreBilling.js";
 import * as dashboardRoutesMod from "../supportops/routes/dashboard.js"; // <--- Added Dashboard Routes
 
 
@@ -164,6 +165,8 @@ async function start() {
   // ProductAuth calls /api/<product>/auth/*; expose the canonical Nexus
   // auth routes at the slugged path used by the frontend as well.
   fastify.register(authPlugin, { prefix: "/api/nexus-core/auth" });
+  // Nexus Core billing is registered independently; SupportOps billing remains below.
+  fastify.register(nexusCoreBillingRoutes, { prefix: "/api/nexus-core" });
   fastify.register(webhookRoutes, { prefix: "/api" });
   fastify.register(webhookRoutes, { prefix: "/api/v1" });
 

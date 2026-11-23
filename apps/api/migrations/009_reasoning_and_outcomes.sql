@@ -7,7 +7,7 @@ ADD COLUMN IF NOT EXISTS reasoning JSONB;
 -- Outcome tracking (billing + analytics)
 CREATE TABLE IF NOT EXISTS outcomes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  execution_id UUID REFERENCES executions(id) ON DELETE CASCADE,
+  execution_id TEXT REFERENCES executions(id) ON DELETE CASCADE,
   outcome_type TEXT NOT NULL,
   success BOOLEAN NOT NULL,
   metadata JSONB,

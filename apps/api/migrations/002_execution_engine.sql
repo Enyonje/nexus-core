@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS executions (
 -- Execution plans (DAG)
 CREATE TABLE IF NOT EXISTS execution_plans (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  execution_id UUID REFERENCES executions(id) ON DELETE CASCADE,
+  execution_id TEXT REFERENCES executions(id) ON DELETE CASCADE,
   plan_version INTEGER NOT NULL,
   plan_dag JSONB NOT NULL,
   created_at TIMESTAMP DEFAULT now()
